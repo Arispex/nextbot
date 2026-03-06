@@ -190,6 +190,7 @@
       const text = [
         String(item.display_name || "").toLowerCase(),
         String(item.description || "").toLowerCase(),
+        String(item.usage || "").toLowerCase(),
         String(item.permission || "").toLowerCase(),
       ].join(" ");
       return text.includes(keyword);
@@ -270,6 +271,13 @@
       descriptionNode.textContent = command.description || "暂无介绍";
       descriptionCell.appendChild(descriptionNode);
 
+      const usageCell = document.createElement("td");
+      usageCell.className = "usage-cell";
+      const usageNode = document.createElement("div");
+      usageNode.className = "command-desc";
+      usageNode.textContent = command.usage || "未填写用法";
+      usageCell.appendChild(usageNode);
+
       const permissionCell = document.createElement("td");
       permissionCell.appendChild(buildPermissionNode(command.permission));
 
@@ -319,6 +327,7 @@
 
       row.appendChild(commandCell);
       row.appendChild(descriptionCell);
+      row.appendChild(usageCell);
       row.appendChild(permissionCell);
       row.appendChild(statusCell);
       row.appendChild(actionCell);

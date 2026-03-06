@@ -208,6 +208,16 @@ html.dark {
   max-width: 420px;
 }
 
+.usage-cell {
+  min-width: 240px;
+  max-width: 360px;
+}
+
+.usage-cell .command-desc {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .badge {
   display: inline-flex;
   align-items: center;
