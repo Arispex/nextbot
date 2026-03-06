@@ -10,92 +10,170 @@
       theme: {
         extend: {
           colors: {
-            brand: {
-              50: "#eff6ff",
-              100: "#dbeafe",
-              500: "#3b82f6",
-              600: "#2563eb",
-              700: "#1d4ed8",
-              800: "#1e40af"
+            paper: {
+              50: "#fcfcfd",
+              100: "#f8fafc",
+              200: "#eef2f7"
+            },
+            ink: {
+              500: "#667085",
+              700: "#344054",
+              900: "#101828"
+            },
+            accent: {
+              100: "#e0e7ff",
+              200: "#c7d2fe",
+              500: "#6366f1",
+              600: "#4f46e5"
+            },
+            gold: {
+              100: "#fef3c7",
+              300: "#fcd34d",
+              700: "#b45309"
             }
+          },
+          boxShadow: {
+            poster: "0 30px 80px rgba(15, 23, 42, 0.10)",
+            soft: "0 10px 30px rgba(15, 23, 42, 0.06)"
           }
         }
       }
     };
   </script>
 </head>
-<body class="min-h-screen bg-[radial-gradient(circle_at_top,#dbeafe_0%,#f8fafc_35%,#e2e8f0_100%)] p-5 text-slate-900">
-  <main class="mx-auto max-w-[1800px] overflow-hidden rounded-3xl border border-slate-200 bg-white/90 shadow-2xl shadow-blue-200/60 backdrop-blur">
-    <header class="relative overflow-hidden bg-gradient-to-r from-brand-700 via-brand-600 to-brand-800 px-6 py-5 text-white">
-      <div class="absolute -left-10 -top-12 h-40 w-40 rounded-full bg-white/15 blur-2xl"></div>
-      <div class="absolute -right-16 top-0 h-44 w-44 rounded-full bg-cyan-200/20 blur-3xl"></div>
+<body class="min-h-screen bg-[linear-gradient(180deg,#f8fafc_0%,#f6f7fb_35%,#eef2f7_100%)] px-6 py-7 text-ink-900">
+  <div class="pointer-events-none fixed inset-0 overflow-hidden">
+    <div class="absolute left-[6%] top-10 h-56 w-56 rounded-full bg-indigo-200/30 blur-3xl"></div>
+    <div class="absolute right-[8%] top-20 h-72 w-72 rounded-full bg-cyan-100/50 blur-3xl"></div>
+    <div class="absolute bottom-16 left-1/2 h-72 w-[38rem] -translate-x-1/2 rounded-full bg-slate-200/30 blur-3xl"></div>
+  </div>
+
+  <main class="relative mx-auto max-w-[1880px] overflow-hidden rounded-[32px] border border-white/70 bg-white/88 shadow-poster backdrop-blur">
+    <section class="relative overflow-hidden px-10 pb-8 pt-10">
+      <div class="absolute inset-x-0 top-0 h-48 bg-[linear-gradient(135deg,rgba(99,102,241,0.10),rgba(255,255,255,0)_45%,rgba(14,165,233,0.10))]"></div>
+      <div class="absolute left-10 top-10 h-36 w-36 rounded-full border border-white/60 bg-white/40 blur-2xl"></div>
+      <div class="absolute right-0 top-0 h-48 w-48 translate-x-12 -translate-y-6 rounded-full bg-indigo-100/60 blur-3xl"></div>
+
       <div class="relative">
-        <h1 class="text-3xl font-bold tracking-wide">菜单</h1>
-        <div class="mt-4 grid grid-cols-2 gap-2 text-sm md:grid-cols-4">
-          <div class="rounded-lg bg-white/15 px-3 py-2">
-            <div class="text-[11px] text-blue-100">命令总数</div>
-            <div id="meta-total-count" class="truncate font-semibold"></div>
-          </div>
-          <div class="rounded-lg bg-white/15 px-3 py-2 md:col-span-2">
-            <div class="text-[11px] text-blue-100">生成时间</div>
-            <div id="meta-generated-at" class="truncate font-semibold"></div>
+        <div>
+          <div class="max-w-4xl">
+            <h1 class="text-6xl font-semibold tracking-[-0.04em] text-ink-900">菜单</h1>
           </div>
         </div>
       </div>
-    </header>
+    </section>
 
-    <section class="p-4">
-      <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <table class="min-w-full border-collapse text-sm">
-          <thead class="bg-slate-100 text-slate-600">
-            <tr>
-              <th class="border-b border-slate-200 px-4 py-3 text-left font-semibold">命令名称</th>
-              <th class="border-b border-slate-200 px-4 py-3 text-left font-semibold">命令介绍</th>
-              <th class="border-b border-slate-200 px-4 py-3 text-left font-semibold">权限</th>
+    <section class="mt-8 px-8 pb-8">
+      <div class="overflow-hidden rounded-[28px] border border-slate-200/90 bg-white shadow-soft">
+        <table class="min-w-full border-collapse">
+          <thead>
+            <tr class="bg-paper-100/80 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-ink-500">
+              <th class="w-16 px-6 py-4">序号</th>
+              <th class="px-6 py-4">命令名称</th>
+              <th class="px-6 py-4">命令介绍</th>
+              <th class="px-6 py-4">用法</th>
+              <th class="px-6 py-4">权限</th>
             </tr>
           </thead>
-          <tbody id="command-table-body" class="divide-y divide-slate-100"></tbody>
+          <tbody id="command-table-body"></tbody>
         </table>
       </div>
     </section>
 
-    <div class="px-6 pb-4 text-right text-xs font-medium tracking-wide text-slate-400">
-      Powered by Next Bot
-    </div>
+    <footer class="flex items-center justify-between border-t border-slate-200/80 px-10 py-5 text-xs tracking-[0.18em] text-ink-500 uppercase">
+      <span id="footer-generated-at"></span>
+      <span>Powered by NextBot</span>
+    </footer>
   </main>
 
   <script id="menu-data" type="application/json">__MENU_DATA_JSON__</script>
   <script>
     const data = JSON.parse(document.getElementById("menu-data").textContent);
     const commands = Array.isArray(data.commands) ? data.commands : [];
-    const totalCount = Number(data.total_count || commands.length || 0);
 
-    document.getElementById("meta-generated-at").textContent = String(data.generated_at || "");
-    document.getElementById("meta-total-count").textContent = String(totalCount);
+    document.getElementById("footer-generated-at").textContent = String(data.generated_at || "");
 
     const tableBody = document.getElementById("command-table-body");
-    for (const item of commands) {
+    if (!commands.length) {
+      const emptyRow = document.createElement("tr");
+      emptyRow.className = "border-t border-slate-100";
+
+      const emptyCell = document.createElement("td");
+      emptyCell.colSpan = 5;
+      emptyCell.className = "px-6 py-16";
+
+      const emptyWrap = document.createElement("div");
+      emptyWrap.className =
+        "mx-auto flex max-w-xl flex-col items-center rounded-[24px] border border-dashed border-slate-200 bg-paper-50/80 px-8 py-10 text-center";
+
+      const emptyTitle = document.createElement("div");
+      emptyTitle.className = "text-xl font-semibold tracking-[-0.03em] text-ink-900";
+      emptyTitle.textContent = "暂时没有可展示的命令";
+
+      const emptyDesc = document.createElement("div");
+      emptyDesc.className = "mt-3 text-sm leading-7 text-ink-500";
+      emptyDesc.textContent = "当前命令列表为空，待配置同步后会在此处生成完整的菜单海报。";
+
+      emptyWrap.appendChild(emptyTitle);
+      emptyWrap.appendChild(emptyDesc);
+      emptyCell.appendChild(emptyWrap);
+      emptyRow.appendChild(emptyCell);
+      tableBody.appendChild(emptyRow);
+    }
+
+    for (let index = 0; index < commands.length; index += 1) {
+      const item = commands[index];
       const row = document.createElement("tr");
-      row.className = "align-top";
+      row.className = "align-top border-t border-slate-100";
+
+      const orderCell = document.createElement("td");
+      orderCell.className = "px-6 py-5";
+      const orderBadge = document.createElement("div");
+      orderBadge.className =
+        "inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-paper-50 text-xs font-semibold text-ink-700";
+      orderBadge.textContent = String(index + 1).padStart(2, "0");
+      orderCell.appendChild(orderBadge);
 
       const nameCell = document.createElement("td");
-      nameCell.className = "px-4 py-3 font-semibold text-slate-900";
-      nameCell.textContent = String(item?.display_name || "").trim() || "-";
+      nameCell.className = "px-6 py-5";
+      const nameWrap = document.createElement("div");
+      nameWrap.className = "max-w-[22rem]";
+      const nameNode = document.createElement("div");
+      nameNode.className = "text-[22px] font-semibold tracking-[-0.03em] text-ink-900";
+      nameNode.textContent = String(item?.display_name || "").trim() || "-";
+      nameWrap.appendChild(nameNode);
+      nameCell.appendChild(nameWrap);
 
       const descCell = document.createElement("td");
-      descCell.className = "px-4 py-3 text-slate-700";
-      descCell.textContent = String(item?.description || "").trim() || "暂无介绍";
+      descCell.className = "px-6 py-5";
+      const descWrap = document.createElement("div");
+      descWrap.className = "max-w-[40rem] text-[15px] leading-8 text-ink-500";
+      descWrap.textContent = String(item?.description || "").trim() || "暂无介绍";
+      descCell.appendChild(descWrap);
+
+      const usageCell = document.createElement("td");
+      usageCell.className = "px-6 py-5";
+      const usageWrap = document.createElement("div");
+      usageWrap.className =
+        "max-w-[24rem] whitespace-pre-wrap break-words text-[15px] leading-8 text-ink-500";
+      usageWrap.textContent = String(item?.usage || "").trim() || "未填写用法";
+      usageCell.appendChild(usageWrap);
 
       const permCell = document.createElement("td");
-      permCell.className = "px-4 py-3";
+      permCell.className = "px-6 py-5";
+      const permission = String(item?.permission || "").trim();
       const permBadge = document.createElement("span");
       permBadge.className =
-        "inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700";
-      permBadge.textContent = String(item?.permission || "").trim() || "无";
+        permission
+          ? "inline-flex max-w-[18rem] items-center rounded-full border border-indigo-200 bg-accent-100 px-3.5 py-1.5 text-xs font-semibold tracking-[0.08em] text-accent-600 break-all"
+          : "inline-flex max-w-[18rem] items-center rounded-full border border-amber-200 bg-gold-100 px-3.5 py-1.5 text-xs font-semibold tracking-[0.08em] text-gold-700 break-all";
+      permBadge.textContent = permission || "无需额外权限";
       permCell.appendChild(permBadge);
 
+      row.appendChild(orderCell);
       row.appendChild(nameCell);
       row.appendChild(descCell);
+      row.appendChild(usageCell);
       row.appendChild(permCell);
       tableBody.appendChild(row);
     }

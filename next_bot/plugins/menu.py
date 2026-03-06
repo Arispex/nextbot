@@ -20,8 +20,8 @@ from server.web_server import create_menu_page
 
 menu_matcher = on_command("菜单")
 MENU_SCREENSHOT_OPTIONS = ScreenshotOptions(
-    viewport_width=1800,
-    viewport_height=1100,
+    viewport_width=1920,
+    viewport_height=1280,
     full_page=True,
 )
 
@@ -55,6 +55,7 @@ async def handle_menu(bot: Bot, event: Event, arg: Message = CommandArg()) -> No
             {
                 "display_name": str(item.get("display_name", "")).strip(),
                 "description": str(item.get("description", "")).strip(),
+                "usage": str(item.get("usage", "")).strip(),
                 "permission": str(item.get("permission", "")).strip(),
             }
         )
