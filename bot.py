@@ -8,6 +8,7 @@ from nonebot.log import logger
 from nonebot.message import event_preprocessor
 
 from next_bot.command_config import sync_registered_commands_to_db
+from next_bot.signin_reset import start_signin_reset_worker
 from server.web_server import start_web_server
 from next_bot.access_control import get_group_ids, get_owner_ids
 from next_bot.db import (
@@ -16,6 +17,7 @@ from next_bot.db import (
     ensure_command_config_schema,
     ensure_default_groups,
     ensure_default_stats,
+    ensure_user_signin_schema,
     get_engine,
     init_db,
 )
@@ -103,12 +105,14 @@ async def _init_database() -> None:
         logger.info("检测到 app.db，检查表结构")
         Base.metadata.create_all(get_engine())
         ensure_command_config_schema()
+        ensure_user_signin_schema()
         ensure_default_groups()
         ensure_default_stats()
         logger.info("表结构检查完成")
 
     sync_registered_commands_to_db()
     logger.info("命令配置同步完成")
+    start_signin_reset_worker()
     start_web_server()
 
 nonebot.load_plugins("next_bot/plugins")

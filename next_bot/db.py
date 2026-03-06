@@ -36,6 +36,9 @@ class User(Base):
     user_id: Mapped[str] = mapped_column(String, nullable=False, unique=True)
     name: Mapped[str] = mapped_column(String, nullable=False)
     coins: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    signed_today: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    last_sign_date: Mapped[str] = mapped_column(String, nullable=False, default="")
+    sign_streak: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     permissions: Mapped[str] = mapped_column(String, nullable=False, default="")
     group: Mapped[str] = mapped_column(String, nullable=False, default="guest")
     created_at: Mapped[datetime] = mapped_column(
@@ -97,6 +100,7 @@ def init_db() -> None:
     engine = get_engine()
     Base.metadata.create_all(engine)
     ensure_command_config_schema()
+    ensure_user_signin_schema()
     ensure_default_groups()
     ensure_default_stats()
 
@@ -163,6 +167,39 @@ def ensure_command_config_schema() -> None:
             conn.execute(
                 'ALTER TABLE "command_config" ADD COLUMN "usage" TEXT NOT NULL DEFAULT ""'
             )
+            conn.commit()
+    finally:
+        conn.close()
+
+
+def ensure_user_signin_schema() -> None:
+    if not DB_PATH.exists():
+        return
+
+    conn = sqlite3.connect(str(DB_PATH))
+    try:
+        rows = conn.execute('PRAGMA table_info("user")').fetchall()
+        if not rows:
+            return
+
+        columns = {str(row[1]) for row in rows}
+        changed = False
+        if "signed_today" not in columns:
+            conn.execute(
+                'ALTER TABLE "user" ADD COLUMN "signed_today" INTEGER NOT NULL DEFAULT 0'
+            )
+            changed = True
+        if "last_sign_date" not in columns:
+            conn.execute(
+                'ALTER TABLE "user" ADD COLUMN "last_sign_date" TEXT NOT NULL DEFAULT ""'
+            )
+            changed = True
+        if "sign_streak" not in columns:
+            conn.execute(
+                'ALTER TABLE "user" ADD COLUMN "sign_streak" INTEGER NOT NULL DEFAULT 0'
+            )
+            changed = True
+        if changed:
             conn.commit()
     finally:
         conn.close()
