@@ -364,29 +364,29 @@ async def handle_remove_coins(
     if parse_error == "missing":
         raise_command_usage()
     if parse_error == "name_not_found":
-        await bot.send(event, "删除失败，用户名称不存在")
+        await bot.send(event, "扣除失败，用户名称不存在")
         return
     if parse_error == "name_ambiguous":
-        await bot.send(event, "删除失败，用户名称不唯一，请使用用户 ID 或 @用户")
+        await bot.send(event, "扣除失败，用户名称不唯一，请使用用户 ID 或 @用户")
         return
     if target_user_id is None:
-        await bot.send(event, "删除失败，用户参数解析失败")
+        await bot.send(event, "扣除失败，用户参数解析失败")
         return
 
     amount = _parse_positive_int(args[1])
     if amount is None:
-        await bot.send(event, "删除失败，数量必须为正整数")
+        await bot.send(event, "扣除失败，数量必须为正整数")
         return
 
     session = get_session()
     try:
         user = session.query(User).filter(User.user_id == target_user_id).first()
         if user is None:
-            await bot.send(event, "删除失败，用户不存在")
+            await bot.send(event, "扣除失败，用户不存在")
             return
 
         if user.coins < amount:
-            await bot.send(event, f"删除失败，金币不足，当前仅有 {user.coins}")
+            await bot.send(event, f"扣除失败，金币不足，当前仅有 {user.coins}")
             return
 
         user.coins -= amount
@@ -397,6 +397,6 @@ async def handle_remove_coins(
         session.close()
 
     logger.info(
-        f"删除金币成功：user_id={target_user_id} name={user_name} amount={amount} coins={coins}"
+        f"扣除金币成功：user_id={target_user_id} name={user_name} amount={amount} coins={coins}"
     )
-    await bot.send(event, f"删除成功，{user_name} 当前金币：{coins}")
+    await bot.send(event, f"扣除成功，{user_name} 当前金币：{coins}")
