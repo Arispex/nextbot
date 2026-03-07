@@ -47,6 +47,8 @@ COMMAND_DISABLED_MESSAGE=该命令暂时关闭
 
 ```
 
+`WEB_SERVER_HOST` 仅表示 Web 服务监听地址。机器人内部访问渲染页时固定使用 `127.0.0.1`，因此即使监听地址设置为 `0.0.0.0` 也不会影响截图链路。
+
 3. 启动机器人
 ```bash
 uv run python bot.py 

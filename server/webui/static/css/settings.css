@@ -157,6 +157,12 @@ html.dark {
   line-height: 1.5;
 }
 
+.form-help {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
 .input,
 .select {
   width: 100%;

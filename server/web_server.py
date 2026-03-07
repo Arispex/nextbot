@@ -24,7 +24,7 @@ _server_lock = threading.Lock()
 
 
 def _build_internal_base_url(settings: WebServerSettings) -> str:
-    return f"http://{settings.host}:{settings.port}"
+    return f"http://127.0.0.1:{settings.port}"
 
 
 def create_inventory_page(
