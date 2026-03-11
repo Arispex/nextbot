@@ -354,8 +354,10 @@
     }
   };
 
-  const loadServers = async () => {
-    setStatus("");
+  const loadServers = async ({ clearStatus = true } = {}) => {
+    if (clearStatus) {
+      setStatus("");
+    }
     loadingNode.classList.remove("hidden");
     tableWrapNode.classList.add("hidden");
     emptyNode.classList.add("hidden");
@@ -385,8 +387,8 @@
           testResultMap.delete(key);
         }
       }
-      setStatus("");
       renderTable();
+      return true;
     } catch (error) {
       const message = error instanceof Error ? error.message : "加载失败";
       setStatus(message, "error");
@@ -394,6 +396,7 @@
       emptyNode.classList.remove("hidden");
       emptyNode.textContent = "加载失败，请点击刷新重试。";
       tableWrapNode.classList.add("hidden");
+      return false;
     }
   };
 
@@ -539,9 +542,11 @@
         throw new Error(readErrorMessage(result, "保存失败"));
       }
 
-      setStatus(isEdit ? "服务器已更新" : "服务器已新增", "success");
       closeModal(true);
-      await loadServers();
+      const reloaded = await loadServers({ clearStatus: false });
+      if (reloaded) {
+        setStatus(isEdit ? "服务器已更新" : "服务器已创建", "success");
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : "保存失败";
       setModalAlert(message, "error");
@@ -574,8 +579,10 @@
       visibleTokenIds.delete(targetServer.id);
       testResultMap.delete(targetServer.id);
       closeDeleteModal(true);
-      setStatus("删除成功", "success");
-      await loadServers();
+      const reloaded = await loadServers({ clearStatus: false });
+      if (reloaded) {
+        setStatus("删除成功", "success");
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : "删除失败";
       setDeleteModalAlert(message, "error");

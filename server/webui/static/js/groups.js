@@ -308,8 +308,10 @@
     }
   };
 
-  const loadGroups = async () => {
-    setStatus("");
+  const loadGroups = async ({ clearStatus = true } = {}) => {
+    if (clearStatus) {
+      setStatus("");
+    }
     loadingNode.classList.remove("hidden");
     tableWrapNode.classList.add("hidden");
     emptyNode.classList.add("hidden");
@@ -337,8 +339,8 @@
         builtin: group.builtin || builtinGroups.has(group.name),
       }));
 
-      setStatus("");
       renderTable();
+      return true;
     } catch (error) {
       const message = error instanceof Error ? error.message : "加载失败";
       setStatus(message, "error");
@@ -346,6 +348,7 @@
       emptyNode.classList.remove("hidden");
       emptyNode.textContent = "加载失败，请点击刷新重试。";
       tableWrapNode.classList.add("hidden");
+      return false;
     }
   };
 
@@ -488,8 +491,10 @@
       }
 
       modalNode.classList.add("hidden");
-      setStatus(isEdit ? "身份组已更新" : "身份组已新增", "success");
-      await loadGroups();
+      const reloaded = await loadGroups({ clearStatus: false });
+      if (reloaded) {
+        setStatus(isEdit ? "身份组已更新" : "身份组已创建", "success");
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : "保存失败";
       setModalAlert(message, "error");
@@ -519,8 +524,10 @@
         throw new Error(readErrorMessage(result, "删除失败"));
       }
       closeDeleteModal(true);
-      setStatus("删除成功", "success");
-      await loadGroups();
+      const reloaded = await loadGroups({ clearStatus: false });
+      if (reloaded) {
+        setStatus("删除成功", "success");
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : "删除失败";
       setDeleteModalAlert(message, "error");

@@ -508,7 +508,7 @@
     });
   };
 
-  const loadCommands = async () => {
+  const loadCommands = async ({ clearStatus = true } = {}) => {
     if (!requiredNodesReady) {
       if (loadingNode) {
         loadingNode.classList.add("hidden");
@@ -516,7 +516,7 @@
       if (statusNode) {
         setStatus("页面资源版本不一致，请刷新页面或重启机器人", "error");
       }
-      return;
+      return false;
     }
 
     if (loadingNode) {
@@ -525,7 +525,9 @@
     if (tableWrapNode) {
       tableWrapNode.classList.add("hidden");
     }
-    setStatus("");
+    if (clearStatus) {
+      setStatus("");
+    }
 
     try {
       const response = await fetch("/webui/api/commands", {
@@ -547,11 +549,12 @@
       }
 
       renderTable();
-      setStatus("");
+      return true;
     } catch (error) {
       renderTable();
       const message = error instanceof Error ? error.message : "加载失败";
       setStatus(message, "error");
+      return false;
     }
   };
 
@@ -592,8 +595,10 @@
         throw new Error(message);
       }
 
-      setStatus("保存成功，已即时生效", "success");
-      await loadCommands();
+      const reloaded = await loadCommands({ clearStatus: false });
+      if (reloaded) {
+        setStatus("保存成功，已即时生效", "success");
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : "保存失败";
       setStatus(message, "error");

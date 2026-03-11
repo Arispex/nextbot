@@ -343,8 +343,10 @@
     }
   };
 
-  const loadUsers = async () => {
-    setStatus("");
+  const loadUsers = async ({ clearStatus = true } = {}) => {
+    if (clearStatus) {
+      setStatus("");
+    }
     loadingNode.classList.remove("hidden");
     tableWrapNode.classList.add("hidden");
     emptyNode.classList.add("hidden");
@@ -379,8 +381,8 @@
         }
       }
 
-      setStatus("");
       renderTable();
+      return true;
     } catch (error) {
       const message = error instanceof Error ? error.message : "加载失败";
       setStatus(message, "error");
@@ -388,6 +390,7 @@
       emptyNode.classList.remove("hidden");
       emptyNode.textContent = "加载失败，请点击刷新重试。";
       tableWrapNode.classList.add("hidden");
+      return false;
     }
   };
 
@@ -537,8 +540,10 @@
       }
 
       modalNode.classList.add("hidden");
-      setStatus(isEdit ? "用户已更新" : "用户已新增", "success");
-      await loadUsers();
+      const reloaded = await loadUsers({ clearStatus: false });
+      if (reloaded) {
+        setStatus(isEdit ? "用户已更新" : "用户已创建", "success");
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : "保存失败";
       setModalAlert(message, "error");
@@ -569,8 +574,10 @@
       }
       syncResultMap.delete(targetUser.id);
       closeDeleteModal(true);
-      setStatus("删除成功", "success");
-      await loadUsers();
+      const reloaded = await loadUsers({ clearStatus: false });
+      if (reloaded) {
+        setStatus("删除成功", "success");
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : "删除失败";
       setDeleteModalAlert(message, "error");
