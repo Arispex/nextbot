@@ -436,8 +436,8 @@
       renderGroupSelectOptions(user.group);
       fieldPermissions.value = user.permissions || "";
     } else {
-      modalTitleNode.textContent = "新增用户";
-      modalSaveButton.textContent = "新增用户";
+      modalTitleNode.textContent = "创建用户";
+      modalSaveButton.textContent = "创建用户";
       fieldUserId.value = "";
       fieldName.value = "";
       fieldCoins.value = "0";

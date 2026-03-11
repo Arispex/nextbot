@@ -415,8 +415,8 @@
       restapiPortInput.value = server.restapi_port;
       tokenInput.value = server.token;
     } else {
-      modalTitleNode.textContent = "新增服务器";
-      modalSaveButton.textContent = "新增服务器";
+      modalTitleNode.textContent = "创建服务器";
+      modalSaveButton.textContent = "创建服务器";
       nameInput.value = "";
       ipInput.value = "";
       gamePortInput.value = "";

@@ -394,8 +394,8 @@
       fieldPermissions.value = group.permissions || "";
       fieldInherits.value = group.inherits || "";
     } else {
-      modalTitleNode.textContent = "新增身份组";
-      modalSaveButton.textContent = "新增身份组";
+      modalTitleNode.textContent = "创建身份组";
+      modalSaveButton.textContent = "创建身份组";
       fieldName.value = "";
       fieldName.readOnly = false;
       fieldPermissions.value = "";
