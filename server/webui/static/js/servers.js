@@ -10,10 +10,6 @@
   const tableWrapNode = document.getElementById("table-wrap");
   const tableBodyNode = document.getElementById("server-table-body");
 
-  const statTotalNode = document.getElementById("stat-total");
-  const statSuccessNode = document.getElementById("stat-success");
-  const statFailedNode = document.getElementById("stat-failed");
-
   const modalNode = document.getElementById("server-modal");
   const modalTitleNode = document.getElementById("server-modal-title");
   const modalAlertNode = document.getElementById("modal-alert");
@@ -43,9 +39,6 @@
     emptyNode &&
     tableWrapNode &&
     tableBodyNode &&
-    statTotalNode &&
-    statSuccessNode &&
-    statFailedNode &&
     modalNode &&
     modalTitleNode &&
     modalAlertNode &&
@@ -177,24 +170,6 @@
     button.setAttribute("aria-label", button.title);
   };
 
-  const updateStats = () => {
-    const total = serverStates.length;
-    let successCount = 0;
-    let failedCount = 0;
-
-    for (const result of testResultMap.values()) {
-      if (result?.status === "success") {
-        successCount += 1;
-      } else if (result?.status === "failed") {
-        failedCount += 1;
-      }
-    }
-
-    statTotalNode.textContent = String(total);
-    statSuccessNode.textContent = String(successCount);
-    statFailedNode.textContent = String(failedCount);
-  };
-
   const getFilteredServers = () => {
     const keyword = String(searchInput?.value || "").trim().toLowerCase();
     if (!keyword) {
@@ -253,7 +228,6 @@
     loadingNode.classList.add("hidden");
 
     const filteredServers = getFilteredServers().sort((a, b) => a.id - b.id);
-    updateStats();
 
     if (!serverStates.length) {
       emptyNode.textContent = "暂无服务器配置。";

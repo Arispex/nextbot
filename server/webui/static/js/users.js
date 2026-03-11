@@ -10,10 +10,6 @@
   const tableWrapNode = document.getElementById("table-wrap");
   const tableBodyNode = document.getElementById("user-table-body");
 
-  const statTotalNode = document.getElementById("stat-total");
-  const statSuccessNode = document.getElementById("stat-success");
-  const statFailedNode = document.getElementById("stat-failed");
-
   const modalNode = document.getElementById("user-modal");
   const modalTitleNode = document.getElementById("user-modal-title");
   const modalAlertNode = document.getElementById("modal-alert");
@@ -46,9 +42,6 @@
     emptyNode &&
     tableWrapNode &&
     tableBodyNode &&
-    statTotalNode &&
-    statSuccessNode &&
-    statFailedNode &&
     modalNode &&
     modalTitleNode &&
     modalAlertNode &&
@@ -238,25 +231,11 @@
     });
   };
 
-  const updateStats = () => {
-    const total = userStates.length;
-    let successCount = 0;
-    let failedCount = 0;
-    for (const result of syncResultMap.values()) {
-      successCount += Number(result?.successCount || 0);
-      failedCount += Number(result?.failedCount || 0);
-    }
-    statTotalNode.textContent = String(total);
-    statSuccessNode.textContent = String(successCount);
-    statFailedNode.textContent = String(failedCount);
-  };
-
   const renderTable = () => {
     tableBodyNode.innerHTML = "";
     loadingNode.classList.add("hidden");
 
     const filteredUsers = getFilteredUsers().sort((a, b) => a.id - b.id);
-    updateStats();
 
     if (!userStates.length) {
       emptyNode.textContent = "暂无用户数据。";

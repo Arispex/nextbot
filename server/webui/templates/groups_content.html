@@ -1,11 +1,6 @@
-<section class="group-panel">
-  <div class="panel-toolbar">
-    <div class="panel-summary">
-      <span class="summary-chip">身份组总数 <strong id="stat-total">0</strong></span>
-      <span class="summary-chip">内置组 <strong id="stat-builtin" class="success">0</strong></span>
-      <span class="summary-chip">普通组 <strong id="stat-normal" class="danger">0</strong></span>
-    </div>
-    <div class="panel-filter">
+<section class="groups-layout">
+  <div class="groups-toolbar">
+    <div class="groups-toolbar-search">
       <div class="search-input-wrap">
         <span class="search-input-icon" aria-hidden="true">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -17,33 +12,43 @@
       </div>
     </div>
     <div class="panel-head-actions">
-      <button id="reload-btn" type="button" class="btn">刷新</button>
-      <button id="add-group-btn" type="button" class="btn btn-primary">新增身份组</button>
+      <button id="reload-btn" type="button" class="btn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path d="M21 12a9 9 0 1 1-2.64-6.36"></path>
+          <path d="M21 3v6h-6"></path>
+        </svg>
+        刷新
+      </button>
+      <button id="add-group-btn" type="button" class="btn btn-primary">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path d="M12 5v14"></path>
+          <path d="M5 12h14"></path>
+        </svg>
+        新增身份组
+      </button>
     </div>
   </div>
 
-  <div class="panel-body">
-    <div id="status" class="alert hidden" role="status" aria-live="polite">
-      <span id="status-message" class="alert-message"></span>
-    </div>
-    <div id="loading" class="empty">加载中...</div>
-    <div id="empty" class="empty hidden">暂无身份组数据。</div>
+  <div id="status" class="alert hidden" role="status" aria-live="polite">
+    <span id="status-message" class="alert-message"></span>
+  </div>
+  <div id="loading" class="empty">加载中...</div>
+  <div id="empty" class="empty hidden">暂无身份组数据。</div>
 
-    <div id="table-wrap" class="table-wrap hidden">
-      <table class="group-table" aria-label="身份组管理表格">
-        <thead>
-          <tr>
-            <th>身份组名称</th>
-            <th>权限</th>
-            <th>继承</th>
-            <th>用户数</th>
-            <th>类型</th>
-            <th>操作</th>
-          </tr>
-        </thead>
-        <tbody id="group-table-body"></tbody>
-      </table>
-    </div>
+  <div id="table-wrap" class="table-wrap hidden">
+    <table class="group-table" aria-label="身份组管理表格">
+      <thead>
+        <tr>
+          <th>身份组名称</th>
+          <th>权限</th>
+          <th>继承</th>
+          <th>用户数</th>
+          <th>类型</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody id="group-table-body"></tbody>
+    </table>
   </div>
 </section>
 

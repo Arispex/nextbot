@@ -14,37 +14,37 @@ html.dark {
   gap: 12px;
 }
 
-.user-panel {
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: var(--surface);
-  box-shadow: var(--shadow);
-  overflow: hidden;
+.users-layout {
+  display: grid;
+  gap: 16px;
 }
 
-.panel-toolbar {
-  padding: 14px 16px;
+.users-toolbar {
+  width: 100%;
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 12px;
   flex-wrap: nowrap;
-  background: var(--surface);
-  border-bottom: 1px solid var(--line);
 }
 
-.panel-summary {
-  display: inline-flex;
+.users-toolbar-search {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 420px;
+}
+
+.users-summary {
+  display: flex;
   align-items: center;
   gap: 8px;
-  flex-wrap: nowrap;
-  flex-shrink: 0;
-  margin-right: auto;
+  flex-wrap: wrap;
 }
 
 .summary-chip {
   height: 30px;
   padding: 0 10px;
-  border-radius: 999px;
+  border-radius: 12px;
   border: 1px solid var(--line-strong);
   background: var(--surface-soft);
   color: var(--text-muted);
@@ -69,16 +69,6 @@ html.dark {
   color: var(--danger);
 }
 
-.panel-filter {
-  flex: 0 0 auto;
-  width: clamp(240px, 30vw, 360px);
-}
-
-.search-input {
-  width: 100%;
-  height: 34px;
-}
-
 .panel-head-actions {
   display: inline-flex;
   align-items: center;
@@ -86,8 +76,9 @@ html.dark {
   flex-shrink: 0;
 }
 
-.panel-body {
-  padding: 16px;
+.search-input {
+  width: 100%;
+  height: 34px;
 }
 
 .alert {
@@ -95,9 +86,8 @@ html.dark {
   align-items: center;
   gap: 10px;
   padding: 8px 10px;
-  margin-bottom: 8px;
   border: 1px solid var(--line-strong);
-  border-radius: 8px;
+  border-radius: 12px;
   background: var(--surface-soft);
   color: var(--text-muted);
 }
@@ -145,13 +135,14 @@ html.dark {
   overflow: auto;
   border: 1px solid var(--line);
   border-radius: 12px;
+  background: var(--surface);
 }
 
 .user-table {
   width: 100%;
   border-collapse: collapse;
   min-width: 1120px;
-  background: var(--surface);
+  background: transparent;
 }
 
 .user-table thead th {
@@ -233,7 +224,7 @@ html.dark {
   align-items: center;
   min-height: 24px;
   padding: 0 10px;
-  border-radius: 999px;
+  border-radius: 12px;
   border: 1px solid var(--line-strong);
   background: var(--surface-soft);
   color: var(--text-muted);
@@ -259,7 +250,7 @@ html.dark {
   height: 24px;
   min-width: 50px;
   padding: 0 8px;
-  border-radius: 6px;
+  border-radius: 12px;
   font-size: 12px;
   line-height: 1;
 }
@@ -296,7 +287,7 @@ html.dark {
   width: 100%;
   height: 34px;
   border: 1px solid var(--line-strong);
-  border-radius: 8px;
+  border-radius: 12px;
   background: var(--surface);
   color: var(--text);
   padding: 0 10px;
@@ -424,18 +415,14 @@ html.dark {
 }
 
 @media (max-width: 1080px) {
-  .panel-toolbar {
+  .users-toolbar {
     flex-wrap: wrap;
     align-items: stretch;
   }
 
-  .panel-summary {
-    flex-wrap: wrap;
-  }
-
-  .panel-filter {
+  .users-toolbar-search {
     width: 100%;
-    min-width: 0;
+    max-width: none;
   }
 
   .panel-head-actions {

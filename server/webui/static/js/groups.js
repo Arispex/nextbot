@@ -10,10 +10,6 @@
   const tableWrapNode = document.getElementById("table-wrap");
   const tableBodyNode = document.getElementById("group-table-body");
 
-  const statTotalNode = document.getElementById("stat-total");
-  const statBuiltinNode = document.getElementById("stat-builtin");
-  const statNormalNode = document.getElementById("stat-normal");
-
   const modalNode = document.getElementById("group-modal");
   const modalTitleNode = document.getElementById("group-modal-title");
   const modalAlertNode = document.getElementById("modal-alert");
@@ -45,9 +41,6 @@
     emptyNode &&
     tableWrapNode &&
     tableBodyNode &&
-    statTotalNode &&
-    statBuiltinNode &&
-    statNormalNode &&
     modalNode &&
     modalTitleNode &&
     modalAlertNode &&
@@ -212,15 +205,6 @@
     });
   };
 
-  const updateStats = () => {
-    const total = groupStates.length;
-    const builtin = groupStates.filter((item) => item.builtin).length;
-    const normal = total - builtin;
-    statTotalNode.textContent = String(total);
-    statBuiltinNode.textContent = String(builtin);
-    statNormalNode.textContent = String(normal);
-  };
-
   const renderTypeBadge = (builtin) => {
     const badge = document.createElement("span");
     badge.className = `group-type-badge ${builtin ? "builtin" : "normal"}`;
@@ -233,7 +217,6 @@
     loadingNode.classList.add("hidden");
 
     const filteredGroups = getFilteredGroups().sort((a, b) => a.name.localeCompare(b.name));
-    updateStats();
 
     if (!groupStates.length) {
       emptyNode.textContent = "暂无身份组数据。";

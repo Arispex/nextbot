@@ -1,11 +1,6 @@
-<section class="server-panel">
-  <div class="panel-toolbar">
-    <div class="panel-summary">
-      <span class="summary-chip">服务器总数 <strong id="stat-total">0</strong></span>
-      <span class="summary-chip">连通成功 <strong id="stat-success" class="success">0</strong></span>
-      <span class="summary-chip">连通失败 <strong id="stat-failed" class="danger">0</strong></span>
-    </div>
-    <div class="panel-filter">
+<section class="servers-layout">
+  <div class="servers-toolbar">
+    <div class="servers-toolbar-search">
       <div class="search-input-wrap">
         <span class="search-input-icon" aria-hidden="true">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -17,35 +12,45 @@
       </div>
     </div>
     <div class="panel-head-actions">
-      <button id="reload-btn" type="button" class="btn">刷新</button>
-      <button id="add-server-btn" type="button" class="btn btn-primary">新增服务器</button>
+      <button id="reload-btn" type="button" class="btn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path d="M21 12a9 9 0 1 1-2.64-6.36"></path>
+          <path d="M21 3v6h-6"></path>
+        </svg>
+        刷新
+      </button>
+      <button id="add-server-btn" type="button" class="btn btn-primary">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path d="M12 5v14"></path>
+          <path d="M5 12h14"></path>
+        </svg>
+        新增服务器
+      </button>
     </div>
   </div>
 
-  <div class="panel-body">
-    <div id="status" class="alert hidden" role="status" aria-live="polite">
-      <span id="status-message" class="alert-message"></span>
-    </div>
-    <div id="loading" class="empty">加载中...</div>
-    <div id="empty" class="empty hidden">暂无服务器配置。</div>
+  <div id="status" class="alert hidden" role="status" aria-live="polite">
+    <span id="status-message" class="alert-message"></span>
+  </div>
+  <div id="loading" class="empty">加载中...</div>
+  <div id="empty" class="empty hidden">暂无服务器配置。</div>
 
-    <div id="table-wrap" class="table-wrap hidden">
-      <table class="server-table" aria-label="服务器管理表格">
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>服务器名称</th>
-            <th>地址</th>
-            <th>游戏端口</th>
-            <th>REST API 端口</th>
-            <th>Token</th>
-            <th>连通性</th>
-            <th>操作</th>
-          </tr>
-        </thead>
-        <tbody id="server-table-body"></tbody>
-      </table>
-    </div>
+  <div id="table-wrap" class="table-wrap hidden">
+    <table class="server-table" aria-label="服务器管理表格">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>服务器名称</th>
+          <th>地址</th>
+          <th>游戏端口</th>
+          <th>REST API 端口</th>
+          <th>Token</th>
+          <th>连通性</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody id="server-table-body"></tbody>
+    </table>
   </div>
 </section>
 
