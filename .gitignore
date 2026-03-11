@@ -147,3 +147,4 @@ dmypy.json
 app.db
 .webui_auth.json
 .vscode/
+.DS_Store
