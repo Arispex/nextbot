@@ -336,7 +336,7 @@
         throw new Error(readErrorMessage(payload, "保存失败"));
       }
 
-      setStatus("保存成功，程序正在重启...", "success");
+      setStatus("保存成功", "success");
       setTimeout(() => {
         window.location.reload();
       }, 3000);

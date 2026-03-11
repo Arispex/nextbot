@@ -597,7 +597,7 @@
 
       const reloaded = await loadCommands({ clearStatus: false });
       if (reloaded) {
-        setStatus("保存成功，已即时生效", "success");
+        setStatus("保存成功", "success");
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : "保存失败";

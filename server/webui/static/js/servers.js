@@ -518,12 +518,13 @@
       return;
     }
 
+    const isEdit = modalMode === "edit" && typeof editingServerId === "number";
+
     modalSaving = true;
     modalSaveButton.disabled = true;
     setModalAlert("正在保存...", "info");
 
     try {
-      const isEdit = modalMode === "edit" && typeof editingServerId === "number";
       const url = isEdit
         ? `/webui/api/servers/${editingServerId}`
         : "/webui/api/servers";
@@ -539,16 +540,16 @@
       });
       const result = await parseJsonSafe(response);
       if (!response.ok || !result || result.ok !== true) {
-        throw new Error(readErrorMessage(result, "保存失败"));
+        throw new Error(readErrorMessage(result, isEdit ? "编辑失败" : "创建失败"));
       }
 
       closeModal(true);
       const reloaded = await loadServers({ clearStatus: false });
       if (reloaded) {
-        setStatus(isEdit ? "服务器已更新" : "服务器已创建", "success");
+        setStatus(isEdit ? "编辑成功" : "创建成功", "success");
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : "保存失败";
+      const message = error instanceof Error ? error.message : isEdit ? "编辑失败" : "创建失败";
       setModalAlert(message, "error");
     } finally {
       modalSaving = false;

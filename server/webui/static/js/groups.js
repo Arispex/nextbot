@@ -456,12 +456,13 @@
       return;
     }
 
+    const isEdit = modalMode === "edit" && editingGroupName;
+
     modalSaving = true;
     modalSaveButton.disabled = true;
     setModalAlert("正在保存...", "info");
 
     try {
-      const isEdit = modalMode === "edit" && editingGroupName;
       const url = isEdit
         ? `/webui/api/groups/${encodeURIComponent(editingGroupName)}`
         : "/webui/api/groups";
@@ -487,16 +488,16 @@
       });
       const result = await parseJsonSafe(response);
       if (!response.ok || !result || result.ok !== true) {
-        throw new Error(readErrorMessage(result, "保存失败"));
+        throw new Error(readErrorMessage(result, isEdit ? "编辑失败" : "创建失败"));
       }
 
       modalNode.classList.add("hidden");
       const reloaded = await loadGroups({ clearStatus: false });
       if (reloaded) {
-        setStatus(isEdit ? "身份组已更新" : "身份组已创建", "success");
+        setStatus(isEdit ? "编辑成功" : "创建成功", "success");
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : "保存失败";
+      const message = error instanceof Error ? error.message : isEdit ? "编辑失败" : "创建失败";
       setModalAlert(message, "error");
     } finally {
       modalSaving = false;
