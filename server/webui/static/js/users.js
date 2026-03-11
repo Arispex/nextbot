@@ -379,7 +379,7 @@
         }
       }
 
-      setStatus(`已加载 ${userStates.length} 位用户`, "success");
+      setStatus("");
       renderTable();
     } catch (error) {
       const message = error instanceof Error ? error.message : "加载失败";

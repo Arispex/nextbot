@@ -337,7 +337,7 @@
         builtin: group.builtin || builtinGroups.has(group.name),
       }));
 
-      setStatus(`已加载 ${groupStates.length} 个身份组`, "success");
+      setStatus("");
       renderTable();
     } catch (error) {
       const message = error instanceof Error ? error.message : "加载失败";

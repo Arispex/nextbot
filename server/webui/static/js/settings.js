@@ -292,7 +292,7 @@
   };
 
   const loadSettings = async () => {
-    setStatus("正在加载设置...", "info");
+    setStatus("");
     try {
       const response = await fetch("/webui/api/settings", {
         method: "GET",
@@ -303,7 +303,7 @@
         throw new Error(readErrorMessage(payload, `加载失败（HTTP ${response.status}）`));
       }
       fillForm(payload.data);
-      setStatus("设置加载完成", "success");
+      setStatus("");
     } catch (error) {
       const message = error instanceof Error ? error.message : "加载失败";
       setStatus(message, "error");

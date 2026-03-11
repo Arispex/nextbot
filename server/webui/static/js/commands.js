@@ -547,7 +547,7 @@
       }
 
       renderTable();
-      setStatus(`已加载 ${commandStates.length} 条命令`, "success");
+      setStatus("");
     } catch (error) {
       renderTable();
       const message = error instanceof Error ? error.message : "加载失败";

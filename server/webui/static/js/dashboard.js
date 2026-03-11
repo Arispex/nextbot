@@ -162,7 +162,7 @@
       hasLoaded = true;
       setStatus("");
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "加载仪表盘数据失败。", "error");
+      setStatus(error instanceof Error ? error.message : "加载失败", "error");
     } finally {
       setLoadingState(false);
     }

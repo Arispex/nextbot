@@ -385,7 +385,7 @@
           testResultMap.delete(key);
         }
       }
-      setStatus(`已加载 ${serverStates.length} 台服务器`, "success");
+      setStatus("");
       renderTable();
     } catch (error) {
       const message = error instanceof Error ? error.message : "加载失败";
