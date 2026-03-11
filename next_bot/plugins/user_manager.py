@@ -337,7 +337,7 @@ async def handle_add_coins(
     logger.info(
         f"添加金币成功：user_id={target_user_id} name={user_name} amount={amount} coins={coins}"
     )
-    await bot.send(event, f"添加成功，{user_name} 当前金币：{coins}")
+    await bot.send(event, f"添加成功\n当前金币：{coins}")
 
 
 @remove_coins_matcher.handle()
@@ -399,4 +399,4 @@ async def handle_remove_coins(
     logger.info(
         f"扣除金币成功：user_id={target_user_id} name={user_name} amount={amount} coins={coins}"
     )
-    await bot.send(event, f"扣除成功，{user_name} 当前金币：{coins}")
+    await bot.send(event, f"扣除成功\n当前金币：{coins}")
