@@ -160,7 +160,7 @@
 
       renderMetrics(payload.data);
       hasLoaded = true;
-      setStatus("仪表盘数据已刷新。", "success");
+      setStatus("");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "加载仪表盘数据失败。", "error");
     } finally {
