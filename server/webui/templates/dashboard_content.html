@@ -4,7 +4,13 @@
       <span class="meta-tag">更新时间：<span id="dashboard-updated-at">--</span></span>
     </div>
     <div class="panel-head-actions">
-      <button id="reload-btn" type="button" class="btn">刷新</button>
+      <button id="reload-btn" type="button" class="btn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path d="M21 12a9 9 0 1 1-2.64-6.36"></path>
+          <path d="M21 3v6h-6"></path>
+        </svg>
+        <span data-label>刷新</span>
+      </button>
     </div>
   </div>
 
@@ -14,67 +20,73 @@
 
   <div id="loading" class="empty">加载中...</div>
 
-  <section id="stats-grid" class="stats-grid hidden" aria-label="关键指标">
-    <article class="stat-card stat-card-primary">
-      <p class="stat-label">服务器数量</p>
-      <p id="server_count" class="stat-value">--</p>
-    </article>
-    <article class="stat-card">
-      <p class="stat-label">用户数量</p>
-      <p id="user_count" class="stat-value">--</p>
-    </article>
-    <article class="stat-card">
-      <p class="stat-label">身份组数量</p>
-      <p id="group_count" class="stat-value">--</p>
-    </article>
-    <article class="stat-card">
-      <p class="stat-label">命令总数</p>
-      <p id="command_total" class="stat-value">--</p>
-    </article>
-    <article class="stat-card">
-      <p class="stat-label">已启用命令</p>
-      <p id="command_enabled_count" class="stat-value">--</p>
-    </article>
-    <article class="stat-card">
-      <p class="stat-label">累计命令执行次数</p>
-      <p id="command_execute_count" class="stat-value">--</p>
-    </article>
-  </section>
-
-  <section id="dashboard-panels" class="dashboard-panels hidden">
-    <section class="detail-card detail-card-wide">
-      <div class="detail-card-head">
-        <div>
-          <h3 class="detail-card-title">Bot 连接概览</h3>
-          <p id="running_status" class="detail-card-desc">--</p>
-        </div>
-      </div>
-      <div class="detail-content-block">
-        <div class="detail-section-label">Bot ID 列表</div>
-        <div id="connected_bot_ids" class="tag-list">无</div>
-      </div>
-    </section>
-  </section>
-
-  <article class="ad-card" aria-label="广告位">
-    <div class="ad-banner">
-      <div class="ad-main">
-        <p class="ad-kicker">合作推广</p>
-        <h3 class="ad-title">
-          喵云 MiaoVPS
-          <span class="ad-title-sub">高性价比云服务器</span>
-        </h3>
-        <p class="ad-desc">高可用云主机、快速部署与弹性扩容，适配个人项目与小团队业务场景。</p>
-        <div class="ad-tags">
-          <span class="ad-tag">稳定网络</span>
-          <span class="ad-tag">弹性升级</span>
-          <span class="ad-tag">多地区节点</span>
-        </div>
-      </div>
-      <a class="ad-cta" href="https://www.miaovps.com" target="_blank" rel="noopener noreferrer">
-        <span class="ad-cta-label">立即访问</span>
-        <span class="ad-cta-url">www.miaovps.com</span>
-      </a>
+  <section id="stats-grid" class="dashboard-section dashboard-metrics hidden" aria-label="关键指标">
+    <div class="stats-grid-list">
+      <article class="stat-card">
+        <p class="stat-label">服务器数量</p>
+        <p id="server_count" class="stat-value">--</p>
+      </article>
+      <article class="stat-card">
+        <p class="stat-label">用户数量</p>
+        <p id="user_count" class="stat-value">--</p>
+      </article>
+      <article class="stat-card">
+        <p class="stat-label">身份组数量</p>
+        <p id="group_count" class="stat-value">--</p>
+      </article>
+      <article class="stat-card">
+        <p class="stat-label">命令总数</p>
+        <p id="command_total" class="stat-value">--</p>
+      </article>
+      <article class="stat-card">
+        <p class="stat-label">已启用命令</p>
+        <p id="command_enabled_count" class="stat-value">--</p>
+      </article>
+      <article class="stat-card">
+        <p class="stat-label">累计命令执行次数</p>
+        <p id="command_execute_count" class="stat-value">--</p>
+      </article>
     </div>
-  </article>
+  </section>
+
+  <section id="dashboard-panels" class="dashboard-section dashboard-panels hidden" aria-label="详细信息">
+    <div class="dashboard-panels-grid">
+      <section class="detail-card">
+        <div class="detail-card-head">
+          <div>
+            <h3 class="detail-card-title">Bot 连接概览</h3>
+            <p id="running_status" class="detail-card-desc">--</p>
+          </div>
+        </div>
+        <div class="detail-content-block">
+          <div class="detail-section-label">Bot ID 列表</div>
+          <div id="connected_bot_ids" class="tag-list">无</div>
+        </div>
+      </section>
+    </div>
+  </section>
+
+  <section class="dashboard-section dashboard-section-muted" aria-label="推广信息">
+    <article class="ad-card" aria-label="广告位">
+      <div class="ad-banner">
+        <div class="ad-main">
+          <p class="ad-kicker">合作推广</p>
+          <h3 class="ad-title">
+            喵云 MiaoVPS
+            <span class="ad-title-sub">高性价比云服务器</span>
+          </h3>
+          <p class="ad-desc">高可用云主机、快速部署与弹性扩容，适配个人项目与小团队业务场景。</p>
+          <div class="ad-tags">
+            <span class="ad-tag">稳定网络</span>
+            <span class="ad-tag">弹性升级</span>
+            <span class="ad-tag">多地区节点</span>
+          </div>
+        </div>
+        <a class="ad-cta" href="https://www.miaovps.com" target="_blank" rel="noopener noreferrer">
+          <span class="ad-cta-label">立即访问</span>
+          <span class="ad-cta-url">www.miaovps.com</span>
+        </a>
+      </div>
+    </article>
+  </section>
 </section>

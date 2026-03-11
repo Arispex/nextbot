@@ -62,10 +62,20 @@
     statusMessageNode.textContent = text;
   };
 
+  const setReloadButtonText = (label) => {
+    const text = String(label || "").trim();
+    const labelNode = reloadButton.querySelector("[data-label]");
+    if (labelNode) {
+      labelNode.textContent = text;
+      return;
+    }
+    reloadButton.textContent = text;
+  };
+
   const setLoadingState = (isLoading) => {
     loading = Boolean(isLoading);
     reloadButton.disabled = loading;
-    reloadButton.textContent = loading ? "刷新中..." : "刷新";
+    setReloadButtonText(loading ? "刷新中..." : "刷新");
 
     if (loading) {
       loadingNode.classList.remove("hidden");
