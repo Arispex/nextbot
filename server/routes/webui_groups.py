@@ -14,7 +14,7 @@ router = APIRouter()
 
 _BUILTIN_GROUPS: tuple[str, str] = ("guest", "default")
 _GROUP_NAME_PATTERN = re.compile(r"^[A-Za-z0-9\u4e00-\u9fff._-]{1,32}$")
-_TOKEN_ITEM_PATTERN = re.compile(r"^[^\s,]{1,64}$")
+_TOKEN_ITEM_PATTERN = re.compile(r"^[^\s,]{1,256}$")
 
 
 @dataclass(frozen=True)
@@ -86,7 +86,7 @@ def _normalize_token_csv(
             continue
         if _TOKEN_ITEM_PATTERN.fullmatch(value) is None:
             raise GroupPayloadValidationError(
-                f"{label}项格式错误，不能包含空白或逗号，且长度 1-64",
+                f"{label}项格式错误，不能包含空白或逗号，且长度 1-256",
                 field=field,
             )
         items.append(value)

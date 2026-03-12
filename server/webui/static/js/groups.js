@@ -148,7 +148,7 @@
         continue;
       }
       if (!ITEM_PATTERN.test(value)) {
-        throw new Error(`${fieldLabel}项格式错误，不能包含空白或逗号，且长度 1-64`);
+        throw new Error(`${fieldLabel}项格式错误，不能包含空白或逗号，且长度 1-256`);
       }
       values.push(value);
     }
