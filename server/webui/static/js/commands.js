@@ -1,6 +1,5 @@
 (() => {
   const reloadButton = document.getElementById("reload-btn");
-  const saveButton = document.getElementById("save-all-btn");
   const searchInput = document.getElementById("command-search");
 
   const statusNode = document.getElementById("status");
@@ -21,6 +20,7 @@
 
   let commandStates = [];
   let activeModalCommandKey = "";
+  let modalSaving = false;
 
   const requiredNodesReady = Boolean(
     statusNode &&
@@ -64,6 +64,34 @@
   };
 
   const cloneValue = (value) => JSON.parse(JSON.stringify(value));
+
+  const getErrorMessage = (data, fallbackMessage) => {
+    if (data && typeof data === "object") {
+      if (Array.isArray(data.errors) && data.errors.length) {
+        const firstError = data.errors[0];
+        if (firstError && typeof firstError === "object" && firstError.message) {
+          return String(firstError.message);
+        }
+      }
+      if (data.message) {
+        return String(data.message);
+      }
+    }
+    return fallbackMessage;
+  };
+
+  const setModalSavingState = (saving) => {
+    modalSaving = Boolean(saving);
+    if (modalSaveButton) {
+      modalSaveButton.disabled = modalSaving;
+    }
+    if (modalCancelButton) {
+      modalCancelButton.disabled = modalSaving;
+    }
+    if (modalCloseButton) {
+      modalCloseButton.disabled = modalSaving;
+    }
+  };
 
   const coerceByType = (type, raw, fromInput = false) => {
     if (type === "bool") {
@@ -273,18 +301,41 @@
       const enabledInput = document.createElement("input");
       enabledInput.type = "checkbox";
       enabledInput.checked = Boolean(command.enabled);
-      enabledInput.addEventListener("change", () => {
-        command.enabled = Boolean(enabledInput.checked);
-        setStatus("开关已更新，点击“保存全部”后生效", "success");
-      });
 
       const switchTrack = document.createElement("span");
       switchTrack.className = "switch-track";
 
       const switchText = document.createElement("span");
       switchText.textContent = enabledInput.checked ? "启用" : "关闭";
-      enabledInput.addEventListener("change", () => {
-        switchText.textContent = enabledInput.checked ? "启用" : "关闭";
+
+      enabledInput.addEventListener("change", async () => {
+        const nextEnabled = Boolean(enabledInput.checked);
+        const previousEnabled = !nextEnabled;
+
+        command.enabled = nextEnabled;
+        switchText.textContent = nextEnabled ? "启用" : "关闭";
+        enabledInput.disabled = true;
+        setStatus("保存中...");
+
+        try {
+          const { reloaded } = await saveSingleCommand({
+            commandKey: command.command_key,
+            enabled: nextEnabled,
+          });
+          if (reloaded) {
+            setStatus("保存成功，已立即生效", "success");
+          } else {
+            setStatus("保存成功，已立即生效；列表刷新失败，请手动刷新页面确认最新状态", "warning");
+          }
+        } catch (error) {
+          command.enabled = previousEnabled;
+          enabledInput.checked = previousEnabled;
+          switchText.textContent = previousEnabled ? "启用" : "关闭";
+          const message = error instanceof Error ? error.message : "保存失败";
+          setStatus(message, "error");
+        } finally {
+          enabledInput.disabled = false;
+        }
       });
 
       switchNode.appendChild(enabledInput);
@@ -326,10 +377,7 @@
     if (!command) return;
 
     activeModalCommandKey = commandKey;
-    setModalAlert(
-      "提示：参数修改后需点击页面上方“保存全部”才能生效。",
-      "info",
-    );
+    setModalAlert("修改参数后会立即保存并生效。", "info");
 
     const schema = command.param_schema && typeof command.param_schema === "object"
       ? command.param_schema
@@ -443,15 +491,15 @@
   };
 
   const closeParamModal = () => {
-    if (!modalNode || !modalBodyNode) return;
+    if (!modalNode || !modalBodyNode || modalSaving) return;
     modalNode.classList.add("hidden");
     modalBodyNode.innerHTML = "";
     activeModalCommandKey = "";
     setModalAlert("");
   };
 
-  const saveModalParams = () => {
-    if (!modalBodyNode || !activeModalCommandKey) return;
+  const saveModalParams = async () => {
+    if (!modalBodyNode || !activeModalCommandKey || modalSaving) return;
 
     const command = getCommandByKey(activeModalCommandKey);
     if (!command) {
@@ -504,20 +552,29 @@
       }
     }
 
-    command.param_values = nextValues;
-    setStatus("参数已更新，点击“保存全部”后生效", "success");
-    closeParamModal();
-  };
+    setModalSavingState(true);
+    setModalAlert("保存中...", "info");
 
-  const collectCommandPayload = () => {
-    return commandStates.map((command) => {
-      ensureCommandParamValues(command);
-      return {
-        command_key: command.command_key,
-        enabled: Boolean(command.enabled),
-        params: cloneValue(command.param_values || {}),
-      };
-    });
+    try {
+      const { reloaded } = await saveSingleCommand({
+        commandKey: command.command_key,
+        params: nextValues,
+      });
+      command.param_values = nextValues;
+      if (reloaded) {
+        setStatus("参数保存成功，已立即生效", "success");
+      } else {
+        setStatus("参数保存成功，已立即生效；列表刷新失败，请手动刷新页面确认最新状态", "warning");
+      }
+      setModalSavingState(false);
+      closeParamModal();
+      return;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "保存失败";
+      setModalAlert(message, "error");
+    } finally {
+      setModalSavingState(false);
+    }
   };
 
   const loadCommands = async ({ clearStatus = true } = {}) => {
@@ -570,61 +627,44 @@
     }
   };
 
-  const saveCommands = async () => {
-    if (!saveButton) return;
+  const saveSingleCommand = async ({ commandKey, enabled, params }) => {
+    const payload = {
+      command_key: commandKey,
+    };
 
-    let payload;
-    try {
-      payload = collectCommandPayload();
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "参数校验失败";
-      setStatus(message, "error");
-      return;
+    if (enabled !== undefined) {
+      payload.enabled = Boolean(enabled);
+    }
+    if (params !== undefined) {
+      payload.params = cloneValue(params || {});
     }
 
-    saveButton.disabled = true;
-    setStatus("保存中...");
+    const response = await fetch("/webui/api/commands/batch", {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({ commands: [payload] }),
+    });
 
+    let data = null;
     try {
-      const response = await fetch("/webui/api/commands/batch", {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
-        body: JSON.stringify({ commands: payload }),
-      });
-
-      const data = await response.json();
-      if (!response.ok || !data.ok) {
-        let message = data.message || `保存失败 (${response.status})`;
-        if (Array.isArray(data.errors) && data.errors.length) {
-          const firstError = data.errors[0];
-          if (firstError && typeof firstError === "object" && firstError.message) {
-            message = String(firstError.message);
-          }
-        }
-        throw new Error(message);
-      }
-
-      const reloaded = await loadCommands({ clearStatus: false });
-      if (reloaded) {
-        setStatus("保存成功", "success");
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "保存失败";
-      setStatus(message, "error");
-    } finally {
-      saveButton.disabled = false;
+      data = await response.json();
+    } catch (_error) {
+      data = null;
     }
+
+    if (!response.ok || !data?.ok) {
+      throw new Error(getErrorMessage(data, `保存失败 (${response.status})`));
+    }
+
+    const reloaded = await loadCommands({ clearStatus: false });
+    return { reloaded };
   };
 
   reloadButton?.addEventListener("click", () => {
     loadCommands();
-  });
-
-  saveButton?.addEventListener("click", () => {
-    saveCommands();
   });
 
   searchInput?.addEventListener("input", () => {
