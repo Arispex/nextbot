@@ -73,13 +73,13 @@ async def webui_settings_put(request: Request) -> JSONResponse:
     except Exception:
         return JSONResponse(
             status_code=400,
-            content={"ok": False, "message": "请求体必须是 JSON"},
+            content={"ok": False, "message": "保存失败，请求体必须是 JSON"},
         )
 
     if not isinstance(payload, dict):
         return JSONResponse(
             status_code=400,
-            content={"ok": False, "message": "请求体必须是对象"},
+            content={"ok": False, "message": "保存失败，请求体必须是对象"},
         )
 
     data = payload.get("data")
@@ -88,20 +88,20 @@ async def webui_settings_put(request: Request) -> JSONResponse:
     if not isinstance(data, dict):
         return JSONResponse(
             status_code=400,
-            content={"ok": False, "message": "data 必须是对象"},
+            content={"ok": False, "message": "保存失败，data 必须是对象"},
         )
 
     try:
         result = save_settings(data)
     except SettingsValidationError as exc:
-        content: dict[str, Any] = {"ok": False, "message": str(exc)}
+        content: dict[str, Any] = {"ok": False, "message": f"保存失败，{exc}"}
         if exc.field:
             content["field"] = exc.field
         return JSONResponse(status_code=422, content=content)
     except Exception as exc:
         return JSONResponse(
             status_code=500,
-            content={"ok": False, "message": f"保存失败：{exc}"},
+            content={"ok": False, "message": f"保存失败，{exc}"},
         )
 
     if not _schedule_process_restart():
@@ -109,7 +109,7 @@ async def webui_settings_put(request: Request) -> JSONResponse:
             status_code=409,
             content={
                 "ok": False,
-                "message": "重启已在进行中，请稍后刷新页面",
+                "message": "重启失败，重启已在进行中，请稍后刷新页面",
                 "restart_scheduled": True,
             },
         )

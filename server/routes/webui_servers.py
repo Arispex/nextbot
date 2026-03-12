@@ -157,7 +157,7 @@ async def webui_servers_list() -> JSONResponse:
             }
         )
     except Exception as exc:
-        return _internal_error(f"获取服务器列表失败：{exc}")
+        return _internal_error(f"加载失败，{exc}")
     finally:
         session.close()
 
@@ -167,14 +167,14 @@ async def webui_servers_create(request: Request) -> JSONResponse:
     try:
         payload = await request.json()
     except Exception:
-        return _bad_request("请求体必须是 JSON")
+        return _bad_request("创建失败，请求体必须是 JSON")
     if not isinstance(payload, dict):
-        return _bad_request("请求体必须是对象")
+        return _bad_request("创建失败，请求体必须是对象")
 
     try:
         validated = _validate_server_payload(payload)
     except ServerPayloadValidationError as exc:
-        return _unprocessable(str(exc), field=exc.field)
+        return _unprocessable(f"创建失败，{exc}", field=exc.field)
 
     session = get_session()
     try:
@@ -192,16 +192,16 @@ async def webui_servers_create(request: Request) -> JSONResponse:
         return JSONResponse(
             content={
                 "ok": True,
-                "message": "新增成功",
+                "message": "创建成功",
                 "server": _serialize_server(server),
             }
         )
     except ServerPayloadValidationError as exc:
         session.rollback()
-        return _unprocessable(str(exc), field=exc.field)
+        return _unprocessable(f"创建失败，{exc}", field=exc.field)
     except Exception as exc:
         session.rollback()
-        return _internal_error(f"新增服务器失败：{exc}")
+        return _internal_error(f"创建失败，{exc}")
     finally:
         session.close()
 
@@ -211,14 +211,14 @@ async def webui_servers_update(server_id: int, request: Request) -> JSONResponse
     try:
         payload = await request.json()
     except Exception:
-        return _bad_request("请求体必须是 JSON")
+        return _bad_request("更新失败，请求体必须是 JSON")
     if not isinstance(payload, dict):
-        return _bad_request("请求体必须是对象")
+        return _bad_request("更新失败，请求体必须是对象")
 
     try:
         validated = _validate_server_payload(payload)
     except ServerPayloadValidationError as exc:
-        return _unprocessable(str(exc), field=exc.field)
+        return _unprocessable(f"更新失败，{exc}", field=exc.field)
 
     session = get_session()
     try:
@@ -241,10 +241,10 @@ async def webui_servers_update(server_id: int, request: Request) -> JSONResponse
         )
     except ServerPayloadValidationError as exc:
         session.rollback()
-        return _unprocessable(str(exc), field=exc.field)
+        return _unprocessable(f"更新失败，{exc}", field=exc.field)
     except Exception as exc:
         session.rollback()
-        return _internal_error(f"更新服务器失败：{exc}")
+        return _internal_error(f"更新失败，{exc}")
     finally:
         session.close()
 
@@ -268,7 +268,7 @@ async def webui_servers_delete(server_id: int) -> JSONResponse:
         return JSONResponse(content={"ok": True, "message": "删除成功"})
     except Exception as exc:
         session.rollback()
-        return _internal_error(f"删除服务器失败：{exc}")
+        return _internal_error(f"删除失败，{exc}")
     finally:
         session.close()
 
@@ -279,7 +279,7 @@ async def webui_servers_test(server_id: int) -> JSONResponse:
     try:
         server = session.query(Server).filter(Server.id == server_id).first()
     except Exception as exc:
-        return _internal_error(f"读取服务器失败：{exc}")
+        return _internal_error(f"测试失败，{exc}")
     finally:
         session.close()
 
@@ -299,7 +299,7 @@ async def webui_servers_test(server_id: int) -> JSONResponse:
             }
         )
     except Exception as exc:
-        return _internal_error(f"测试服务器失败：{exc}")
+        return _internal_error(f"测试失败，{exc}")
 
     if is_success(response):
         return JSONResponse(

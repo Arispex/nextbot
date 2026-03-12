@@ -229,7 +229,7 @@ async def webui_users_list() -> JSONResponse:
             }
         )
     except Exception as exc:
-        return _internal_error(f"获取用户列表失败：{exc}")
+        return _internal_error(f"加载失败，{exc}")
     finally:
         session.close()
 
@@ -239,14 +239,14 @@ async def webui_users_create(request: Request) -> JSONResponse:
     try:
         payload = await request.json()
     except Exception:
-        return _bad_request("请求体必须是 JSON")
+        return _bad_request("创建失败，请求体必须是 JSON")
     if not isinstance(payload, dict):
-        return _bad_request("请求体必须是对象")
+        return _bad_request("创建失败，请求体必须是对象")
 
     try:
         validated = _validate_payload(payload)
     except UserPayloadValidationError as exc:
-        return _unprocessable(str(exc), field=exc.field)
+        return _unprocessable(f"创建失败，{exc}", field=exc.field)
 
     session = get_session()
     try:
@@ -254,13 +254,13 @@ async def webui_users_create(request: Request) -> JSONResponse:
             session.query(User).filter(User.user_id == validated.user_id).first()
             is not None
         ):
-            return _unprocessable("用户ID已存在", field="user_id")
+            return _unprocessable("创建失败，用户 ID 已存在", field="user_id")
 
         if session.query(User).filter(User.name == validated.name).first() is not None:
-            return _unprocessable("用户名称已被占用", field="name")
+            return _unprocessable("创建失败，用户名称已被占用", field="name")
 
         if session.query(Group).filter(Group.name == validated.group).first() is None:
-            return _unprocessable("身份组不存在", field="group")
+            return _unprocessable("创建失败，身份组不存在", field="group")
 
         user = User(
             user_id=validated.user_id,
@@ -274,13 +274,13 @@ async def webui_users_create(request: Request) -> JSONResponse:
         return JSONResponse(
             content={
                 "ok": True,
-                "message": "新增成功",
+                "message": "创建成功",
                 "user": _serialize_user(user),
             }
         )
     except Exception as exc:
         session.rollback()
-        return _internal_error(f"新增用户失败：{exc}")
+        return _internal_error(f"创建失败，{exc}")
     finally:
         session.close()
 
@@ -290,14 +290,14 @@ async def webui_users_update(id: int, request: Request) -> JSONResponse:
     try:
         payload = await request.json()
     except Exception:
-        return _bad_request("请求体必须是 JSON")
+        return _bad_request("更新失败，请求体必须是 JSON")
     if not isinstance(payload, dict):
-        return _bad_request("请求体必须是对象")
+        return _bad_request("更新失败，请求体必须是对象")
 
     try:
         validated = _validate_payload(payload)
     except UserPayloadValidationError as exc:
-        return _unprocessable(str(exc), field=exc.field)
+        return _unprocessable(f"更新失败，{exc}", field=exc.field)
 
     session = get_session()
     try:
@@ -311,7 +311,7 @@ async def webui_users_update(id: int, request: Request) -> JSONResponse:
             .first()
             is not None
         ):
-            return _unprocessable("用户ID已存在", field="user_id")
+            return _unprocessable("更新失败，用户 ID 已存在", field="user_id")
 
         if (
             session.query(User)
@@ -319,10 +319,10 @@ async def webui_users_update(id: int, request: Request) -> JSONResponse:
             .first()
             is not None
         ):
-            return _unprocessable("用户名称已被占用", field="name")
+            return _unprocessable("更新失败，用户名称已被占用", field="name")
 
         if session.query(Group).filter(Group.name == validated.group).first() is None:
-            return _unprocessable("身份组不存在", field="group")
+            return _unprocessable("更新失败，身份组不存在", field="group")
 
         user.user_id = validated.user_id
         user.name = validated.name
@@ -339,7 +339,7 @@ async def webui_users_update(id: int, request: Request) -> JSONResponse:
         )
     except Exception as exc:
         session.rollback()
-        return _internal_error(f"更新用户失败：{exc}")
+        return _internal_error(f"更新失败，{exc}")
     finally:
         session.close()
 
@@ -357,7 +357,7 @@ async def webui_users_delete(id: int) -> JSONResponse:
         return JSONResponse(content={"ok": True, "message": "删除成功"})
     except Exception as exc:
         session.rollback()
-        return _internal_error(f"删除用户失败：{exc}")
+        return _internal_error(f"删除失败，{exc}")
     finally:
         session.close()
 
@@ -368,7 +368,7 @@ async def webui_users_sync_whitelist(id: int) -> JSONResponse:
     try:
         user = session.query(User).filter(User.id == id).first()
     except Exception as exc:
-        return _internal_error(f"读取用户失败：{exc}")
+        return _internal_error(f"同步失败，{exc}")
     finally:
         session.close()
 
@@ -378,9 +378,9 @@ async def webui_users_sync_whitelist(id: int) -> JSONResponse:
     try:
         results = await _sync_user_whitelist(user)
     except Exception as exc:
-        return _internal_error(f"同步白名单失败：{exc}")
+        return _internal_error(f"同步失败，{exc}")
 
-    message = "同步完成"
+    message = "同步成功"
     if not results:
         message = "同步失败，暂无可同步的服务器"
 

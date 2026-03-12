@@ -65,16 +65,35 @@
 
   const cloneValue = (value) => JSON.parse(JSON.stringify(value));
 
+  const parseJsonSafe = async (response) => {
+    try {
+      return await response.json();
+    } catch (_error) {
+      return null;
+    }
+  };
+
   const getErrorMessage = (data, fallbackMessage) => {
     if (data && typeof data === "object") {
-      if (Array.isArray(data.errors) && data.errors.length) {
-        const firstError = data.errors[0];
-        if (firstError && typeof firstError === "object" && firstError.message) {
-          return String(firstError.message);
-        }
-      }
       if (data.message) {
-        return String(data.message);
+        const baseMessage = String(data.message);
+        if (Array.isArray(data.errors) && data.errors.length) {
+          const details = data.errors
+            .map((item) => (item && typeof item === "object" && item.message ? String(item.message) : ""))
+            .filter(Boolean);
+          if (details.length) {
+            return `${baseMessage}\n${details.join("\n")}`;
+          }
+        }
+        return baseMessage;
+      }
+      if (Array.isArray(data.errors) && data.errors.length) {
+        const details = data.errors
+          .map((item) => (item && typeof item === "object" && item.message ? String(item.message) : ""))
+          .filter(Boolean);
+        if (details.length) {
+          return details.join("\n");
+        }
       }
     }
     return fallbackMessage;
@@ -315,7 +334,7 @@
         command.enabled = nextEnabled;
         switchText.textContent = nextEnabled ? "启用" : "关闭";
         enabledInput.disabled = true;
-        setStatus("保存中...");
+        setStatus("正在保存...", "info");
 
         try {
           const { reloaded } = await saveSingleCommand({
@@ -553,7 +572,7 @@
     }
 
     setModalSavingState(true);
-    setModalAlert("保存中...", "info");
+    setModalAlert("正在保存...", "info");
 
     try {
       const { reloaded } = await saveSingleCommand({
@@ -606,12 +625,12 @@
         },
       });
 
+      const data = await parseJsonSafe(response);
       if (!response.ok) {
-        throw new Error(`加载失败 (${response.status})`);
+        const fallbackMessage = `加载失败，HTTP ${response.status}`;
+        throw new Error(getErrorMessage(data, fallbackMessage));
       }
-
-      const data = await response.json();
-      const commands = Array.isArray(data.commands) ? data.commands : [];
+      const commands = Array.isArray(data?.commands) ? data.commands : [];
       commandStates = cloneValue(commands);
       for (const command of commandStates) {
         ensureCommandParamValues(command);
@@ -656,7 +675,7 @@
     }
 
     if (!response.ok || !data?.ok) {
-      throw new Error(getErrorMessage(data, `保存失败 (${response.status})`));
+      throw new Error(getErrorMessage(data, `保存失败，HTTP ${response.status}`));
     }
 
     const reloaded = await loadCommands({ clearStatus: false });

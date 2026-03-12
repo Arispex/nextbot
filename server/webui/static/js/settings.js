@@ -96,31 +96,11 @@
     }
   };
 
-  const replaceFieldTokens = (message) => {
-    let normalized = String(message || "");
-    const entries = Object.entries(FIELD_LABELS).sort((a, b) => b[0].length - a[0].length);
-    for (const [field, label] of entries) {
-      normalized = normalized.replaceAll(field, label);
-      normalized = normalized.replaceAll(field.toUpperCase(), label);
-    }
-    return normalized;
-  };
-
   const readErrorMessage = (payload, fallback) => {
     if (payload && typeof payload.message === "string" && payload.message.trim()) {
-      let message = payload.message.trim();
-      if (payload.field && typeof payload.field === "string") {
-        const label = FIELD_LABELS[payload.field] || payload.field;
-        message = replaceFieldTokens(message);
-        if (!message.includes(label) && message.includes(payload.field)) {
-          message = message.replaceAll(payload.field, label);
-        }
-      } else {
-        message = replaceFieldTokens(message);
-      }
-      return message;
+      return payload.message.trim();
     }
-    return replaceFieldTokens(fallback);
+    return fallback;
   };
 
   const setTokenButtonIcon = (visible) => {
@@ -300,7 +280,7 @@
       });
       const payload = await parseJsonSafe(response);
       if (!response.ok || !payload || payload.ok !== true || !payload.data) {
-        throw new Error(readErrorMessage(payload, `加载失败（HTTP ${response.status}）`));
+        throw new Error(readErrorMessage(payload, `加载失败，HTTP ${response.status}`));
       }
       fillForm(payload.data);
       setStatus("");
@@ -316,7 +296,7 @@
       data = buildPayload();
     } catch (error) {
       const message = error instanceof Error ? error.message : "表单校验失败";
-      setStatus(message, "error");
+      setStatus(`保存失败，${message}`, "error");
       return;
     }
 
@@ -336,7 +316,7 @@
         throw new Error(readErrorMessage(payload, "保存失败"));
       }
 
-      setStatus("保存成功", "success");
+      setStatus("保存成功，正在重启程序", "success");
       setTimeout(() => {
         window.location.reload();
       }, 3000);

@@ -17,7 +17,7 @@ async def webui_dashboard_api() -> JSONResponse:
             status_code=500,
             content={
                 "ok": False,
-                "message": f"加载仪表盘数据失败：{exc}",
+                "message": f"加载失败，{exc}",
             },
         )
 

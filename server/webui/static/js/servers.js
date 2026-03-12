@@ -202,7 +202,7 @@
 
     if (result.status === "loading") {
       badge.classList.add("warning");
-      badge.textContent = "测试中";
+      badge.textContent = "正在测试";
       return badge;
     }
 
@@ -323,7 +323,7 @@
       const resultState = testResultMap.get(server.id);
       if (resultState?.status === "loading") {
         testButton.disabled = true;
-        testButton.textContent = "测试中";
+        testButton.textContent = "正在测试";
       }
       testButton.addEventListener("click", () => {
         void testServerConnectivity(server.id);
@@ -369,7 +369,7 @@
       });
       const payload = await parseJsonSafe(response);
       if (!response.ok) {
-        throw new Error(readErrorMessage(payload, `加载失败（HTTP ${response.status}）`));
+        throw new Error(readErrorMessage(payload, `加载失败，HTTP ${response.status}`));
       }
       if (!payload || payload.ok !== true || !Array.isArray(payload.servers)) {
         throw new Error("加载失败，返回数据格式错误");
@@ -394,7 +394,7 @@
       setStatus(message, "error");
       loadingNode.classList.add("hidden");
       emptyNode.classList.remove("hidden");
-      emptyNode.textContent = "加载失败，请点击刷新重试。";
+      emptyNode.textContent = message;
       tableWrapNode.classList.add("hidden");
       return false;
     }
@@ -509,16 +509,16 @@
       return;
     }
 
+    const isEdit = modalMode === "edit" && typeof editingServerId === "number";
+
     let payload;
     try {
       payload = buildPayloadFromModal();
     } catch (error) {
       const message = error instanceof Error ? error.message : "表单校验失败";
-      setModalAlert(message, "error");
+      setModalAlert(`${isEdit ? "更新失败" : "创建失败"}，${message}`, "error");
       return;
     }
-
-    const isEdit = modalMode === "edit" && typeof editingServerId === "number";
 
     modalSaving = true;
     modalSaveButton.disabled = true;
@@ -540,16 +540,16 @@
       });
       const result = await parseJsonSafe(response);
       if (!response.ok || !result || result.ok !== true) {
-        throw new Error(readErrorMessage(result, isEdit ? "编辑失败" : "创建失败"));
+        throw new Error(readErrorMessage(result, isEdit ? "更新失败" : "创建失败"));
       }
 
       closeModal(true);
       const reloaded = await loadServers({ clearStatus: false });
       if (reloaded) {
-        setStatus(isEdit ? "编辑成功" : "创建成功", "success");
+        setStatus(isEdit ? "更新成功" : "创建成功", "success");
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : isEdit ? "编辑失败" : "创建失败";
+      const message = error instanceof Error ? error.message : isEdit ? "更新失败" : "创建失败";
       setModalAlert(message, "error");
     } finally {
       modalSaving = false;
@@ -595,7 +595,7 @@
   };
 
   const testServerConnectivity = async (serverId) => {
-    testResultMap.set(serverId, { status: "loading", message: "测试中" });
+    testResultMap.set(serverId, { status: "loading", message: "正在测试" });
     renderTable();
     setStatus(`正在测试服务器 #${serverId} 连通性...`, "warning");
 

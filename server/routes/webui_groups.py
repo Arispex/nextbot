@@ -210,7 +210,7 @@ async def webui_groups_list() -> JSONResponse:
             }
         )
     except Exception as exc:
-        return _internal_error(f"获取身份组列表失败：{exc}")
+        return _internal_error(f"加载失败，{exc}")
     finally:
         session.close()
 
@@ -220,20 +220,20 @@ async def webui_groups_create(request: Request) -> JSONResponse:
     try:
         payload = await request.json()
     except Exception:
-        return _bad_request("请求体必须是 JSON")
+        return _bad_request("创建失败，请求体必须是 JSON")
     if not isinstance(payload, dict):
-        return _bad_request("请求体必须是对象")
+        return _bad_request("创建失败，请求体必须是对象")
 
     try:
         validated = _validate_create_payload(payload)
     except GroupPayloadValidationError as exc:
-        return _unprocessable(str(exc), field=exc.field)
+        return _unprocessable(f"创建失败，{exc}", field=exc.field)
 
     session = get_session()
     try:
         exists = session.query(Group).filter(Group.name == validated.name).first()
         if exists is not None:
-            return _unprocessable("身份组已存在", field="name")
+            return _unprocessable("创建失败，身份组已存在", field="name")
 
         _validate_inherits_targets(
             session,
@@ -253,16 +253,16 @@ async def webui_groups_create(request: Request) -> JSONResponse:
         return JSONResponse(
             content={
                 "ok": True,
-                "message": "新增成功",
+                "message": "创建成功",
                 "group": _serialize_group(group, user_count_map=user_count_map),
             }
         )
     except GroupPayloadValidationError as exc:
         session.rollback()
-        return _unprocessable(str(exc), field=exc.field)
+        return _unprocessable(f"创建失败，{exc}", field=exc.field)
     except Exception as exc:
         session.rollback()
-        return _internal_error(f"新增身份组失败：{exc}")
+        return _internal_error(f"创建失败，{exc}")
     finally:
         session.close()
 
@@ -272,9 +272,9 @@ async def webui_groups_update(group_name: str, request: Request) -> JSONResponse
     try:
         payload = await request.json()
     except Exception:
-        return _bad_request("请求体必须是 JSON")
+        return _bad_request("更新失败，请求体必须是 JSON")
     if not isinstance(payload, dict):
-        return _bad_request("请求体必须是对象")
+        return _bad_request("更新失败，请求体必须是对象")
 
     session = get_session()
     try:
@@ -289,7 +289,7 @@ async def webui_groups_update(group_name: str, request: Request) -> JSONResponse
                 target_name=group_name,
             )
         except GroupPayloadValidationError as exc:
-            return _unprocessable(str(exc), field=exc.field)
+            return _unprocessable(f"更新失败，{exc}", field=exc.field)
 
         _validate_inherits_targets(
             session,
@@ -311,10 +311,10 @@ async def webui_groups_update(group_name: str, request: Request) -> JSONResponse
         )
     except GroupPayloadValidationError as exc:
         session.rollback()
-        return _unprocessable(str(exc), field=exc.field)
+        return _unprocessable(f"更新失败，{exc}", field=exc.field)
     except Exception as exc:
         session.rollback()
-        return _internal_error(f"更新身份组失败：{exc}")
+        return _internal_error(f"更新失败，{exc}")
     finally:
         session.close()
 
@@ -322,7 +322,7 @@ async def webui_groups_update(group_name: str, request: Request) -> JSONResponse
 @router.delete("/webui/api/groups/{group_name}")
 async def webui_groups_delete(group_name: str) -> JSONResponse:
     if group_name in _BUILTIN_GROUPS:
-        return _unprocessable("系统内置身份组不可删除", field="name")
+        return _unprocessable("删除失败，系统内置身份组不可删除", field="name")
 
     session = get_session()
     try:
@@ -346,6 +346,6 @@ async def webui_groups_delete(group_name: str) -> JSONResponse:
         return JSONResponse(content={"ok": True, "message": "删除成功"})
     except Exception as exc:
         session.rollback()
-        return _internal_error(f"删除身份组失败：{exc}")
+        return _internal_error(f"删除失败，{exc}")
     finally:
         session.close()

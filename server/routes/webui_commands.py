@@ -37,20 +37,20 @@ async def webui_commands_api_batch_save(request: Request) -> JSONResponse:
     except Exception:
         return JSONResponse(
             status_code=400,
-            content={"ok": False, "message": "请求体必须是 JSON"},
+            content={"ok": False, "message": "保存失败，请求体必须是 JSON"},
         )
 
     if not isinstance(payload, dict):
         return JSONResponse(
             status_code=400,
-            content={"ok": False, "message": "请求体必须是对象"},
+            content={"ok": False, "message": "保存失败，请求体必须是对象"},
         )
 
     commands = payload.get("commands")
     if not isinstance(commands, list):
         return JSONResponse(
             status_code=400,
-            content={"ok": False, "message": "commands 必须是数组"},
+            content={"ok": False, "message": "保存失败，commands 必须是数组"},
         )
 
     try:
@@ -60,7 +60,7 @@ async def webui_commands_api_batch_save(request: Request) -> JSONResponse:
             status_code=422,
             content={
                 "ok": False,
-                "message": str(exc),
+                "message": f"保存失败，{exc}",
                 "errors": exc.errors,
             },
         )

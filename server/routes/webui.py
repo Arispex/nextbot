@@ -172,7 +172,7 @@ async def webui_login_submit(request: Request) -> Response:
         return HTMLResponse(
             content=render_login_page(
                 next_path=next_path,
-                error_message="Token 错误，请重试。",
+                error_message="登录失败，Token 错误，请重试。",
             )
         )
 

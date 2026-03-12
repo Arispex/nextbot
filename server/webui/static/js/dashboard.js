@@ -154,7 +154,7 @@
 
       const payload = await parseJsonSafe(response);
       if (!response.ok || !payload || payload.ok !== true || !payload.data) {
-        const fallbackMessage = `加载仪表盘数据失败：HTTP ${response.status}`;
+        const fallbackMessage = `加载失败，HTTP ${response.status}`;
         throw new Error(payload?.message || fallbackMessage);
       }
 
