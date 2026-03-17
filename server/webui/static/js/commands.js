@@ -31,6 +31,13 @@
       tableBodyNode
   );
 
+  const api = window.NextBotWebUIApi;
+  const apiReady = Boolean(
+    api &&
+      typeof api.apiRequest === "function" &&
+      typeof api.unwrapData === "function"
+  );
+
   const setStatus = (message, type = "") => {
     if (!statusNode || !statusMessageNode) return;
     const text = String(message || "").trim();
@@ -64,40 +71,6 @@
   };
 
   const cloneValue = (value) => JSON.parse(JSON.stringify(value));
-
-  const parseJsonSafe = async (response) => {
-    try {
-      return await response.json();
-    } catch (_error) {
-      return null;
-    }
-  };
-
-  const getErrorMessage = (data, fallbackMessage) => {
-    if (data && typeof data === "object") {
-      if (data.message) {
-        const baseMessage = String(data.message);
-        if (Array.isArray(data.errors) && data.errors.length) {
-          const details = data.errors
-            .map((item) => (item && typeof item === "object" && item.message ? String(item.message) : ""))
-            .filter(Boolean);
-          if (details.length) {
-            return `${baseMessage}\n${details.join("\n")}`;
-          }
-        }
-        return baseMessage;
-      }
-      if (Array.isArray(data.errors) && data.errors.length) {
-        const details = data.errors
-          .map((item) => (item && typeof item === "object" && item.message ? String(item.message) : ""))
-          .filter(Boolean);
-        if (details.length) {
-          return details.join("\n");
-        }
-      }
-    }
-    return fallbackMessage;
-  };
 
   const setModalSavingState = (saving) => {
     modalSaving = Boolean(saving);
@@ -577,7 +550,7 @@
     try {
       const { reloaded } = await saveSingleCommand({
         commandKey: command.command_key,
-        params: nextValues,
+        paramValues: nextValues,
       });
       command.param_values = nextValues;
       if (reloaded) {
@@ -597,6 +570,14 @@
   };
 
   const loadCommands = async ({ clearStatus = true } = {}) => {
+    if (!apiReady) {
+      if (loadingNode) {
+        loadingNode.classList.add("hidden");
+      }
+      setStatus("页面资源版本不一致，请刷新页面或重启机器人", "error");
+      return false;
+    }
+
     if (!requiredNodesReady) {
       if (loadingNode) {
         loadingNode.classList.add("hidden");
@@ -618,19 +599,17 @@
     }
 
     try {
-      const response = await fetch("/webui/api/commands", {
+      const payload = await api.apiRequest("/webui/api/commands", {
         method: "GET",
         headers: {
           Accept: "application/json",
         },
+        errorPrefix: "加载失败",
       });
-
-      const data = await parseJsonSafe(response);
-      if (!response.ok) {
-        const fallbackMessage = `加载失败，HTTP ${response.status}`;
-        throw new Error(getErrorMessage(data, fallbackMessage));
+      const commands = api.unwrapData(payload);
+      if (!Array.isArray(commands)) {
+        throw new Error("加载失败，返回数据格式错误");
       }
-      const commands = Array.isArray(data?.commands) ? data.commands : [];
       commandStates = cloneValue(commands);
       for (const command of commandStates) {
         ensureCommandParamValues(command);
@@ -646,37 +625,25 @@
     }
   };
 
-  const saveSingleCommand = async ({ commandKey, enabled, params }) => {
-    const payload = {
-      command_key: commandKey,
-    };
+  const saveSingleCommand = async ({ commandKey, enabled, paramValues }) => {
+    const data = {};
 
     if (enabled !== undefined) {
-      payload.enabled = Boolean(enabled);
+      data.enabled = Boolean(enabled);
     }
-    if (params !== undefined) {
-      payload.params = cloneValue(params || {});
+    if (paramValues !== undefined) {
+      data.param_values = cloneValue(paramValues || {});
     }
 
-    const response = await fetch("/webui/api/commands/batch", {
-      method: "PUT",
+    await api.apiRequest(`/webui/api/commands/${encodeURIComponent(commandKey)}`, {
+      method: "PATCH",
       headers: {
         "Content-Type": "application/json",
         Accept: "application/json",
       },
-      body: JSON.stringify({ commands: [payload] }),
+      body: JSON.stringify({ data }),
+      errorPrefix: "保存失败",
     });
-
-    let data = null;
-    try {
-      data = await response.json();
-    } catch (_error) {
-      data = null;
-    }
-
-    if (!response.ok || !data?.ok) {
-      throw new Error(getErrorMessage(data, `保存失败，HTTP ${response.status}`));
-    }
 
     const reloaded = await loadCommands({ clearStatus: false });
     return { reloaded };

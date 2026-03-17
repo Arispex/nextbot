@@ -34,36 +34,37 @@
 
   const requiredNodesReady = Boolean(
     statusNode &&
-    statusMessageNode &&
-    loadingNode &&
-    emptyNode &&
-    tableWrapNode &&
-    tableBodyNode &&
-    modalNode &&
-    modalTitleNode &&
-    modalAlertNode &&
-    modalAlertMessageNode &&
-    modalCloseButton &&
-    modalCancelButton &&
-    modalSaveButton &&
-    modalTokenToggleButton &&
-    deleteModalNode &&
-    deleteModalTextNode &&
-    deleteModalAlertNode &&
-    deleteModalAlertMessageNode &&
-    deleteModalCloseButton &&
-    deleteModalCancelButton &&
-    deleteModalConfirmButton &&
-    nameInput &&
-    ipInput &&
-    gamePortInput &&
-    restapiPortInput &&
-    tokenInput
+      statusMessageNode &&
+      loadingNode &&
+      emptyNode &&
+      tableWrapNode &&
+      tableBodyNode &&
+      modalNode &&
+      modalTitleNode &&
+      modalAlertNode &&
+      modalAlertMessageNode &&
+      modalCloseButton &&
+      modalCancelButton &&
+      modalSaveButton &&
+      modalTokenToggleButton &&
+      deleteModalNode &&
+      deleteModalTextNode &&
+      deleteModalAlertNode &&
+      deleteModalAlertMessageNode &&
+      deleteModalCloseButton &&
+      deleteModalCancelButton &&
+      deleteModalConfirmButton &&
+      nameInput &&
+      ipInput &&
+      gamePortInput &&
+      restapiPortInput &&
+      tokenInput
   );
   if (!requiredNodesReady) {
     return;
   }
 
+  const api = window.NextBotWebUIApi;
   const NAME_PATTERN = /^[A-Za-z0-9\u4e00-\u9fff ._-]{1,32}$/u;
   const SHOW_ICON_SVG = `
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -133,31 +134,14 @@
     deleteModalAlertMessageNode.textContent = text;
   };
 
-  const parseJsonSafe = async (response) => {
-    try {
-      return await response.json();
-    } catch (_error) {
-      return null;
-    }
-  };
-
-  const readErrorMessage = (payload, fallback) => {
-    if (payload && typeof payload.message === "string" && payload.message.trim()) {
-      return payload.message.trim();
-    }
-    return fallback;
-  };
-
-  const normalizeServer = (item) => {
-    return {
-      id: Number(item?.id || 0),
-      name: String(item?.name || ""),
-      ip: String(item?.ip || ""),
-      game_port: String(item?.game_port || ""),
-      restapi_port: String(item?.restapi_port || ""),
-      token: String(item?.token || ""),
-    };
-  };
+  const normalizeServer = (item) => ({
+    id: Number(item?.id || 0),
+    name: String(item?.name || ""),
+    ip: String(item?.ip || ""),
+    game_port: String(item?.game_port || ""),
+    restapi_port: String(item?.restapi_port || ""),
+    token: String(item?.token || ""),
+  });
 
   const formatMaskedToken = (token) => {
     const length = Math.max(8, Math.min(16, String(token).length || 8));
@@ -363,19 +347,17 @@
     emptyNode.classList.add("hidden");
 
     try {
-      const response = await fetch("/webui/api/servers", {
+      const payload = await api.apiRequest("/webui/api/servers", {
         method: "GET",
         headers: { Accept: "application/json" },
+        errorPrefix: "加载失败",
       });
-      const payload = await parseJsonSafe(response);
-      if (!response.ok) {
-        throw new Error(readErrorMessage(payload, `加载失败，HTTP ${response.status}`));
-      }
-      if (!payload || payload.ok !== true || !Array.isArray(payload.servers)) {
+      const servers = api.unwrapData(payload);
+      if (!Array.isArray(servers)) {
         throw new Error("加载失败，返回数据格式错误");
       }
 
-      serverStates = payload.servers.map(normalizeServer);
+      serverStates = servers.map(normalizeServer);
       const validIds = new Set(serverStates.map((item) => item.id));
       for (const key of [...visibleTokenIds]) {
         if (!validIds.has(key)) {
@@ -525,23 +507,18 @@
     setModalAlert("正在保存...", "info");
 
     try {
-      const url = isEdit
-        ? `/webui/api/servers/${editingServerId}`
-        : "/webui/api/servers";
+      const url = isEdit ? `/webui/api/servers/${editingServerId}` : "/webui/api/servers";
       const method = isEdit ? "PUT" : "POST";
 
-      const response = await fetch(url, {
+      await api.apiRequest(url, {
         method,
         headers: {
           "Content-Type": "application/json",
           Accept: "application/json",
         },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ data: payload }),
+        errorPrefix: isEdit ? "更新失败" : "创建失败",
       });
-      const result = await parseJsonSafe(response);
-      if (!response.ok || !result || result.ok !== true) {
-        throw new Error(readErrorMessage(result, isEdit ? "更新失败" : "创建失败"));
-      }
 
       closeModal(true);
       const reloaded = await loadServers({ clearStatus: false });
@@ -568,14 +545,12 @@
     setStatus(`正在删除服务器 #${targetServer.id}...`, "warning");
 
     try {
-      const response = await fetch(`/webui/api/servers/${targetServer.id}`, {
+      const payload = await api.apiRequest(`/webui/api/servers/${targetServer.id}`, {
         method: "DELETE",
         headers: { Accept: "application/json" },
+        errorPrefix: "删除失败",
       });
-      const result = await parseJsonSafe(response);
-      if (!response.ok || !result || result.ok !== true) {
-        throw new Error(readErrorMessage(result, "删除失败"));
-      }
+      api.unwrapData(payload);
 
       visibleTokenIds.delete(targetServer.id);
       testResultMap.delete(targetServer.id);
@@ -600,17 +575,14 @@
     setStatus(`正在测试服务器 #${serverId} 连通性...`, "warning");
 
     try {
-      const response = await fetch(`/webui/api/servers/${serverId}/test`, {
+      const payload = await api.apiRequest(`/webui/api/servers/${serverId}/test`, {
         method: "POST",
         headers: { Accept: "application/json" },
+        errorPrefix: "测试失败",
       });
-      const result = await parseJsonSafe(response);
-      if (!response.ok || !result || result.ok !== true || !result.data) {
-        throw new Error(readErrorMessage(result, "测试失败"));
-      }
-
-      const reachable = Boolean(result.data.reachable);
-      const message = String(result.data.message || "");
+      const result = api.unwrapData(payload);
+      const reachable = Boolean(result.reachable);
+      const message = String(result.message || "");
       testResultMap.set(serverId, {
         status: reachable ? "success" : "failed",
         message,

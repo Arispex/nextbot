@@ -4,10 +4,18 @@ import html
 from pathlib import Path
 from typing import Literal
 
-
 BASE_DIR = Path(__file__).resolve().parent.parent
 WEBUI_TEMPLATE_DIR = BASE_DIR / "webui" / "templates"
 WEBUI_STATIC_DIR = BASE_DIR / "webui" / "static"
+
+AppShellMenu = Literal[
+    "dashboard",
+    "commands",
+    "servers",
+    "users",
+    "groups",
+    "settings",
+]
 
 
 def _load_template(name: str) -> str:
@@ -24,11 +32,11 @@ def _asset_url(path: str) -> str:
     return f"/webui/static/{normalized}"
 
 
-def _render_app_shell_page(
+def _render_app_shell_page(  # noqa: PLR0913
     *,
     page_title: str,
     header_title: str,
-    active_menu: Literal["dashboard", "commands", "servers", "users", "groups", "settings"],
+    active_menu: AppShellMenu,
     content_template: str,
     page_style_urls: tuple[str, ...] = (),
     page_script_urls: tuple[str, ...] = (),
@@ -64,6 +72,10 @@ def _render_app_shell_page(
         .replace(
             "__WEBUI_SCRIPT_URL__",
             html.escape(_asset_url("js/webui.js"), quote=True),
+        )
+        .replace(
+            "__WEBUI_API_SCRIPT_URL__",
+            html.escape(_asset_url("js/api.js"), quote=True),
         )
         .replace("__PAGE_SCRIPT_TAGS__", script_tags_html)
     )

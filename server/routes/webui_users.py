@@ -7,6 +7,7 @@ from typing import Any
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
+from nonebot.log import logger
 
 from next_bot.db import Group, Server, User, get_session
 from next_bot.time_utils import format_beijing_datetime
@@ -16,6 +17,7 @@ from next_bot.tshock_api import (
     is_success,
     request_server_api,
 )
+from server.routes import api_error, api_success, read_json_data
 
 router = APIRouter()
 
@@ -39,25 +41,6 @@ class UserPayloadValidationError(ValueError):
         self.field = field
 
 
-def _bad_request(message: str) -> JSONResponse:
-    return JSONResponse(status_code=400, content={"ok": False, "message": message})
-
-
-def _unprocessable(message: str, *, field: str | None = None) -> JSONResponse:
-    content: dict[str, Any] = {"ok": False, "message": message}
-    if field:
-        content["field"] = field
-    return JSONResponse(status_code=422, content=content)
-
-
-def _not_found(message: str) -> JSONResponse:
-    return JSONResponse(status_code=404, content={"ok": False, "message": message})
-
-
-def _internal_error(message: str) -> JSONResponse:
-    return JSONResponse(status_code=500, content={"ok": False, "message": message})
-
-
 def _require_field(payload: dict[str, Any], key: str) -> Any:
     if key not in payload:
         raise UserPayloadValidationError(f"{key} 为必填项", field=key)
@@ -67,9 +50,9 @@ def _require_field(payload: dict[str, Any], key: str) -> Any:
 def _normalize_user_id(raw_value: Any) -> str:
     value = str(raw_value).strip()
     if not value:
-        raise UserPayloadValidationError("用户ID不能为空", field="user_id")
+        raise UserPayloadValidationError("用户 ID 不能为空", field="user_id")
     if _USER_ID_PATTERN.fullmatch(value) is None:
-        raise UserPayloadValidationError("用户ID必须是 5-20 位数字", field="user_id")
+        raise UserPayloadValidationError("用户 ID 必须是 5-20 位数字", field="user_id")
     return value
 
 
@@ -215,52 +198,74 @@ async def _sync_user_whitelist(user: User) -> list[dict[str, Any]]:
     return results
 
 
+def _validation_error(action: str, exc: UserPayloadValidationError) -> JSONResponse:
+    logger.warning(f"{action} Web UI 用户失败：field={exc.field or ''}，reason={exc}")
+    return api_error(
+        status_code=422,
+        code="validation_error",
+        message=f"{action}失败，{exc}",
+        details=[{"field": exc.field, "message": str(exc)}] if exc.field else None,
+    )
+
+
 @router.get("/webui/api/users")
 async def webui_users_list() -> JSONResponse:
     session = get_session()
     try:
         users = session.query(User).order_by(User.id.asc()).all()
         groups = session.query(Group).order_by(Group.name.asc()).all()
-        return JSONResponse(
-            content={
-                "ok": True,
-                "users": [_serialize_user(item) for item in users],
-                "groups": [str(item.name) for item in groups],
-            }
+        return api_success(
+            data=[_serialize_user(item) for item in users],
+            meta={"groups": [str(item.name) for item in groups]},
         )
     except Exception as exc:
-        return _internal_error(f"加载失败，{exc}")
+        logger.exception(f"加载 Web UI 用户列表失败：reason={exc}")
+        return api_error(
+            status_code=500,
+            code="internal_error",
+            message=f"加载失败，{exc}",
+        )
     finally:
         session.close()
 
 
 @router.post("/webui/api/users")
 async def webui_users_create(request: Request) -> JSONResponse:
-    try:
-        payload = await request.json()
-    except Exception:
-        return _bad_request("创建失败，请求体必须是 JSON")
-    if not isinstance(payload, dict):
-        return _bad_request("创建失败，请求体必须是对象")
+    data, error_response = await read_json_data(request, action="创建")
+    if error_response is not None:
+        return error_response
+    assert data is not None
 
     try:
-        validated = _validate_payload(payload)
+        validated = _validate_payload(data)
     except UserPayloadValidationError as exc:
-        return _unprocessable(f"创建失败，{exc}", field=exc.field)
+        return _validation_error("创建", exc)
 
     session = get_session()
     try:
-        if (
-            session.query(User).filter(User.user_id == validated.user_id).first()
-            is not None
-        ):
-            return _unprocessable("创建失败，用户 ID 已存在", field="user_id")
+        if session.query(User).filter(User.user_id == validated.user_id).first() is not None:
+            return api_error(
+                status_code=422,
+                code="validation_error",
+                message="创建失败，用户 ID 已存在",
+                details=[{"field": "user_id", "message": "用户 ID 已存在"}],
+            )
 
         if session.query(User).filter(User.name == validated.name).first() is not None:
-            return _unprocessable("创建失败，用户名称已被占用", field="name")
+            return api_error(
+                status_code=422,
+                code="validation_error",
+                message="创建失败，用户名称已被占用",
+                details=[{"field": "name", "message": "用户名称已被占用"}],
+            )
 
         if session.query(Group).filter(Group.name == validated.group).first() is None:
-            return _unprocessable("创建失败，身份组不存在", field="group")
+            return api_error(
+                status_code=422,
+                code="validation_error",
+                message="创建失败，身份组不存在",
+                details=[{"field": "group", "message": "身份组不存在"}],
+            )
 
         user = User(
             user_id=validated.user_id,
@@ -271,39 +276,46 @@ async def webui_users_create(request: Request) -> JSONResponse:
         )
         session.add(user)
         session.commit()
-        return JSONResponse(
-            content={
-                "ok": True,
-                "message": "创建成功",
-                "user": _serialize_user(user),
-            }
+        logger.info(f"创建 Web UI 用户成功：user_id={user.user_id}，name={user.name}")
+        return api_success(
+            status_code=201,
+            data=_serialize_user(user),
+            headers={"Location": f"/webui/api/users/{user.id}"},
         )
     except Exception as exc:
         session.rollback()
-        return _internal_error(f"创建失败，{exc}")
+        logger.exception(f"创建 Web UI 用户异常：user_id={validated.user_id}，reason={exc}")
+        return api_error(
+            status_code=500,
+            code="internal_error",
+            message=f"创建失败，{exc}",
+        )
     finally:
         session.close()
 
 
 @router.put("/webui/api/users/{id}")
 async def webui_users_update(id: int, request: Request) -> JSONResponse:
-    try:
-        payload = await request.json()
-    except Exception:
-        return _bad_request("更新失败，请求体必须是 JSON")
-    if not isinstance(payload, dict):
-        return _bad_request("更新失败，请求体必须是对象")
+    data, error_response = await read_json_data(request, action="更新")
+    if error_response is not None:
+        return error_response
+    assert data is not None
 
     try:
-        validated = _validate_payload(payload)
+        validated = _validate_payload(data)
     except UserPayloadValidationError as exc:
-        return _unprocessable(f"更新失败，{exc}", field=exc.field)
+        return _validation_error("更新", exc)
 
     session = get_session()
     try:
         user = session.query(User).filter(User.id == id).first()
         if user is None:
-            return _not_found("更新失败，用户不存在")
+            logger.warning(f"更新 Web UI 用户失败：id={id}，reason=用户不存在")
+            return api_error(
+                status_code=404,
+                code="not_found",
+                message="更新失败，用户不存在",
+            )
 
         if (
             session.query(User)
@@ -311,7 +323,12 @@ async def webui_users_update(id: int, request: Request) -> JSONResponse:
             .first()
             is not None
         ):
-            return _unprocessable("更新失败，用户 ID 已存在", field="user_id")
+            return api_error(
+                status_code=422,
+                code="validation_error",
+                message="更新失败，用户 ID 已存在",
+                details=[{"field": "user_id", "message": "用户 ID 已存在"}],
+            )
 
         if (
             session.query(User)
@@ -319,10 +336,20 @@ async def webui_users_update(id: int, request: Request) -> JSONResponse:
             .first()
             is not None
         ):
-            return _unprocessable("更新失败，用户名称已被占用", field="name")
+            return api_error(
+                status_code=422,
+                code="validation_error",
+                message="更新失败，用户名称已被占用",
+                details=[{"field": "name", "message": "用户名称已被占用"}],
+            )
 
         if session.query(Group).filter(Group.name == validated.group).first() is None:
-            return _unprocessable("更新失败，身份组不存在", field="group")
+            return api_error(
+                status_code=422,
+                code="validation_error",
+                message="更新失败，身份组不存在",
+                details=[{"field": "group", "message": "身份组不存在"}],
+            )
 
         user.user_id = validated.user_id
         user.name = validated.name
@@ -330,16 +357,16 @@ async def webui_users_update(id: int, request: Request) -> JSONResponse:
         user.permissions = validated.permissions
         user.group = validated.group
         session.commit()
-        return JSONResponse(
-            content={
-                "ok": True,
-                "message": "更新成功",
-                "user": _serialize_user(user),
-            }
-        )
+        logger.info(f"更新 Web UI 用户成功：id={id}，user_id={user.user_id}")
+        return api_success(data=_serialize_user(user))
     except Exception as exc:
         session.rollback()
-        return _internal_error(f"更新失败，{exc}")
+        logger.exception(f"更新 Web UI 用户异常：id={id}，reason={exc}")
+        return api_error(
+            status_code=500,
+            code="internal_error",
+            message=f"更新失败，{exc}",
+        )
     finally:
         session.close()
 
@@ -350,14 +377,27 @@ async def webui_users_delete(id: int) -> JSONResponse:
     try:
         user = session.query(User).filter(User.id == id).first()
         if user is None:
-            return _not_found("删除失败，用户不存在")
+            logger.warning(f"删除 Web UI 用户失败：id={id}，reason=用户不存在")
+            return api_error(
+                status_code=404,
+                code="not_found",
+                message="删除失败，用户不存在",
+            )
 
+        deleted_user_id = str(user.user_id)
+        deleted_name = str(user.name)
         session.delete(user)
         session.commit()
-        return JSONResponse(content={"ok": True, "message": "删除成功"})
+        logger.info(f"删除 Web UI 用户成功：id={id}，user_id={deleted_user_id}，name={deleted_name}")
+        return api_success(data={"message": "删除成功"})
     except Exception as exc:
         session.rollback()
-        return _internal_error(f"删除失败，{exc}")
+        logger.exception(f"删除 Web UI 用户异常：id={id}，reason={exc}")
+        return api_error(
+            status_code=500,
+            code="internal_error",
+            message=f"删除失败，{exc}",
+        )
     finally:
         session.close()
 
@@ -368,30 +408,45 @@ async def webui_users_sync_whitelist(id: int) -> JSONResponse:
     try:
         user = session.query(User).filter(User.id == id).first()
     except Exception as exc:
-        return _internal_error(f"同步失败，{exc}")
+        logger.exception(f"同步 Web UI 用户白名单异常：id={id}，reason={exc}")
+        return api_error(
+            status_code=500,
+            code="internal_error",
+            message=f"同步失败，{exc}",
+        )
     finally:
         session.close()
 
     if user is None:
-        return _not_found("同步失败，用户不存在")
+        logger.warning(f"同步 Web UI 用户白名单失败：id={id}，reason=用户不存在")
+        return api_error(
+            status_code=404,
+            code="not_found",
+            message="同步失败，用户不存在",
+        )
 
     try:
         results = await _sync_user_whitelist(user)
     except Exception as exc:
-        return _internal_error(f"同步失败，{exc}")
+        logger.exception(f"同步 Web UI 用户白名单异常：id={id}，reason={exc}")
+        return api_error(
+            status_code=500,
+            code="internal_error",
+            message=f"同步失败，{exc}",
+        )
 
     message = "同步成功"
     if not results:
         message = "同步失败，暂无可同步的服务器"
+        logger.warning(f"同步 Web UI 用户白名单失败：id={id}，reason=暂无可同步的服务器")
+    else:
+        logger.info(f"同步 Web UI 用户白名单完成：id={id}，server_count={len(results)}")
 
-    return JSONResponse(
-        content={
-            "ok": True,
-            "data": {
-                "user_id": str(user.user_id),
-                "name": str(user.name),
-                "message": message,
-                "results": results,
-            },
+    return api_success(
+        data={
+            "user_id": str(user.user_id),
+            "name": str(user.name),
+            "message": message,
+            "results": results,
         }
     )

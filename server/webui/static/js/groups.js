@@ -33,41 +33,41 @@
 
   const requiredNodesReady = Boolean(
     reloadButton &&
-    addGroupButton &&
-    searchInput &&
-    statusNode &&
-    statusMessageNode &&
-    loadingNode &&
-    emptyNode &&
-    tableWrapNode &&
-    tableBodyNode &&
-    modalNode &&
-    modalTitleNode &&
-    modalAlertNode &&
-    modalAlertMessageNode &&
-    modalCloseButton &&
-    modalCancelButton &&
-    modalSaveButton &&
-    deleteModalNode &&
-    deleteModalTextNode &&
-    deleteModalAlertNode &&
-    deleteModalAlertMessageNode &&
-    deleteModalCloseButton &&
-    deleteModalCancelButton &&
-    deleteModalConfirmButton &&
-    fieldName &&
-    fieldPermissions &&
-    fieldInherits &&
-    permissionPreviewNode &&
-    inheritPreviewNode
+      addGroupButton &&
+      searchInput &&
+      statusNode &&
+      statusMessageNode &&
+      loadingNode &&
+      emptyNode &&
+      tableWrapNode &&
+      tableBodyNode &&
+      modalNode &&
+      modalTitleNode &&
+      modalAlertNode &&
+      modalAlertMessageNode &&
+      modalCloseButton &&
+      modalCancelButton &&
+      modalSaveButton &&
+      deleteModalNode &&
+      deleteModalTextNode &&
+      deleteModalAlertNode &&
+      deleteModalAlertMessageNode &&
+      deleteModalCloseButton &&
+      deleteModalCancelButton &&
+      deleteModalConfirmButton &&
+      fieldName &&
+      fieldPermissions &&
+      fieldInherits &&
+      permissionPreviewNode &&
+      inheritPreviewNode
   );
   if (!requiredNodesReady) {
     return;
   }
 
+  const api = window.NextBotWebUIApi;
   const GROUP_NAME_PATTERN = /^[A-Za-z0-9\u4e00-\u9fff._-]{1,32}$/u;
-  const ITEM_PATTERN = /^[^\s,]{1,64}$/u;
-
+  const ITEM_PATTERN = /^[^\s,]{1,256}$/u;
   const DEFAULT_BUILTIN_GROUPS = ["guest", "default"];
 
   let groupStates = [];
@@ -118,21 +118,6 @@
       : "info";
     deleteModalAlertNode.className = `alert ${normalizedType} modal-alert`;
     deleteModalAlertMessageNode.textContent = text;
-  };
-
-  const parseJsonSafe = async (response) => {
-    try {
-      return await response.json();
-    } catch (_error) {
-      return null;
-    }
-  };
-
-  const readErrorMessage = (payload, fallback) => {
-    if (payload && typeof payload.message === "string" && payload.message.trim()) {
-      return payload.message.trim();
-    }
-    return fallback;
   };
 
   const normalizeCsv = (raw, { fieldLabel }) => {
@@ -196,11 +181,7 @@
       return [...groupStates];
     }
     return groupStates.filter((group) => {
-      const text = [
-        group.name,
-        group.permissions,
-        group.inherits,
-      ].join(" ").toLowerCase();
+      const text = [group.name, group.permissions, group.inherits].join(" ").toLowerCase();
       return text.includes(keyword);
     });
   };
@@ -317,24 +298,23 @@
     emptyNode.classList.add("hidden");
 
     try {
-      const response = await fetch("/webui/api/groups", {
+      const payload = await api.apiRequest("/webui/api/groups", {
         method: "GET",
         headers: { Accept: "application/json" },
+        errorPrefix: "加载失败",
       });
-      const payload = await parseJsonSafe(response);
-      if (!response.ok) {
-        throw new Error(readErrorMessage(payload, `加载失败，HTTP ${response.status}`));
-      }
-      if (!payload || payload.ok !== true || !Array.isArray(payload.groups)) {
+      const groups = api.unwrapData(payload);
+      const meta = api.unwrapMeta(payload);
+      if (!Array.isArray(groups)) {
         throw new Error("加载失败，返回数据格式错误");
       }
 
-      const builtinValues = Array.isArray(payload.builtin_groups)
-        ? payload.builtin_groups.map((item) => String(item || "").trim()).filter(Boolean)
+      const builtinValues = Array.isArray(meta.builtin_groups)
+        ? meta.builtin_groups.map((item) => String(item || "").trim()).filter(Boolean)
         : [];
       builtinGroups = new Set(builtinValues.length ? builtinValues : DEFAULT_BUILTIN_GROUPS);
 
-      groupStates = payload.groups.map(normalizeGroup).map((group) => ({
+      groupStates = groups.map(normalizeGroup).map((group) => ({
         ...group,
         builtin: group.builtin || builtinGroups.has(group.name),
       }));
@@ -468,28 +448,18 @@
         : "/webui/api/groups";
       const method = isEdit ? "PUT" : "POST";
       const requestPayload = isEdit
-        ? {
-            permissions: payload.permissions,
-            inherits: payload.inherits,
-          }
-        : {
-            name: payload.name,
-            permissions: payload.permissions,
-            inherits: payload.inherits,
-          };
+        ? { permissions: payload.permissions, inherits: payload.inherits }
+        : { name: payload.name, permissions: payload.permissions, inherits: payload.inherits };
 
-      const response = await fetch(url, {
+      await api.apiRequest(url, {
         method,
         headers: {
           "Content-Type": "application/json",
           Accept: "application/json",
         },
-        body: JSON.stringify(requestPayload),
+        body: JSON.stringify({ data: requestPayload }),
+        errorPrefix: isEdit ? "更新失败" : "创建失败",
       });
-      const result = await parseJsonSafe(response);
-      if (!response.ok || !result || result.ok !== true) {
-        throw new Error(readErrorMessage(result, isEdit ? "更新失败" : "创建失败"));
-      }
 
       modalNode.classList.add("hidden");
       const reloaded = await loadGroups({ clearStatus: false });
@@ -516,14 +486,12 @@
 
     setStatus(`正在删除身份组 ${targetGroup.name}...`, "warning");
     try {
-      const response = await fetch(`/webui/api/groups/${encodeURIComponent(targetGroup.name)}`, {
+      const payload = await api.apiRequest(`/webui/api/groups/${encodeURIComponent(targetGroup.name)}`, {
         method: "DELETE",
         headers: { Accept: "application/json" },
+        errorPrefix: "删除失败",
       });
-      const result = await parseJsonSafe(response);
-      if (!response.ok || !result || result.ok !== true) {
-        throw new Error(readErrorMessage(result, "删除失败"));
-      }
+      api.unwrapData(payload);
       closeDeleteModal(true);
       const reloaded = await loadGroups({ clearStatus: false });
       if (reloaded) {

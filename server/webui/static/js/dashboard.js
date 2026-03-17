@@ -37,6 +37,8 @@
     return;
   }
 
+  const api = window.NextBotWebUIApi;
+
   let loading = false;
   let hasLoaded = false;
 
@@ -128,14 +130,6 @@
     renderConnectedBotIds(data.connected_bot_ids);
   };
 
-  const parseJsonSafe = async (response) => {
-    try {
-      return await response.json();
-    } catch (_error) {
-      return null;
-    }
-  };
-
   const loadDashboardData = async () => {
     if (loading) {
       return;
@@ -145,20 +139,15 @@
     setStatus("");
 
     try {
-      const response = await fetch("/webui/api/dashboard", {
+      const payload = await api.apiRequest("/webui/api/dashboard", {
         method: "GET",
         headers: {
           Accept: "application/json",
         },
+        errorPrefix: "加载失败",
       });
 
-      const payload = await parseJsonSafe(response);
-      if (!response.ok || !payload || payload.ok !== true || !payload.data) {
-        const fallbackMessage = `加载失败，HTTP ${response.status}`;
-        throw new Error(payload?.message || fallbackMessage);
-      }
-
-      renderMetrics(payload.data);
+      renderMetrics(api.unwrapData(payload));
       hasLoaded = true;
       setStatus("");
     } catch (error) {

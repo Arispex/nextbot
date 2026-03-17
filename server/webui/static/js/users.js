@@ -34,39 +34,40 @@
 
   const requiredNodesReady = Boolean(
     reloadButton &&
-    addUserButton &&
-    searchInput &&
-    statusNode &&
-    statusMessageNode &&
-    loadingNode &&
-    emptyNode &&
-    tableWrapNode &&
-    tableBodyNode &&
-    modalNode &&
-    modalTitleNode &&
-    modalAlertNode &&
-    modalAlertMessageNode &&
-    modalCloseButton &&
-    modalCancelButton &&
-    modalSaveButton &&
-    deleteModalNode &&
-    deleteModalTextNode &&
-    deleteModalAlertNode &&
-    deleteModalAlertMessageNode &&
-    deleteModalCloseButton &&
-    deleteModalCancelButton &&
-    deleteModalConfirmButton &&
-    fieldUserId &&
-    fieldName &&
-    fieldCoins &&
-    fieldGroup &&
-    fieldPermissions &&
-    permissionPreviewNode
+      addUserButton &&
+      searchInput &&
+      statusNode &&
+      statusMessageNode &&
+      loadingNode &&
+      emptyNode &&
+      tableWrapNode &&
+      tableBodyNode &&
+      modalNode &&
+      modalTitleNode &&
+      modalAlertNode &&
+      modalAlertMessageNode &&
+      modalCloseButton &&
+      modalCancelButton &&
+      modalSaveButton &&
+      deleteModalNode &&
+      deleteModalTextNode &&
+      deleteModalAlertNode &&
+      deleteModalAlertMessageNode &&
+      deleteModalCloseButton &&
+      deleteModalCancelButton &&
+      deleteModalConfirmButton &&
+      fieldUserId &&
+      fieldName &&
+      fieldCoins &&
+      fieldGroup &&
+      fieldPermissions &&
+      permissionPreviewNode
   );
   if (!requiredNodesReady) {
     return;
   }
 
+  const api = window.NextBotWebUIApi;
   const USER_ID_PATTERN = /^\d{5,20}$/;
   const USER_NAME_PATTERN = /^[A-Za-z0-9\u4e00-\u9fff]+$/u;
   const MAX_USER_NAME_LENGTH = 16;
@@ -121,21 +122,6 @@
       : "info";
     deleteModalAlertNode.className = `alert ${normalizedType} modal-alert`;
     deleteModalAlertMessageNode.textContent = text;
-  };
-
-  const parseJsonSafe = async (response) => {
-    try {
-      return await response.json();
-    } catch (_error) {
-      return null;
-    }
-  };
-
-  const readErrorMessage = (payload, fallback) => {
-    if (payload && typeof payload.message === "string" && payload.message.trim()) {
-      return payload.message.trim();
-    }
-    return fallback;
   };
 
   const normalizePermissionsText = (raw) => {
@@ -352,25 +338,20 @@
     emptyNode.classList.add("hidden");
 
     try {
-      const response = await fetch("/webui/api/users", {
+      const payload = await api.apiRequest("/webui/api/users", {
         method: "GET",
         headers: { Accept: "application/json" },
+        errorPrefix: "加载失败",
       });
-      const payload = await parseJsonSafe(response);
-      if (!response.ok) {
-        throw new Error(readErrorMessage(payload, `加载失败，HTTP ${response.status}`));
-      }
-      if (
-        !payload ||
-        payload.ok !== true ||
-        !Array.isArray(payload.users) ||
-        !Array.isArray(payload.groups)
-      ) {
+      const users = api.unwrapData(payload);
+      const meta = api.unwrapMeta(payload);
+      const groups = Array.isArray(meta.groups) ? meta.groups : [];
+      if (!Array.isArray(users)) {
         throw new Error("加载失败，返回数据格式错误");
       }
 
-      userStates = payload.users.map(normalizeUser);
-      groupOptions = [...new Set(payload.groups.map((item) => String(item || "").trim()).filter(Boolean))]
+      userStates = users.map(normalizeUser);
+      groupOptions = [...new Set(groups.map((item) => String(item || "").trim()).filter(Boolean))]
         .sort((a, b) => a.localeCompare(b));
       ensureGroupOptions();
 
@@ -527,18 +508,15 @@
       const url = isEdit ? `/webui/api/users/${editingUserDbId}` : "/webui/api/users";
       const method = isEdit ? "PUT" : "POST";
 
-      const response = await fetch(url, {
+      await api.apiRequest(url, {
         method,
         headers: {
           "Content-Type": "application/json",
           Accept: "application/json",
         },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ data: payload }),
+        errorPrefix: isEdit ? "更新失败" : "创建失败",
       });
-      const result = await parseJsonSafe(response);
-      if (!response.ok || !result || result.ok !== true) {
-        throw new Error(readErrorMessage(result, isEdit ? "更新失败" : "创建失败"));
-      }
 
       modalNode.classList.add("hidden");
       const reloaded = await loadUsers({ clearStatus: false });
@@ -565,14 +543,12 @@
 
     setStatus(`正在删除用户 #${targetUser.id}...`, "warning");
     try {
-      const response = await fetch(`/webui/api/users/${targetUser.id}`, {
+      const payload = await api.apiRequest(`/webui/api/users/${targetUser.id}`, {
         method: "DELETE",
         headers: { Accept: "application/json" },
+        errorPrefix: "删除失败",
       });
-      const result = await parseJsonSafe(response);
-      if (!response.ok || !result || result.ok !== true) {
-        throw new Error(readErrorMessage(result, "删除失败"));
-      }
+      api.unwrapData(payload);
       syncResultMap.delete(targetUser.id);
       closeDeleteModal(true);
       const reloaded = await loadUsers({ clearStatus: false });
@@ -599,23 +575,21 @@
     setStatus(`正在同步用户 ${user.name} 的白名单...`, "warning");
 
     try {
-      const response = await fetch(`/webui/api/users/${user.id}/sync-whitelist`, {
+      const payload = await api.apiRequest(`/webui/api/users/${user.id}/sync-whitelist`, {
         method: "POST",
         headers: { Accept: "application/json" },
+        errorPrefix: "同步失败",
       });
-      const result = await parseJsonSafe(response);
-      if (!response.ok || !result || result.ok !== true || !result.data) {
-        throw new Error(readErrorMessage(result, "同步失败"));
-      }
+      const result = api.unwrapData(payload);
 
-      const userName = String(result.data.name || user.name);
-      const syncResults = Array.isArray(result.data.results) ? result.data.results : [];
+      const userName = String(result.name || user.name);
+      const syncResults = Array.isArray(result.results) ? result.results : [];
       const lines = [`用户 ${userName} 白名单同步结果：`];
       let successCount = 0;
       let failedCount = 0;
 
       if (!syncResults.length) {
-        lines.push(String(result.data.message || "同步失败，暂无可同步的服务器"));
+        lines.push(String(result.message || "同步失败，暂无可同步的服务器"));
       } else {
         for (const item of syncResults) {
           const serverId = String(item?.server_id ?? "?");

@@ -11,6 +11,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from nonebot.log import logger
 
 from server.pages.console_page import render_settings_page
+from server.routes import api_error, api_success, read_json_data
 from server.settings_service import (
     SettingsValidationError,
     get_settings_metadata,
@@ -57,66 +58,53 @@ async def webui_settings_page() -> HTMLResponse:
 
 @router.get("/webui/api/settings")
 async def webui_settings_get() -> JSONResponse:
-    return JSONResponse(
-        content={
-            "ok": True,
-            "data": get_settings_snapshot(),
-            "meta": get_settings_metadata(),
-        }
+    return api_success(
+        data=get_settings_snapshot(),
+        meta=get_settings_metadata(),
     )
 
 
 @router.put("/webui/api/settings")
 async def webui_settings_put(request: Request) -> JSONResponse:
-    try:
-        payload: Any = await request.json()
-    except Exception:
-        return JSONResponse(
-            status_code=400,
-            content={"ok": False, "message": "保存失败，请求体必须是 JSON"},
-        )
+    data, error_response = await read_json_data(request, action="保存")
+    if error_response is not None:
+        return error_response
 
-    if not isinstance(payload, dict):
-        return JSONResponse(
-            status_code=400,
-            content={"ok": False, "message": "保存失败，请求体必须是对象"},
-        )
-
-    data = payload.get("data")
-    if data is None:
-        data = payload
-    if not isinstance(data, dict):
-        return JSONResponse(
-            status_code=400,
-            content={"ok": False, "message": "保存失败，data 必须是对象"},
-        )
+    assert data is not None
 
     try:
         result = save_settings(data)
     except SettingsValidationError as exc:
-        content: dict[str, Any] = {"ok": False, "message": f"保存失败，{exc}"}
+        logger.warning(f"保存 Web UI 设置失败：field={exc.field or ''}，reason={exc}")
+        details: list[dict[str, Any]] | None = None
         if exc.field:
-            content["field"] = exc.field
-        return JSONResponse(status_code=422, content=content)
+            details = [{"field": exc.field, "message": str(exc)}]
+        return api_error(
+            status_code=422,
+            code="validation_error",
+            message=f"保存失败，{exc}",
+            details=details,
+        )
     except Exception as exc:
-        return JSONResponse(
+        logger.exception(f"保存 Web UI 设置异常：reason={exc}")
+        return api_error(
             status_code=500,
-            content={"ok": False, "message": f"保存失败，{exc}"},
+            code="internal_error",
+            message=f"保存失败，{exc}",
         )
 
     if not _schedule_process_restart():
-        return JSONResponse(
+        logger.warning("保存 Web UI 设置失败：reason=重启已在进行中")
+        return api_error(
             status_code=409,
-            content={
-                "ok": False,
-                "message": "重启失败，重启已在进行中，请稍后刷新页面",
-                "restart_scheduled": True,
-            },
+            code="conflict",
+            message="重启失败，重启已在进行中，请稍后刷新页面",
+            details=[{"field": "restart", "message": "重启已在进行中"}],
         )
 
-    return JSONResponse(
-        content={
-            "ok": True,
+    logger.info(f"保存 Web UI 设置成功：saved_fields={','.join(result.saved_fields)}")
+    return api_success(
+        data={
             "message": "保存成功，正在重启程序",
             "restart_scheduled": True,
             "saved_fields": result.saved_fields,

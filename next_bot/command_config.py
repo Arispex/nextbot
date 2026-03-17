@@ -485,6 +485,22 @@ def raise_command_usage() -> NoReturn:
     raise CommandUsageError
 
 
+def _serialize_runtime_state(item: RuntimeCommandState) -> dict[str, Any]:
+    return {
+        "command_key": item.command_key,
+        "display_name": item.display_name,
+        "description": item.description,
+        "usage": item.usage,
+        "module_path": item.module_path,
+        "handler_name": item.handler_name,
+        "permission": item.permission,
+        "enabled": item.enabled,
+        "param_schema": _clone_dict(item.param_schema),
+        "param_values": _clone_dict(item.param_values),
+        "is_registered": item.is_registered,
+    }
+
+
 def list_command_configs() -> list[dict[str, Any]]:
     _ensure_runtime_cache_loaded()
     with _registry_lock:
@@ -494,151 +510,112 @@ def list_command_configs() -> list[dict[str, Any]]:
             if _runtime_cache[key].is_registered
         ]
 
-    return [
-        {
-            "command_key": item.command_key,
-            "display_name": item.display_name,
-            "description": item.description,
-            "usage": item.usage,
-            "module_path": item.module_path,
-            "handler_name": item.handler_name,
-            "permission": item.permission,
-            "enabled": item.enabled,
-            "param_schema": _clone_dict(item.param_schema),
-            "param_values": _clone_dict(item.param_values),
-            "is_registered": item.is_registered,
-        }
-        for item in commands
-    ]
+    return [_serialize_runtime_state(item) for item in commands]
 
 
-def apply_command_batch_updates(payload: list[dict[str, Any]]) -> None:
-    if not isinstance(payload, list):
-        raise CommandConfigValidationError("commands 必须是数组")
 
-    normalized_updates: list[tuple[str, bool | None, dict[str, Any] | None]] = []
-    errors: list[dict[str, Any]] = []
+def get_command_config(command_key: str) -> dict[str, Any]:
+    normalized_key = str(command_key).strip()
+    if not normalized_key:
+        raise CommandConfigValidationError("command_key 不能为空")
 
-    for index, item in enumerate(payload):
-        if not isinstance(item, dict):
-            errors.append({"index": index, "message": "每个命令项必须是对象"})
-            continue
+    state = _get_runtime_state(normalized_key)
+    if not state.is_registered:
+        raise CommandConfigValidationError(
+            "命令不存在",
+            errors=[{"field": "command_key", "message": "命令不存在"}],
+        )
+    return _serialize_runtime_state(state)
 
-        command_key = str(item.get("command_key", "")).strip()
-        if not command_key:
-            errors.append({"index": index, "message": "command_key 不能为空"})
-            continue
 
-        enabled: bool | None = None
-        if "enabled" in item:
-            try:
-                enabled = _coerce_enabled(item.get("enabled"))
-            except CommandConfigValidationError as exc:
-                errors.append(
-                    {
-                        "index": index,
-                        "command_key": command_key,
-                        "field": "enabled",
-                        "message": str(exc),
-                    }
-                )
 
-        params: dict[str, Any] | None = None
-        if "params" in item:
-            raw_params = item.get("params")
-            if not isinstance(raw_params, dict):
-                errors.append(
-                    {
-                        "index": index,
-                        "command_key": command_key,
-                        "field": "params",
-                        "message": "params 必须是对象",
-                    }
-                )
-            else:
-                params = raw_params
+def update_command_config(
+    command_key: str,
+    *,
+    enabled: Any = None,
+    param_values: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    normalized_key = str(command_key).strip()
+    if not normalized_key:
+        raise CommandConfigValidationError("command_key 不能为空")
 
-        normalized_updates.append((command_key, enabled, params))
+    normalized_enabled: bool | None = None
+    if enabled is not None:
+        try:
+            normalized_enabled = _coerce_enabled(enabled)
+        except CommandConfigValidationError as exc:
+            raise CommandConfigValidationError(
+                "参数校验失败",
+                errors=[{"field": "enabled", "message": str(exc)}],
+            ) from exc
 
-    if errors:
-        raise CommandConfigValidationError("参数校验失败", errors=errors)
-
-    update_map: dict[str, tuple[bool | None, dict[str, Any] | None]] = {}
-    for command_key, enabled, params in normalized_updates:
-        update_map[command_key] = (enabled, params)
+    normalized_params: dict[str, Any] | None = None
+    if param_values is not None:
+        if not isinstance(param_values, dict):
+            raise CommandConfigValidationError(
+                "参数校验失败",
+                errors=[{"field": "param_values", "message": "param_values 必须是对象"}],
+            )
+        normalized_params = param_values
 
     session = get_session()
     now = db_now_utc_naive()
+    errors: list[dict[str, Any]] = []
     try:
-        rows = (
+        row = (
             session.query(CommandConfig)
-            .filter(CommandConfig.command_key.in_(list(update_map.keys())))
-            .all()
+            .filter(CommandConfig.command_key == normalized_key)
+            .first()
         )
-        row_by_key = {row.command_key: row for row in rows}
-
-        for command_key in update_map:
-            if command_key not in row_by_key:
-                errors.append(
-                    {
-                        "command_key": command_key,
-                        "message": "命令不存在",
-                    }
-                )
-
-        for command_key, (enabled, params_patch) in update_map.items():
-            row = row_by_key.get(command_key)
-            if row is None:
-                continue
-            if not row.is_registered:
-                errors.append(
-                    {
-                        "command_key": command_key,
-                        "message": "命令已下线，无法编辑",
-                    }
-                )
-                continue
-            schema = _normalize_param_schema(_parse_json_object(row.param_schema_json))
-            current_values = _merge_param_values(
-                schema=schema,
-                old_values=_parse_json_object(row.param_values_json),
+        if row is None:
+            raise CommandConfigValidationError(
+                "保存失败",
+                errors=[{"field": "command_key", "message": "命令不存在"}],
+            )
+        if not row.is_registered:
+            raise CommandConfigValidationError(
+                "保存失败",
+                errors=[{"field": "command_key", "message": "命令已下线，无法编辑"}],
             )
 
-            if params_patch is not None:
-                for raw_name, raw_value in params_patch.items():
-                    name = str(raw_name).strip()
-                    if name not in schema:
-                        errors.append(
-                            {
-                                "command_key": command_key,
-                                "field": f"params.{name}",
-                                "message": "参数未定义",
-                            }
-                        )
-                        continue
-                    try:
-                        current_values[name] = _validate_by_schema(
-                            schema[name],
-                            raw_value,
-                            param_name=name,
-                        )
-                    except CommandConfigValidationError as exc:
-                        errors.append(
-                            {
-                                "command_key": command_key,
-                                "field": f"params.{name}",
-                                "message": str(exc),
-                            }
-                        )
+        schema = _normalize_param_schema(_parse_json_object(row.param_schema_json))
+        current_values = _merge_param_values(
+            schema=schema,
+            old_values=_parse_json_object(row.param_values_json),
+        )
 
-            if enabled is not None:
-                row.enabled = enabled
-            row.param_values_json = _json_dumps(current_values)
-            row.updated_at = now
+        if normalized_params is not None:
+            for raw_name, raw_value in normalized_params.items():
+                name = str(raw_name).strip()
+                if name not in schema:
+                    errors.append(
+                        {
+                            "field": f"param_values.{name}",
+                            "message": "参数未定义",
+                        }
+                    )
+                    continue
+                try:
+                    current_values[name] = _validate_by_schema(
+                        schema[name],
+                        raw_value,
+                        param_name=name,
+                    )
+                except CommandConfigValidationError as exc:
+                    errors.append(
+                        {
+                            "field": f"param_values.{name}",
+                            "message": str(exc),
+                        }
+                    )
 
         if errors:
             raise CommandConfigValidationError("保存失败", errors=errors)
 
+        if normalized_enabled is not None:
+            row.enabled = normalized_enabled
+        row.param_values_json = _json_dumps(current_values)
+        row.updated_at = now
         session.commit()
     except CommandConfigValidationError:
         session.rollback()
@@ -647,6 +624,7 @@ def apply_command_batch_updates(payload: list[dict[str, Any]]) -> None:
         session.close()
 
     refresh_runtime_cache()
+    return get_command_config(normalized_key)
 
 
 def sync_registered_commands_to_db() -> None:

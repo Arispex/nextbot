@@ -41,6 +41,8 @@
     return;
   }
 
+  const api = window.NextBotWebUIApi;
+
   const QQ_ID_PATTERN = /^\d{5,20}$/;
   const FIELD_LABELS = {
     onebot_ws_urls: "OneBot WebSocket 地址",
@@ -86,21 +88,6 @@
       : "info";
     statusNode.className = `alert ${normalizedType}`;
     statusMessageNode.textContent = text;
-  };
-
-  const parseJsonSafe = async (response) => {
-    try {
-      return await response.json();
-    } catch (_error) {
-      return null;
-    }
-  };
-
-  const readErrorMessage = (payload, fallback) => {
-    if (payload && typeof payload.message === "string" && payload.message.trim()) {
-      return payload.message.trim();
-    }
-    return fallback;
   };
 
   const setTokenButtonIcon = (visible) => {
@@ -297,15 +284,12 @@
   const loadSettings = async () => {
     setStatus("");
     try {
-      const response = await fetch("/webui/api/settings", {
+      const payload = await api.apiRequest("/webui/api/settings", {
         method: "GET",
         headers: { Accept: "application/json" },
+        errorPrefix: "加载失败",
       });
-      const payload = await parseJsonSafe(response);
-      if (!response.ok || !payload || payload.ok !== true || !payload.data) {
-        throw new Error(readErrorMessage(payload, `加载失败，HTTP ${response.status}`));
-      }
-      fillForm(payload.data);
+      fillForm(api.unwrapData(payload));
       setStatus("");
     } catch (error) {
       const message = error instanceof Error ? error.message : "加载失败";
@@ -326,20 +310,18 @@
     saveButton.disabled = true;
     setStatus("正在保存并重启...", "warning");
     try {
-      const response = await fetch("/webui/api/settings", {
+      const payload = await api.apiRequest("/webui/api/settings", {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
           Accept: "application/json",
         },
         body: JSON.stringify({ data }),
+        errorPrefix: "保存失败",
       });
-      const payload = await parseJsonSafe(response);
-      if (!response.ok || !payload || payload.ok !== true) {
-        throw new Error(readErrorMessage(payload, "保存失败"));
-      }
 
-      setStatus("保存成功，正在重启程序", "success");
+      const result = api.unwrapData(payload);
+      setStatus(String(result.message || "保存成功，正在重启程序"), "success");
       setTimeout(() => {
         window.location.reload();
       }, 3000);
