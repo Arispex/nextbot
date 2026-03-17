@@ -294,8 +294,8 @@ async def webui_users_create(request: Request) -> JSONResponse:
         session.close()
 
 
-@router.patch("/webui/api/users/{id}")
-async def webui_users_update(id: int, request: Request) -> JSONResponse:
+@router.patch("/webui/api/users/{user_id}")
+async def webui_users_update(user_id: int, request: Request) -> JSONResponse:
     data, error_response = await read_json_data(request)
     if error_response is not None:
         return error_response
@@ -308,9 +308,9 @@ async def webui_users_update(id: int, request: Request) -> JSONResponse:
 
     session = get_session()
     try:
-        user = session.query(User).filter(User.id == id).first()
+        user = session.query(User).filter(User.id == user_id).first()
         if user is None:
-            logger.warning(f"更新用户失败：id={id}，reason=用户不存在")
+            logger.warning(f"更新用户失败：user_id={user_id}，reason=用户不存在")
             return api_error(
                 status_code=404,
                 code="not_found",
@@ -319,7 +319,7 @@ async def webui_users_update(id: int, request: Request) -> JSONResponse:
 
         if (
             session.query(User)
-            .filter(User.user_id == validated.user_id, User.id != id)
+            .filter(User.user_id == validated.user_id, User.id != user_id)
             .first()
             is not None
         ):
@@ -332,7 +332,7 @@ async def webui_users_update(id: int, request: Request) -> JSONResponse:
 
         if (
             session.query(User)
-            .filter(User.name == validated.name, User.id != id)
+            .filter(User.name == validated.name, User.id != user_id)
             .first()
             is not None
         ):
@@ -357,11 +357,11 @@ async def webui_users_update(id: int, request: Request) -> JSONResponse:
         user.permissions = validated.permissions
         user.group = validated.group
         session.commit()
-        logger.info(f"更新用户成功：id={id}，user_id={user.user_id}")
+        logger.info(f"更新用户成功：user_id={user_id}，account_id={user.user_id}")
         return api_success(data=_serialize_user(user))
     except Exception as exc:
         session.rollback()
-        logger.exception(f"更新用户异常：id={id}，reason={exc}")
+        logger.exception(f"更新用户异常：user_id={user_id}，reason={exc}")
         return api_error(
             status_code=500,
             code="internal_error",
@@ -371,13 +371,13 @@ async def webui_users_update(id: int, request: Request) -> JSONResponse:
         session.close()
 
 
-@router.delete("/webui/api/users/{id}")
-async def webui_users_delete(id: int) -> JSONResponse:
+@router.delete("/webui/api/users/{user_id}")
+async def webui_users_delete(user_id: int) -> JSONResponse:
     session = get_session()
     try:
-        user = session.query(User).filter(User.id == id).first()
+        user = session.query(User).filter(User.id == user_id).first()
         if user is None:
-            logger.warning(f"删除用户失败：id={id}，reason=用户不存在")
+            logger.warning(f"删除用户失败：user_id={user_id}，reason=用户不存在")
             return api_error(
                 status_code=404,
                 code="not_found",
@@ -388,11 +388,11 @@ async def webui_users_delete(id: int) -> JSONResponse:
         deleted_name = str(user.name)
         session.delete(user)
         session.commit()
-        logger.info(f"删除用户成功：id={id}，user_id={deleted_user_id}，name={deleted_name}")
+        logger.info(f"删除用户成功：user_id={user_id}，account_id={deleted_user_id}，name={deleted_name}")
         return JSONResponse(status_code=204, content=None)
     except Exception as exc:
         session.rollback()
-        logger.exception(f"删除用户异常：id={id}，reason={exc}")
+        logger.exception(f"删除用户异常：user_id={user_id}，reason={exc}")
         return api_error(
             status_code=500,
             code="internal_error",
@@ -402,13 +402,13 @@ async def webui_users_delete(id: int) -> JSONResponse:
         session.close()
 
 
-@router.post("/webui/api/users/{id}/sync-whitelist")
-async def webui_users_sync_whitelist(id: int) -> JSONResponse:
+@router.post("/webui/api/users/{user_id}/sync-whitelist")
+async def webui_users_sync_whitelist(user_id: int) -> JSONResponse:
     session = get_session()
     try:
-        user = session.query(User).filter(User.id == id).first()
+        user = session.query(User).filter(User.id == user_id).first()
     except Exception as exc:
-        logger.exception(f"同步用户白名单异常：id={id}，reason={exc}")
+        logger.exception(f"同步用户白名单异常：user_id={user_id}，reason={exc}")
         return api_error(
             status_code=500,
             code="internal_error",
@@ -418,7 +418,7 @@ async def webui_users_sync_whitelist(id: int) -> JSONResponse:
         session.close()
 
     if user is None:
-        logger.warning(f"同步用户白名单失败：id={id}，reason=用户不存在")
+        logger.warning(f"同步用户白名单失败：user_id={user_id}，reason=用户不存在")
         return api_error(
             status_code=404,
             code="not_found",
@@ -428,7 +428,7 @@ async def webui_users_sync_whitelist(id: int) -> JSONResponse:
     try:
         results = await _sync_user_whitelist(user)
     except Exception as exc:
-        logger.exception(f"同步用户白名单异常：id={id}，reason={exc}")
+        logger.exception(f"同步用户白名单异常：user_id={user_id}，reason={exc}")
         return api_error(
             status_code=500,
             code="internal_error",
@@ -436,9 +436,9 @@ async def webui_users_sync_whitelist(id: int) -> JSONResponse:
         )
 
     if not results:
-        logger.warning(f"同步用户白名单失败：id={id}，reason=暂无可同步的服务器")
+        logger.warning(f"同步用户白名单失败：user_id={user_id}，reason=暂无可同步的服务器")
     else:
-        logger.info(f"同步用户白名单完成：id={id}，server_count={len(results)}")
+        logger.info(f"同步用户白名单完成：user_id={user_id}，server_count={len(results)}")
 
     return api_success(
         data={
