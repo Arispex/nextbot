@@ -305,20 +305,11 @@
         expectedStatus: 200,
       });
       const groups = api.unwrapData(payload);
-      const meta = api.unwrapMeta(payload);
       if (!Array.isArray(groups)) {
         throw new Error("加载失败，返回数据格式错误");
       }
 
-      const builtinValues = Array.isArray(meta.builtin_groups)
-        ? meta.builtin_groups.map((item) => String(item || "").trim()).filter(Boolean)
-        : [];
-      builtinGroups = new Set(builtinValues.length ? builtinValues : DEFAULT_BUILTIN_GROUPS);
-
-      groupStates = groups.map(normalizeGroup).map((group) => ({
-        ...group,
-        builtin: group.builtin || builtinGroups.has(group.name),
-      }));
+      groupStates = groups.map(normalizeGroup);
 
       renderTable();
       return true;

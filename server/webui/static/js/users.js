@@ -338,21 +338,41 @@
     emptyNode.classList.add("hidden");
 
     try {
-      const payload = await api.apiRequest("/webui/api/users", {
-        method: "GET",
-        headers: { Accept: "application/json" },
-        action: "加载",
-        expectedStatus: 200,
-      });
-      const users = api.unwrapData(payload);
-      const meta = api.unwrapMeta(payload);
-      const groups = Array.isArray(meta.groups) ? meta.groups : [];
+      const [usersResult, groupsResult] = await Promise.allSettled([
+        api.apiRequest("/webui/api/users", {
+          method: "GET",
+          headers: { Accept: "application/json" },
+          action: "加载",
+          expectedStatus: 200,
+        }),
+        api.apiRequest("/webui/api/groups", {
+          method: "GET",
+          headers: { Accept: "application/json" },
+          action: "加载",
+          expectedStatus: 200,
+        }),
+      ]);
+
+      if (usersResult.status !== "fulfilled") {
+        throw usersResult.reason;
+      }
+
+      const users = api.unwrapData(usersResult.value);
       if (!Array.isArray(users)) {
         throw new Error("加载失败，返回数据格式错误");
       }
 
+      let groups = [];
+      if (groupsResult.status === "fulfilled") {
+        const groupsData = api.unwrapData(groupsResult.value);
+        if (!Array.isArray(groupsData)) {
+          throw new Error("加载失败，返回数据格式错误");
+        }
+        groups = groupsData;
+      }
+
       userStates = users.map(normalizeUser);
-      groupOptions = [...new Set(groups.map((item) => String(item || "").trim()).filter(Boolean))]
+      groupOptions = [...new Set(groups.map((item) => String(item?.name || "").trim()).filter(Boolean))]
         .sort((a, b) => a.localeCompare(b));
       ensureGroupOptions();
 

@@ -196,8 +196,7 @@ async def webui_groups_list() -> JSONResponse:
             data=[
                 _serialize_group(item, user_count_map=user_count_map)
                 for item in groups
-            ],
-            meta={"builtin_groups": list(_BUILTIN_GROUPS)},
+            ]
         )
     except Exception as exc:
         logger.exception(f"加载身份组列表失败：reason={exc}")

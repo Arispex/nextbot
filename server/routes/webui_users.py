@@ -213,11 +213,7 @@ async def webui_users_list() -> JSONResponse:
     session = get_session()
     try:
         users = session.query(User).order_by(User.id.asc()).all()
-        groups = session.query(Group).order_by(Group.name.asc()).all()
-        return api_success(
-            data=[_serialize_user(item) for item in users],
-            meta={"groups": [str(item.name) for item in groups]},
-        )
+        return api_success(data=[_serialize_user(item) for item in users])
     except Exception as exc:
         logger.exception(f"加载用户列表失败：reason={exc}")
         return api_error(
