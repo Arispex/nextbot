@@ -301,7 +301,8 @@
       const payload = await api.apiRequest("/webui/api/groups", {
         method: "GET",
         headers: { Accept: "application/json" },
-        errorPrefix: "加载失败",
+        action: "加载",
+        expectedStatus: 200,
       });
       const groups = api.unwrapData(payload);
       const meta = api.unwrapMeta(payload);
@@ -458,7 +459,8 @@
           Accept: "application/json",
         },
         body: JSON.stringify(isEdit ? { data: requestPayload } : requestPayload),
-        errorPrefix: isEdit ? "更新失败" : "创建失败",
+        action: isEdit ? "更新" : "创建",
+        expectedStatus: isEdit ? 200 : 201,
       });
 
       modalNode.classList.add("hidden");
@@ -489,7 +491,8 @@
       const payload = await api.apiRequest(`/webui/api/groups/${encodeURIComponent(targetGroup.name)}`, {
         method: "DELETE",
         headers: { Accept: "application/json" },
-        errorPrefix: "删除失败",
+        action: "删除",
+        expectedStatus: 200,
       });
       api.unwrapData(payload);
       closeDeleteModal(true);

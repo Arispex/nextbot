@@ -604,7 +604,8 @@
         headers: {
           Accept: "application/json",
         },
-        errorPrefix: "加载失败",
+        action: "加载",
+        expectedStatus: 200,
       });
       const commands = api.unwrapData(payload);
       if (!Array.isArray(commands)) {
@@ -642,7 +643,8 @@
         Accept: "application/json",
       },
       body: JSON.stringify({ data }),
-      errorPrefix: "保存失败",
+      action: "保存",
+      expectedStatus: 200,
     });
 
     const reloaded = await loadCommands({ clearStatus: false });

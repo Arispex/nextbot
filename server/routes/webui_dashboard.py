@@ -19,7 +19,7 @@ async def webui_dashboard_api() -> JSONResponse:
         return api_error(
             status_code=500,
             code="internal_error",
-            message=f"加载失败，{exc}",
+            message=str(exc),
         )
 
     return api_success(data=metrics)

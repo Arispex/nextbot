@@ -341,7 +341,8 @@
       const payload = await api.apiRequest("/webui/api/users", {
         method: "GET",
         headers: { Accept: "application/json" },
-        errorPrefix: "加载失败",
+        action: "加载",
+        expectedStatus: 200,
       });
       const users = api.unwrapData(payload);
       const meta = api.unwrapMeta(payload);
@@ -515,7 +516,8 @@
           Accept: "application/json",
         },
         body: JSON.stringify(isEdit ? { data: payload } : payload),
-        errorPrefix: isEdit ? "更新失败" : "创建失败",
+        action: isEdit ? "更新" : "创建",
+        expectedStatus: isEdit ? 200 : 201,
       });
 
       modalNode.classList.add("hidden");
@@ -546,7 +548,8 @@
       const payload = await api.apiRequest(`/webui/api/users/${targetUser.id}`, {
         method: "DELETE",
         headers: { Accept: "application/json" },
-        errorPrefix: "删除失败",
+        action: "删除",
+        expectedStatus: 200,
       });
       api.unwrapData(payload);
       syncResultMap.delete(targetUser.id);
@@ -578,7 +581,8 @@
       const payload = await api.apiRequest(`/webui/api/users/${user.id}/sync-whitelist`, {
         method: "POST",
         headers: { Accept: "application/json" },
-        errorPrefix: "同步失败",
+        action: "同步",
+        expectedStatus: 200,
       });
       const result = api.unwrapData(payload);
 
@@ -589,7 +593,7 @@
       let failedCount = 0;
 
       if (!syncResults.length) {
-        lines.push(String(result.message || "同步失败，暂无可同步的服务器"));
+        lines.push("同步失败，暂无可同步的服务器");
       } else {
         for (const item of syncResults) {
           const serverId = String(item?.server_id ?? "?");

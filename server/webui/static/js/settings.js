@@ -287,7 +287,8 @@
       const payload = await api.apiRequest("/webui/api/settings", {
         method: "GET",
         headers: { Accept: "application/json" },
-        errorPrefix: "加载失败",
+        action: "加载",
+        expectedStatus: 200,
       });
       fillForm(api.unwrapData(payload));
       setStatus("");
@@ -310,18 +311,18 @@
     saveButton.disabled = true;
     setStatus("正在保存并重启...", "warning");
     try {
-      const payload = await api.apiRequest("/webui/api/settings", {
+      await api.apiRequest("/webui/api/settings", {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
           Accept: "application/json",
         },
         body: JSON.stringify({ data }),
-        errorPrefix: "保存失败",
+        action: "保存",
+        expectedStatus: 200,
       });
 
-      const result = api.unwrapData(payload);
-      setStatus(String(result.message || "保存成功，正在重启程序"), "success");
+      setStatus("保存成功，正在重启程序", "success");
       setTimeout(() => {
         window.location.reload();
       }, 3000);

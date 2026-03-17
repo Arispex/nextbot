@@ -66,7 +66,7 @@ async def webui_settings_get() -> JSONResponse:
 
 @router.put("/webui/api/settings")
 async def webui_settings_put(request: Request) -> JSONResponse:
-    data, error_response = await read_json_data(request, action="保存")
+    data, error_response = await read_json_data(request)
     if error_response is not None:
         return error_response
 
@@ -82,7 +82,7 @@ async def webui_settings_put(request: Request) -> JSONResponse:
         return api_error(
             status_code=422,
             code="validation_error",
-            message=f"保存失败，{exc}",
+            message=str(exc),
             details=details,
         )
     except Exception as exc:
@@ -90,7 +90,7 @@ async def webui_settings_put(request: Request) -> JSONResponse:
         return api_error(
             status_code=500,
             code="internal_error",
-            message=f"保存失败，{exc}",
+            message=str(exc),
         )
 
     if not _schedule_process_restart():
@@ -98,14 +98,13 @@ async def webui_settings_put(request: Request) -> JSONResponse:
         return api_error(
             status_code=409,
             code="conflict",
-            message="重启失败，重启已在进行中，请稍后刷新页面",
+            message="重启已在进行中，请稍后刷新页面",
             details=[{"field": "restart", "message": "重启已在进行中"}],
         )
 
     logger.info(f"保存设置成功：saved_fields={','.join(result.saved_fields)}")
     return api_success(
         data={
-            "message": "保存成功，正在重启程序",
             "restart_scheduled": True,
             "saved_fields": result.saved_fields,
         }

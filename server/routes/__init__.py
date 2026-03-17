@@ -38,32 +38,28 @@ def api_error(
     return JSONResponse(status_code=status_code, content={"error": error})
 
 
-async def read_json_object(
-    request: Request, *, action: str
-) -> tuple[dict[str, Any] | None, JSONResponse | None]:
+async def read_json_object(request: Request) -> tuple[dict[str, Any] | None, JSONResponse | None]:
     try:
         payload: Any = await request.json()
     except (json.JSONDecodeError, UnicodeDecodeError):
         return None, api_error(
             status_code=400,
             code="invalid_json",
-            message=f"{action}失败，请求体必须是 JSON",
+            message="请求体必须是 JSON",
         )
 
     if not isinstance(payload, dict):
         return None, api_error(
             status_code=400,
             code="invalid_request_body",
-            message=f"{action}失败，请求体必须是对象",
+            message="请求体必须是对象",
         )
 
     return payload, None
 
 
-async def read_json_data(
-    request: Request, *, action: str
-) -> tuple[dict[str, Any] | None, JSONResponse | None]:
-    payload, error_response = await read_json_object(request, action=action)
+async def read_json_data(request: Request) -> tuple[dict[str, Any] | None, JSONResponse | None]:
+    payload, error_response = await read_json_object(request)
     if error_response is not None:
         return None, error_response
 
@@ -73,7 +69,7 @@ async def read_json_data(
         return None, api_error(
             status_code=400,
             code="invalid_request_body",
-            message=f"{action}失败，data 必须是对象",
+            message="data 必须是对象",
         )
 
     return data, None

@@ -31,14 +31,14 @@ async def webui_commands_api_list() -> JSONResponse:
         return api_error(
             status_code=500,
             code="internal_error",
-            message=f"加载失败，{exc}",
+            message=str(exc),
         )
     return api_success(data=commands)
 
 
 @router.patch("/webui/api/commands/{command_key}")
 async def webui_commands_api_update(command_key: str, request: Request) -> JSONResponse:
-    data, error_response = await read_json_data(request, action="保存")
+    data, error_response = await read_json_data(request)
     if error_response is not None:
         return error_response
 
@@ -54,7 +54,7 @@ async def webui_commands_api_update(command_key: str, request: Request) -> JSONR
         return api_error(
             status_code=400,
             code="invalid_request_body",
-            message="保存失败，至少需要提供 enabled 或 param_values",
+            message="至少需要提供 enabled 或 param_values",
         )
 
     try:
@@ -63,34 +63,33 @@ async def webui_commands_api_update(command_key: str, request: Request) -> JSONR
         details = exc.errors or []
         status_code = 422
         error_code = "validation_error"
+        message = str(exc)
         for item in details:
             field = str(item.get("field", "")).strip()
-            message = str(item.get("message", "")).strip()
-            if field == "command_key" and message == "命令不存在":
+            item_message = str(item.get("message", "")).strip()
+            if field == "command_key" and item_message == "命令不存在":
                 status_code = 404
                 error_code = "not_found"
+                message = item_message
                 break
-            if field == "command_key" and message == "命令已下线，无法编辑":
+            if field == "command_key" and item_message == "命令已下线，无法编辑":
                 status_code = 409
                 error_code = "conflict"
+                message = item_message
                 break
-        logger.warning(
-            f"保存命令配置失败：command_key={command_key}，reason={exc}"
-        )
+        logger.warning(f"保存命令配置失败：command_key={command_key}，reason={exc}")
         return api_error(
             status_code=status_code,
             code=error_code,
-            message=f"保存失败，{exc}",
+            message=message,
             details=details,
         )
     except Exception as exc:  # noqa: BLE001
-        logger.exception(
-            f"保存命令配置异常：command_key={command_key}，reason={exc}"
-        )
+        logger.exception(f"保存命令配置异常：command_key={command_key}，reason={exc}")
         return api_error(
             status_code=500,
             code="internal_error",
-            message=f"保存失败，{exc}",
+            message=str(exc),
         )
 
     logger.info(f"保存命令配置成功：command_key={command_key}")

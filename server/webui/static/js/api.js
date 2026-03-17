@@ -1,4 +1,15 @@
 (() => {
+  class ApiRequestError extends Error {
+    constructor(message, { status = 0, code = "", reason = "", details = [] } = {}) {
+      super(message);
+      this.name = "ApiRequestError";
+      this.status = status;
+      this.code = code;
+      this.reason = reason;
+      this.details = details;
+    }
+  }
+
   const parseJsonSafe = async (response) => {
     try {
       return await response.json();
@@ -7,49 +18,69 @@
     }
   };
 
-  const buildFallbackErrorMessage = (fallbackPrefix, status) => {
-    const prefix = String(fallbackPrefix || "请求失败").trim() || "请求失败";
-    return `${prefix}，HTTP ${status}`;
+  const buildFallbackReason = (status) => {
+    return `HTTP ${status}`;
   };
 
-  const readApiErrorMessage = (payload, fallback) => {
-    if (payload && typeof payload === "object") {
-      const error = payload.error;
-      if (error && typeof error === "object") {
-        const baseMessage = typeof error.message === "string" ? error.message.trim() : "";
-        const details = Array.isArray(error.details)
-          ? error.details
-              .map((item) => {
-                if (!item || typeof item !== "object") {
-                  return "";
-                }
-                const message = typeof item.message === "string" ? item.message.trim() : "";
-                return message;
-              })
-              .filter(Boolean)
-          : [];
-        if (baseMessage && details.length) {
-          return `${baseMessage}\n${details.join("\n")}`;
-        }
-        if (baseMessage) {
-          return baseMessage;
-        }
-        if (details.length) {
-          return details.join("\n");
-        }
-      }
+  const readApiError = (payload) => {
+    if (!payload || typeof payload !== "object") {
+      return {
+        code: "",
+        reason: "",
+        details: [],
+      };
     }
-    return fallback;
+
+    const error = payload.error;
+    if (!error || typeof error !== "object") {
+      return {
+        code: "",
+        reason: "",
+        details: [],
+      };
+    }
+
+    const reason = typeof error.message === "string" ? error.message.trim() : "";
+    const code = typeof error.code === "string" ? error.code.trim() : "";
+    const details = Array.isArray(error.details)
+      ? error.details.filter((item) => item && typeof item === "object")
+      : [];
+
+    return {
+      code,
+      reason,
+      details,
+    };
   };
 
-  const unwrapData = (payload) => {
+  const buildActionFailureMessage = (action, reason) => {
+    const normalizedAction = String(action || "操作").trim() || "操作";
+    const normalizedReason = String(reason || "").trim();
+    return normalizedReason ? `${normalizedAction}失败，${normalizedReason}` : `${normalizedAction}失败`;
+  };
+
+  const buildNetworkErrorMessage = (action, error) => {
+    const reason = error instanceof Error ? String(error.message || "").trim() : "";
+    return buildActionFailureMessage(action || "请求", reason);
+  };
+
+  const unwrapPayload = (result) => {
+    if (result && typeof result === "object" && "payload" in result) {
+      return result.payload;
+    }
+    return result;
+  };
+
+  const unwrapData = (result) => {
+    const payload = unwrapPayload(result);
     if (!payload || typeof payload !== "object" || !("data" in payload)) {
       throw new Error("返回数据格式错误");
     }
     return payload.data;
   };
 
-  const unwrapMeta = (payload) => {
+  const unwrapMeta = (result) => {
+    const payload = unwrapPayload(result);
     if (!payload || typeof payload !== "object") {
       return {};
     }
@@ -57,13 +88,17 @@
     return meta && typeof meta === "object" ? meta : {};
   };
 
-  const buildNetworkErrorMessage = (fallbackPrefix, error) => {
-    const prefix = String(fallbackPrefix || "请求失败").trim() || "请求失败";
-    const reason = error instanceof Error ? String(error.message || "").trim() : "";
-    return reason ? `${prefix}，${reason}` : prefix;
-  };
-
-  const apiRequest = async (url, { method = "GET", headers = {}, body, errorPrefix } = {}) => {
+  const apiRequest = async (
+    url,
+    {
+      method = "GET",
+      headers = {},
+      body,
+      action = "请求",
+      expectedStatus,
+      expectedStatuses,
+    } = {}
+  ) => {
     let response;
     try {
       response = await fetch(url, {
@@ -72,24 +107,54 @@
         body,
       });
     } catch (error) {
-      throw new Error(buildNetworkErrorMessage(errorPrefix, error));
+      throw new ApiRequestError(buildNetworkErrorMessage(action, error), {
+        reason: error instanceof Error ? String(error.message || "").trim() : "",
+      });
     }
+
     const payload = await parseJsonSafe(response);
+    const { code, reason, details } = readApiError(payload);
+
     if (!response.ok) {
-      throw new Error(
-        readApiErrorMessage(payload, buildFallbackErrorMessage(errorPrefix || "请求失败", response.status))
-      );
+      const finalReason = reason || buildFallbackReason(response.status);
+      throw new ApiRequestError(buildActionFailureMessage(action, finalReason), {
+        status: response.status,
+        code,
+        reason: finalReason,
+        details,
+      });
     }
-    return payload;
+
+    const allowedStatuses = Array.isArray(expectedStatuses)
+      ? expectedStatuses
+      : expectedStatus === undefined
+        ? []
+        : [expectedStatus];
+    if (allowedStatuses.length > 0 && !allowedStatuses.includes(response.status)) {
+      const finalReason = `HTTP ${response.status}`;
+      throw new ApiRequestError(buildActionFailureMessage(action, finalReason), {
+        status: response.status,
+        code: "unexpected_status",
+        reason: finalReason,
+        details: [],
+      });
+    }
+
+    return {
+      status: response.status,
+      payload,
+    };
   };
 
   window.NextBotWebUIApi = {
+    ApiRequestError,
     parseJsonSafe,
-    readApiErrorMessage,
+    readApiError,
     unwrapData,
     unwrapMeta,
     apiRequest,
-    buildFallbackErrorMessage,
+    buildActionFailureMessage,
+    buildFallbackReason,
     buildNetworkErrorMessage,
   };
 })();

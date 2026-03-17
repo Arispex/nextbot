@@ -176,12 +176,12 @@ def _remove_inherit(inherits: str, removed_name: str) -> str:
     return ",".join(sorted(set(values)))
 
 
-def _validation_error(action: str, exc: GroupPayloadValidationError) -> JSONResponse:
-    logger.warning(f"{action}身份组失败：field={exc.field or ''}，reason={exc}")
+def _validation_error(exc: GroupPayloadValidationError) -> JSONResponse:
+    logger.warning(f"参数校验失败：field={exc.field or ''}，reason={exc}")
     return api_error(
         status_code=422,
         code="validation_error",
-        message=f"{action}失败，{exc}",
+        message=str(exc),
         details=[{"field": exc.field, "message": str(exc)}] if exc.field else None,
     )
 
@@ -204,7 +204,7 @@ async def webui_groups_list() -> JSONResponse:
         return api_error(
             status_code=500,
             code="internal_error",
-            message=f"加载失败，{exc}",
+            message=str(exc),
         )
     finally:
         session.close()
@@ -212,7 +212,7 @@ async def webui_groups_list() -> JSONResponse:
 
 @router.post("/webui/api/groups")
 async def webui_groups_create(request: Request) -> JSONResponse:
-    data, error_response = await read_json_object(request, action="创建")
+    data, error_response = await read_json_object(request)
     if error_response is not None:
         return error_response
     assert data is not None
@@ -220,7 +220,7 @@ async def webui_groups_create(request: Request) -> JSONResponse:
     try:
         validated = _validate_create_payload(data)
     except GroupPayloadValidationError as exc:
-        return _validation_error("创建", exc)
+        return _validation_error(exc)
 
     session = get_session()
     try:
@@ -229,7 +229,7 @@ async def webui_groups_create(request: Request) -> JSONResponse:
             return api_error(
                 status_code=422,
                 code="validation_error",
-                message="创建失败，身份组已存在",
+                message="身份组已存在",
                 details=[{"field": "name", "message": "身份组已存在"}],
             )
 
@@ -256,14 +256,14 @@ async def webui_groups_create(request: Request) -> JSONResponse:
         )
     except GroupPayloadValidationError as exc:
         session.rollback()
-        return _validation_error("创建", exc)
+        return _validation_error(exc)
     except Exception as exc:
         session.rollback()
         logger.exception(f"创建身份组异常：name={validated.name}，reason={exc}")
         return api_error(
             status_code=500,
             code="internal_error",
-            message=f"创建失败，{exc}",
+            message=str(exc),
         )
     finally:
         session.close()
@@ -271,7 +271,7 @@ async def webui_groups_create(request: Request) -> JSONResponse:
 
 @router.put("/webui/api/groups/{group_name}")
 async def webui_groups_update(group_name: str, request: Request) -> JSONResponse:
-    data, error_response = await read_json_data(request, action="更新")
+    data, error_response = await read_json_data(request)
     if error_response is not None:
         return error_response
     assert data is not None
@@ -284,7 +284,7 @@ async def webui_groups_update(group_name: str, request: Request) -> JSONResponse
             return api_error(
                 status_code=404,
                 code="not_found",
-                message="更新失败，身份组不存在",
+                message="身份组不存在",
             )
 
         try:
@@ -294,7 +294,7 @@ async def webui_groups_update(group_name: str, request: Request) -> JSONResponse
                 target_name=group_name,
             )
         except GroupPayloadValidationError as exc:
-            return _validation_error("更新", exc)
+            return _validation_error(exc)
 
         _validate_inherits_targets(
             session,
@@ -311,14 +311,14 @@ async def webui_groups_update(group_name: str, request: Request) -> JSONResponse
         return api_success(data=_serialize_group(group, user_count_map=user_count_map))
     except GroupPayloadValidationError as exc:
         session.rollback()
-        return _validation_error("更新", exc)
+        return _validation_error(exc)
     except Exception as exc:
         session.rollback()
         logger.exception(f"更新身份组异常：name={group_name}，reason={exc}")
         return api_error(
             status_code=500,
             code="internal_error",
-            message=f"更新失败，{exc}",
+            message=str(exc),
         )
     finally:
         session.close()
@@ -331,7 +331,7 @@ async def webui_groups_delete(group_name: str) -> JSONResponse:
         return api_error(
             status_code=422,
             code="validation_error",
-            message="删除失败，系统内置身份组不可删除",
+            message="系统内置身份组不可删除",
             details=[{"field": "name", "message": "系统内置身份组不可删除"}],
         )
 
@@ -343,7 +343,7 @@ async def webui_groups_delete(group_name: str) -> JSONResponse:
             return api_error(
                 status_code=404,
                 code="not_found",
-                message="删除失败，身份组不存在",
+                message="身份组不存在",
             )
 
         session.delete(group)
@@ -360,14 +360,14 @@ async def webui_groups_delete(group_name: str) -> JSONResponse:
 
         session.commit()
         logger.info(f"删除身份组成功：name={group_name}")
-        return api_success(data={"message": "删除成功"})
+        return api_success(data={})
     except Exception as exc:
         session.rollback()
         logger.exception(f"删除身份组异常：name={group_name}，reason={exc}")
         return api_error(
             status_code=500,
             code="internal_error",
-            message=f"删除失败，{exc}",
+            message=str(exc),
         )
     finally:
         session.close()

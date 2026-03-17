@@ -144,7 +144,8 @@
         headers: {
           Accept: "application/json",
         },
-        errorPrefix: "加载失败",
+        action: "加载",
+        expectedStatus: 200,
       });
 
       renderMetrics(api.unwrapData(payload));

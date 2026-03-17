@@ -193,16 +193,16 @@
     if (result.status === "success") {
       badge.classList.add("success");
       badge.textContent = "连通成功";
-      if (result.message) {
-        badge.title = result.message;
+      if (result.reason) {
+        badge.title = result.reason;
       }
       return badge;
     }
 
     badge.classList.add("danger");
     badge.textContent = "连通失败";
-    if (result.message) {
-      badge.title = result.message;
+    if (result.reason) {
+      badge.title = result.reason;
     }
     return badge;
   };
@@ -350,7 +350,8 @@
       const payload = await api.apiRequest("/webui/api/servers", {
         method: "GET",
         headers: { Accept: "application/json" },
-        errorPrefix: "加载失败",
+        action: "加载",
+        expectedStatus: 200,
       });
       const servers = api.unwrapData(payload);
       if (!Array.isArray(servers)) {
@@ -517,7 +518,8 @@
           Accept: "application/json",
         },
         body: JSON.stringify(isEdit ? { data: payload } : payload),
-        errorPrefix: isEdit ? "更新失败" : "创建失败",
+        action: isEdit ? "更新" : "创建",
+        expectedStatus: isEdit ? 200 : 201,
       });
 
       closeModal(true);
@@ -548,7 +550,8 @@
       const payload = await api.apiRequest(`/webui/api/servers/${targetServer.id}`, {
         method: "DELETE",
         headers: { Accept: "application/json" },
-        errorPrefix: "删除失败",
+        action: "删除",
+        expectedStatus: 200,
       });
       api.unwrapData(payload);
 
@@ -570,7 +573,7 @@
   };
 
   const testServerConnectivity = async (serverId) => {
-    testResultMap.set(serverId, { status: "loading", message: "正在测试" });
+    testResultMap.set(serverId, { status: "loading", reason: "正在测试" });
     renderTable();
     setStatus(`正在测试服务器 #${serverId} 连通性...`, "warning");
 
@@ -578,14 +581,16 @@
       const payload = await api.apiRequest(`/webui/api/servers/${serverId}/test`, {
         method: "POST",
         headers: { Accept: "application/json" },
-        errorPrefix: "测试失败",
+        action: "测试",
+        expectedStatus: 200,
       });
       const result = api.unwrapData(payload);
       const reachable = Boolean(result.reachable);
-      const message = String(result.message || "");
+      const reason = String(result.reason || "");
+      const message = reachable ? "测试成功" : api.buildActionFailureMessage("测试", reason);
       testResultMap.set(serverId, {
         status: reachable ? "success" : "failed",
-        message,
+        reason,
       });
       setStatus(message, reachable ? "success" : "error");
       renderTable();
@@ -593,7 +598,7 @@
       const message = error instanceof Error ? error.message : "测试失败";
       testResultMap.set(serverId, {
         status: "failed",
-        message,
+        reason: message,
       });
       setStatus(message, "error");
       renderTable();

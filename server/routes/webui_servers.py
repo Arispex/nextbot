@@ -128,12 +128,12 @@ def _validate_server_payload(payload: dict[str, Any]) -> ValidatedServerPayload:
     )
 
 
-def _validation_error(action: str, exc: ServerPayloadValidationError) -> JSONResponse:
-    logger.warning(f"{action}服务器失败：field={exc.field or ''}，reason={exc}")
+def _validation_error(exc: ServerPayloadValidationError) -> JSONResponse:
+    logger.warning(f"参数校验失败：field={exc.field or ''}，reason={exc}")
     return api_error(
         status_code=422,
         code="validation_error",
-        message=f"{action}失败，{exc}",
+        message=str(exc),
         details=[{"field": exc.field, "message": str(exc)}] if exc.field else None,
     )
 
@@ -149,7 +149,7 @@ async def webui_servers_list() -> JSONResponse:
         return api_error(
             status_code=500,
             code="internal_error",
-            message=f"加载失败，{exc}",
+            message=str(exc),
         )
     finally:
         session.close()
@@ -157,7 +157,7 @@ async def webui_servers_list() -> JSONResponse:
 
 @router.post("/webui/api/servers")
 async def webui_servers_create(request: Request) -> JSONResponse:
-    data, error_response = await read_json_object(request, action="创建")
+    data, error_response = await read_json_object(request)
     if error_response is not None:
         return error_response
     assert data is not None
@@ -165,7 +165,7 @@ async def webui_servers_create(request: Request) -> JSONResponse:
     try:
         validated = _validate_server_payload(data)
     except ServerPayloadValidationError as exc:
-        return _validation_error("创建", exc)
+        return _validation_error(exc)
 
     session = get_session()
     try:
@@ -192,7 +192,7 @@ async def webui_servers_create(request: Request) -> JSONResponse:
         return api_error(
             status_code=500,
             code="internal_error",
-            message=f"创建失败，{exc}",
+            message=str(exc),
         )
     finally:
         session.close()
@@ -200,7 +200,7 @@ async def webui_servers_create(request: Request) -> JSONResponse:
 
 @router.put("/webui/api/servers/{server_id}")
 async def webui_servers_update(server_id: int, request: Request) -> JSONResponse:
-    data, error_response = await read_json_data(request, action="更新")
+    data, error_response = await read_json_data(request)
     if error_response is not None:
         return error_response
     assert data is not None
@@ -208,7 +208,7 @@ async def webui_servers_update(server_id: int, request: Request) -> JSONResponse
     try:
         validated = _validate_server_payload(data)
     except ServerPayloadValidationError as exc:
-        return _validation_error("更新", exc)
+        return _validation_error(exc)
 
     session = get_session()
     try:
@@ -218,7 +218,7 @@ async def webui_servers_update(server_id: int, request: Request) -> JSONResponse
             return api_error(
                 status_code=404,
                 code="not_found",
-                message="更新失败，服务器不存在",
+                message="服务器不存在",
             )
 
         server.name = validated.name
@@ -235,7 +235,7 @@ async def webui_servers_update(server_id: int, request: Request) -> JSONResponse
         return api_error(
             status_code=500,
             code="internal_error",
-            message=f"更新失败，{exc}",
+            message=str(exc),
         )
     finally:
         session.close()
@@ -251,7 +251,7 @@ async def webui_servers_delete(server_id: int) -> JSONResponse:
             return api_error(
                 status_code=404,
                 code="not_found",
-                message="删除失败，服务器不存在",
+                message="服务器不存在",
             )
 
         deleted_id = int(server.id)
@@ -264,14 +264,14 @@ async def webui_servers_delete(server_id: int) -> JSONResponse:
         )
         session.commit()
         logger.info(f"删除服务器成功：server_id={deleted_id}，name={deleted_name}")
-        return api_success(data={"message": "删除成功"})
+        return api_success(data={})
     except Exception as exc:
         session.rollback()
         logger.exception(f"删除服务器异常：server_id={server_id}，reason={exc}")
         return api_error(
             status_code=500,
             code="internal_error",
-            message=f"删除失败，{exc}",
+            message=str(exc),
         )
     finally:
         session.close()
@@ -287,7 +287,7 @@ async def webui_servers_test(server_id: int) -> JSONResponse:
         return api_error(
             status_code=500,
             code="internal_error",
-            message=f"测试失败，{exc}",
+            message=str(exc),
         )
     finally:
         session.close()
@@ -297,7 +297,7 @@ async def webui_servers_test(server_id: int) -> JSONResponse:
         return api_error(
             status_code=404,
             code="not_found",
-            message="测试失败，服务器不存在",
+            message="服务器不存在",
         )
 
     try:
@@ -307,7 +307,7 @@ async def webui_servers_test(server_id: int) -> JSONResponse:
         return api_success(
             data={
                 "reachable": False,
-                "message": "测试失败，无法连接服务器",
+                "reason": "无法连接服务器",
             }
         )
     except Exception as exc:
@@ -315,7 +315,7 @@ async def webui_servers_test(server_id: int) -> JSONResponse:
         return api_error(
             status_code=500,
             code="internal_error",
-            message=f"测试失败，{exc}",
+            message=str(exc),
         )
 
     if is_success(response):
@@ -323,7 +323,7 @@ async def webui_servers_test(server_id: int) -> JSONResponse:
         return api_success(
             data={
                 "reachable": True,
-                "message": "测试成功，一切正常",
+                "reason": "一切正常",
             }
         )
 
@@ -332,6 +332,6 @@ async def webui_servers_test(server_id: int) -> JSONResponse:
     return api_success(
         data={
             "reachable": False,
-            "message": f"测试失败，{reason}",
+            "reason": reason,
         }
     )
