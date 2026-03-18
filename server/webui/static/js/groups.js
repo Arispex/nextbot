@@ -86,7 +86,7 @@
   let deletingGroup = null;
   let deleteSaving = false;
   let currentPage = 1;
-  let currentPerPage = Number(perPageSelect.value || 20);
+  let currentPerPage = Number(perPageSelect.value || 10);
   let currentMeta = { total: 0, page: 1, per_page: currentPerPage, total_pages: 0 };
 
   const setStatus = (message, type = "") => {
@@ -546,7 +546,7 @@
   });
 
   perPageSelect.addEventListener("change", () => {
-    currentPerPage = Number(perPageSelect.value || 20);
+    currentPerPage = Number(perPageSelect.value || 10);
     currentPage = 1;
     void loadGroups();
   });
