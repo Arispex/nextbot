@@ -16,7 +16,13 @@ from next_bot.tshock_api import (
     is_success,
     request_server_api,
 )
-from server.routes import api_error, api_success, read_json_object
+from server.routes import (
+    api_error,
+    api_success,
+    build_pagination_slice,
+    read_json_object,
+    read_pagination_query,
+)
 
 router = APIRouter()
 
@@ -139,11 +145,41 @@ def _validation_error(exc: ServerPayloadValidationError) -> JSONResponse:
 
 
 @router.get("/webui/api/servers")
-async def webui_servers_list() -> JSONResponse:
+async def webui_servers_list(request: Request) -> JSONResponse:
+    pagination, error_response = read_pagination_query(request)
+    if error_response is not None:
+        return error_response
+    assert pagination is not None
+
+    keyword = str(request.query_params.get("q") or "").strip().lower()
+
     session = get_session()
     try:
         servers = session.query(Server).order_by(Server.id.asc()).all()
-        return api_success(data=[_serialize_server(item) for item in servers])
+        serialized = [_serialize_server(item) for item in servers]
+        if keyword:
+            serialized = [
+                item
+                for item in serialized
+                if keyword in " ".join(
+                    [
+                        str(item.get("id") or ""),
+                        str(item.get("name") or ""),
+                        str(item.get("ip") or ""),
+                        str(item.get("game_port") or ""),
+                        str(item.get("restapi_port") or ""),
+                    ]
+                ).lower()
+            ]
+        meta, offset, limit = build_pagination_slice(
+            total=len(serialized),
+            page=pagination["page"],
+            per_page=pagination["per_page"],
+        )
+        return api_success(
+            data=serialized[offset : offset + limit],
+            meta=meta,
+        )
     except Exception as exc:
         logger.exception(f"加载服务器列表失败：reason={exc}")
         return api_error(

@@ -9,6 +9,11 @@
   const emptyNode = document.getElementById("empty");
   const tableWrapNode = document.getElementById("table-wrap");
   const tableBodyNode = document.getElementById("group-table-body");
+  const paginationNode = document.getElementById("group-pagination");
+  const paginationInfoNode = document.getElementById("group-pagination-info");
+  const perPageSelect = document.getElementById("group-per-page");
+  const prevPageButton = document.getElementById("group-prev-btn");
+  const nextPageButton = document.getElementById("group-next-btn");
 
   const modalNode = document.getElementById("group-modal");
   const modalTitleNode = document.getElementById("group-modal-title");
@@ -41,6 +46,11 @@
       emptyNode &&
       tableWrapNode &&
       tableBodyNode &&
+      paginationNode &&
+      paginationInfoNode &&
+      perPageSelect &&
+      prevPageButton &&
+      nextPageButton &&
       modalNode &&
       modalTitleNode &&
       modalAlertNode &&
@@ -68,15 +78,16 @@
   const api = window.NextBotWebUIApi;
   const GROUP_NAME_PATTERN = /^[A-Za-z0-9\u4e00-\u9fff._-]{1,32}$/u;
   const ITEM_PATTERN = /^[^\s,]{1,256}$/u;
-  const DEFAULT_BUILTIN_GROUPS = ["guest", "default"];
 
   let groupStates = [];
-  let builtinGroups = new Set(DEFAULT_BUILTIN_GROUPS);
   let modalMode = "create";
   let editingGroupName = "";
   let modalSaving = false;
   let deletingGroup = null;
   let deleteSaving = false;
+  let currentPage = 1;
+  let currentPerPage = Number(perPageSelect.value || 20);
+  let currentMeta = { total: 0, page: 1, per_page: currentPerPage, total_pages: 0 };
 
   const setStatus = (message, type = "") => {
     const text = String(message || "").trim();
@@ -175,17 +186,6 @@
     builtin: Boolean(item?.builtin),
   });
 
-  const getFilteredGroups = () => {
-    const keyword = String(searchInput.value || "").trim().toLowerCase();
-    if (!keyword) {
-      return [...groupStates];
-    }
-    return groupStates.filter((group) => {
-      const text = [group.name, group.permissions, group.inherits].join(" ").toLowerCase();
-      return text.includes(keyword);
-    });
-  };
-
   const renderTypeBadge = (builtin) => {
     const badge = document.createElement("span");
     badge.className = `group-type-badge ${builtin ? "builtin" : "normal"}`;
@@ -193,30 +193,45 @@
     return badge;
   };
 
+  const updatePagination = () => {
+    const total = Number(currentMeta.total || 0);
+    const page = Number(currentMeta.page || 1);
+    const perPage = Number(currentMeta.per_page || currentPerPage);
+    const totalPages = Number(currentMeta.total_pages || 0);
+
+    perPageSelect.value = String(perPage);
+    if (total <= 0) {
+      paginationNode.classList.add("hidden");
+      paginationInfoNode.textContent = "";
+      prevPageButton.disabled = true;
+      nextPageButton.disabled = true;
+      return;
+    }
+
+    paginationNode.classList.remove("hidden");
+    const start = (page - 1) * perPage + 1;
+    const end = Math.min(total, start + Math.max(groupStates.length - 1, 0));
+    paginationInfoNode.textContent = `第 ${page} / ${Math.max(totalPages, 1)} 页，共 ${total} 条，当前显示 ${start}-${end}`;
+    prevPageButton.disabled = page <= 1;
+    nextPageButton.disabled = totalPages <= 0 || page >= totalPages;
+  };
+
   const renderTable = () => {
     tableBodyNode.innerHTML = "";
     loadingNode.classList.add("hidden");
 
-    const filteredGroups = getFilteredGroups().sort((a, b) => a.name.localeCompare(b.name));
-
     if (!groupStates.length) {
-      emptyNode.textContent = "暂无身份组数据。";
+      emptyNode.textContent = currentMeta.total > 0 ? "当前页暂无数据。" : "暂无身份组数据。";
       emptyNode.classList.remove("hidden");
       tableWrapNode.classList.add("hidden");
-      return;
-    }
-
-    if (!filteredGroups.length) {
-      emptyNode.textContent = "没有匹配的身份组。";
-      emptyNode.classList.remove("hidden");
-      tableWrapNode.classList.add("hidden");
+      updatePagination();
       return;
     }
 
     emptyNode.classList.add("hidden");
     tableWrapNode.classList.remove("hidden");
 
-    for (const group of filteredGroups) {
+    for (const group of groupStates) {
       const row = document.createElement("tr");
       row.dataset.groupName = group.name;
 
@@ -287,6 +302,8 @@
       row.appendChild(actionCell);
       tableBodyNode.appendChild(row);
     }
+
+    updatePagination();
   };
 
   const loadGroups = async ({ clearStatus = true } = {}) => {
@@ -296,19 +313,32 @@
     loadingNode.classList.remove("hidden");
     tableWrapNode.classList.add("hidden");
     emptyNode.classList.add("hidden");
+    paginationNode.classList.add("hidden");
 
     try {
-      const payload = await api.apiRequest("/webui/api/groups", {
-        method: "GET",
-        headers: { Accept: "application/json" },
-        action: "加载",
-        expectedStatus: 200,
-      });
+      const payload = await api.apiRequest(
+        `/webui/api/groups?page=${encodeURIComponent(String(currentPage))}&per_page=${encodeURIComponent(String(currentPerPage))}&q=${encodeURIComponent(String(searchInput.value || "").trim())}`,
+        {
+          method: "GET",
+          headers: { Accept: "application/json" },
+          action: "加载",
+          expectedStatus: 200,
+        }
+      );
       const groups = api.unwrapData(payload);
+      const meta = api.unwrapMeta(payload);
       if (!Array.isArray(groups)) {
         throw new Error("加载失败，返回数据格式错误");
       }
 
+      currentMeta = {
+        total: Number(meta.total || 0),
+        page: Number(meta.page || currentPage),
+        per_page: Number(meta.per_page || currentPerPage),
+        total_pages: Number(meta.total_pages || 0),
+      };
+      currentPage = currentMeta.page;
+      currentPerPage = currentMeta.per_page;
       groupStates = groups.map(normalizeGroup);
 
       renderTable();
@@ -320,6 +350,7 @@
       emptyNode.classList.remove("hidden");
       emptyNode.textContent = message;
       tableWrapNode.classList.add("hidden");
+      paginationNode.classList.add("hidden");
       return false;
     }
   };
@@ -501,6 +532,7 @@
   };
 
   reloadButton.addEventListener("click", () => {
+    currentPage = 1;
     void loadGroups();
   });
 
@@ -509,7 +541,30 @@
   });
 
   searchInput.addEventListener("input", () => {
-    renderTable();
+    currentPage = 1;
+    void loadGroups();
+  });
+
+  perPageSelect.addEventListener("change", () => {
+    currentPerPage = Number(perPageSelect.value || 20);
+    currentPage = 1;
+    void loadGroups();
+  });
+
+  prevPageButton.addEventListener("click", () => {
+    if (currentPage <= 1) {
+      return;
+    }
+    currentPage -= 1;
+    void loadGroups({ clearStatus: false });
+  });
+
+  nextPageButton.addEventListener("click", () => {
+    if (currentMeta.total_pages > 0 && currentPage >= currentMeta.total_pages) {
+      return;
+    }
+    currentPage += 1;
+    void loadGroups({ clearStatus: false });
   });
 
   fieldPermissions.addEventListener("input", updatePreview);

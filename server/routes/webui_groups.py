@@ -10,7 +10,13 @@ from nonebot.log import logger
 from sqlalchemy import func
 
 from next_bot.db import Group, User, get_session
-from server.routes import api_error, api_success, read_json_object
+from server.routes import (
+    api_error,
+    api_success,
+    build_pagination_slice,
+    read_json_object,
+    read_pagination_query,
+)
 
 router = APIRouter()
 
@@ -187,19 +193,62 @@ def _validation_error(exc: GroupPayloadValidationError) -> JSONResponse:
 
 
 @router.get("/webui/api/groups")
-async def webui_groups_list() -> JSONResponse:
+async def webui_groups_list(request: Request) -> JSONResponse:
+    pagination, error_response = read_pagination_query(request)
+    if error_response is not None:
+        return error_response
+    assert pagination is not None
+
+    keyword = str(request.query_params.get("q") or "").strip().lower()
+
     session = get_session()
     try:
         groups = session.query(Group).order_by(Group.name.asc()).all()
         user_count_map = _build_user_count_map(session)
-        return api_success(
-            data=[
-                _serialize_group(item, user_count_map=user_count_map)
-                for item in groups
+        serialized = [
+            _serialize_group(item, user_count_map=user_count_map)
+            for item in groups
+        ]
+        if keyword:
+            serialized = [
+                item
+                for item in serialized
+                if keyword in " ".join(
+                    [
+                        str(item.get("name") or ""),
+                        str(item.get("permissions") or ""),
+                        str(item.get("inherits") or ""),
+                    ]
+                ).lower()
             ]
+        meta, offset, limit = build_pagination_slice(
+            total=len(serialized),
+            page=pagination["page"],
+            per_page=pagination["per_page"],
+        )
+        return api_success(
+            data=serialized[offset : offset + limit],
+            meta=meta,
         )
     except Exception as exc:
         logger.exception(f"加载身份组列表失败：reason={exc}")
+        return api_error(
+            status_code=500,
+            code="internal_error",
+            message="内部错误",
+        )
+    finally:
+        session.close()
+
+
+@router.get("/webui/api/groups/options")
+async def webui_groups_options() -> JSONResponse:
+    session = get_session()
+    try:
+        groups = session.query(Group.name).order_by(Group.name.asc()).all()
+        return api_success(data=[str(item[0]) for item in groups if item[0] is not None])
+    except Exception as exc:
+        logger.exception(f"加载身份组选项失败：reason={exc}")
         return api_error(
             status_code=500,
             code="internal_error",

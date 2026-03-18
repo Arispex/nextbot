@@ -12,7 +12,13 @@ from next_bot.command_config import (
     update_command_config,
 )
 from server.pages.console_page import render_commands_page
-from server.routes import api_error, api_success, read_json_object
+from server.routes import (
+    api_error,
+    api_success,
+    build_pagination_slice,
+    read_json_object,
+    read_pagination_query,
+)
 
 router = APIRouter()
 
@@ -23,9 +29,36 @@ async def webui_commands_page() -> HTMLResponse:
 
 
 @router.get("/webui/api/commands")
-async def webui_commands_api_list() -> JSONResponse:
+async def webui_commands_api_list(request: Request) -> JSONResponse:
+    pagination, error_response = read_pagination_query(request)
+    if error_response is not None:
+        return error_response
+    assert pagination is not None
+
+    keyword = str(request.query_params.get("q") or "").strip().lower()
+
     try:
         commands = list_command_configs()
+        commands.sort(
+            key=lambda item: (
+                str(item.get("display_name") or "").lower(),
+                str(item.get("command_key") or "").lower(),
+            )
+        )
+        if keyword:
+            commands = [
+                item
+                for item in commands
+                if keyword in " ".join(
+                    [
+                        str(item.get("display_name") or ""),
+                        str(item.get("description") or ""),
+                        str(item.get("usage") or ""),
+                        str(item.get("permission") or ""),
+                        str(item.get("command_key") or ""),
+                    ]
+                ).lower()
+            ]
     except Exception as exc:  # noqa: BLE001
         logger.exception(f"加载命令配置失败：reason={exc}")
         return api_error(
@@ -33,7 +66,16 @@ async def webui_commands_api_list() -> JSONResponse:
             code="internal_error",
             message="内部错误",
         )
-    return api_success(data=commands)
+
+    meta, offset, limit = build_pagination_slice(
+        total=len(commands),
+        page=pagination["page"],
+        per_page=pagination["per_page"],
+    )
+    return api_success(
+        data=commands[offset : offset + limit],
+        meta=meta,
+    )
 
 
 @router.patch("/webui/api/commands/{command_key}")

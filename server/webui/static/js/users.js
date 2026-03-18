@@ -9,6 +9,11 @@
   const emptyNode = document.getElementById("empty");
   const tableWrapNode = document.getElementById("table-wrap");
   const tableBodyNode = document.getElementById("user-table-body");
+  const paginationNode = document.getElementById("user-pagination");
+  const paginationInfoNode = document.getElementById("user-pagination-info");
+  const perPageSelect = document.getElementById("user-per-page");
+  const prevPageButton = document.getElementById("user-prev-btn");
+  const nextPageButton = document.getElementById("user-next-btn");
 
   const modalNode = document.getElementById("user-modal");
   const modalTitleNode = document.getElementById("user-modal-title");
@@ -42,6 +47,11 @@
       emptyNode &&
       tableWrapNode &&
       tableBodyNode &&
+      paginationNode &&
+      paginationInfoNode &&
+      perPageSelect &&
+      prevPageButton &&
+      nextPageButton &&
       modalNode &&
       modalTitleNode &&
       modalAlertNode &&
@@ -74,11 +84,15 @@
 
   let userStates = [];
   let groupOptions = [];
+  let groupOptionsLoaded = false;
   let modalMode = "create";
   let editingUserDbId = null;
   let modalSaving = false;
   let deletingUser = null;
   let deleteSaving = false;
+  let currentPage = 1;
+  let currentPerPage = Number(perPageSelect.value || 20);
+  let currentMeta = { total: 0, page: 1, per_page: currentPerPage, total_pages: 0 };
 
   const syncResultMap = new Map();
 
@@ -171,9 +185,10 @@
   });
 
   const ensureGroupOptions = () => {
-    if (!groupOptions.length) {
-      groupOptions = ["guest", "default"];
-    }
+    const baseOptions = [...new Set([...groupOptions, "guest", "default"])]
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b));
+    groupOptions = baseOptions;
   };
 
   const renderGroupSelectOptions = (selectedGroup = "") => {
@@ -182,8 +197,8 @@
     const options = [...groupOptions];
     if (selectedGroup && !options.includes(selectedGroup)) {
       options.push(selectedGroup);
+      options.sort((a, b) => a.localeCompare(b));
     }
-    options.sort((a, b) => a.localeCompare(b));
 
     for (const group of options) {
       const option = document.createElement("option");
@@ -193,54 +208,73 @@
     }
     if (selectedGroup && options.includes(selectedGroup)) {
       fieldGroup.value = selectedGroup;
-    } else if (groupOptions.includes("default")) {
+    } else if (options.includes("default")) {
       fieldGroup.value = "default";
     } else if (options.length > 0) {
       fieldGroup.value = options[0];
     }
   };
 
-  const getFilteredUsers = () => {
-    const keyword = String(searchInput.value || "").trim().toLowerCase();
-    if (!keyword) {
-      return [...userStates];
+  const loadGroupOptions = async () => {
+    if (groupOptionsLoaded) {
+      return;
     }
-    return userStates.filter((user) => {
-      const text = [
-        String(user.id),
-        user.user_id,
-        user.name,
-        user.group,
-        user.permissions,
-      ].join(" ").toLowerCase();
-      return text.includes(keyword);
+
+    const payload = await api.apiRequest("/webui/api/groups/options", {
+      method: "GET",
+      headers: { Accept: "application/json" },
+      action: "加载",
+      expectedStatus: 200,
     });
+    const groups = api.unwrapData(payload);
+    if (!Array.isArray(groups)) {
+      throw new Error("加载失败，返回数据格式错误");
+    }
+    groupOptions = [...new Set(groups.map((item) => String(item || "").trim()).filter(Boolean))]
+      .sort((a, b) => a.localeCompare(b));
+    groupOptionsLoaded = true;
+    ensureGroupOptions();
+  };
+
+  const updatePagination = () => {
+    const total = Number(currentMeta.total || 0);
+    const page = Number(currentMeta.page || 1);
+    const perPage = Number(currentMeta.per_page || currentPerPage);
+    const totalPages = Number(currentMeta.total_pages || 0);
+
+    perPageSelect.value = String(perPage);
+    if (total <= 0) {
+      paginationNode.classList.add("hidden");
+      paginationInfoNode.textContent = "";
+      prevPageButton.disabled = true;
+      nextPageButton.disabled = true;
+      return;
+    }
+
+    paginationNode.classList.remove("hidden");
+    const start = (page - 1) * perPage + 1;
+    const end = Math.min(total, start + Math.max(userStates.length - 1, 0));
+    paginationInfoNode.textContent = `第 ${page} / ${Math.max(totalPages, 1)} 页，共 ${total} 条，当前显示 ${start}-${end}`;
+    prevPageButton.disabled = page <= 1;
+    nextPageButton.disabled = totalPages <= 0 || page >= totalPages;
   };
 
   const renderTable = () => {
     tableBodyNode.innerHTML = "";
     loadingNode.classList.add("hidden");
 
-    const filteredUsers = getFilteredUsers().sort((a, b) => a.id - b.id);
-
     if (!userStates.length) {
-      emptyNode.textContent = "暂无用户数据。";
+      emptyNode.textContent = currentMeta.total > 0 ? "当前页暂无数据。" : "暂无用户数据。";
       emptyNode.classList.remove("hidden");
       tableWrapNode.classList.add("hidden");
-      return;
-    }
-
-    if (!filteredUsers.length) {
-      emptyNode.textContent = "没有匹配的用户。";
-      emptyNode.classList.remove("hidden");
-      tableWrapNode.classList.add("hidden");
+      updatePagination();
       return;
     }
 
     emptyNode.classList.add("hidden");
     tableWrapNode.classList.remove("hidden");
 
-    for (const user of filteredUsers) {
+    for (const user of userStates) {
       const row = document.createElement("tr");
       row.dataset.userId = String(user.id);
 
@@ -287,8 +321,14 @@
       editButton.type = "button";
       editButton.className = "btn action-btn";
       editButton.textContent = "编辑";
-      editButton.addEventListener("click", () => {
-        openModal("edit", user);
+      editButton.addEventListener("click", async () => {
+        try {
+          await loadGroupOptions();
+          openModal("edit", user);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "加载失败";
+          setStatus(message, "error");
+        }
       });
 
       const syncButton = document.createElement("button");
@@ -327,6 +367,8 @@
       row.appendChild(actionCell);
       tableBodyNode.appendChild(row);
     }
+
+    updatePagination();
   };
 
   const loadUsers = async ({ clearStatus = true } = {}) => {
@@ -336,45 +378,34 @@
     loadingNode.classList.remove("hidden");
     tableWrapNode.classList.add("hidden");
     emptyNode.classList.add("hidden");
+    paginationNode.classList.add("hidden");
 
     try {
-      const [usersResult, groupsResult] = await Promise.allSettled([
-        api.apiRequest("/webui/api/users", {
+      const payload = await api.apiRequest(
+        `/webui/api/users?page=${encodeURIComponent(String(currentPage))}&per_page=${encodeURIComponent(String(currentPerPage))}&q=${encodeURIComponent(String(searchInput.value || "").trim())}`,
+        {
           method: "GET",
           headers: { Accept: "application/json" },
           action: "加载",
           expectedStatus: 200,
-        }),
-        api.apiRequest("/webui/api/groups", {
-          method: "GET",
-          headers: { Accept: "application/json" },
-          action: "加载",
-          expectedStatus: 200,
-        }),
-      ]);
+        }
+      );
 
-      if (usersResult.status !== "fulfilled") {
-        throw usersResult.reason;
-      }
-
-      const users = api.unwrapData(usersResult.value);
+      const users = api.unwrapData(payload);
+      const meta = api.unwrapMeta(payload);
       if (!Array.isArray(users)) {
         throw new Error("加载失败，返回数据格式错误");
       }
 
-      let groups = [];
-      if (groupsResult.status === "fulfilled") {
-        const groupsData = api.unwrapData(groupsResult.value);
-        if (!Array.isArray(groupsData)) {
-          throw new Error("加载失败，返回数据格式错误");
-        }
-        groups = groupsData;
-      }
-
+      currentMeta = {
+        total: Number(meta.total || 0),
+        page: Number(meta.page || currentPage),
+        per_page: Number(meta.per_page || currentPerPage),
+        total_pages: Number(meta.total_pages || 0),
+      };
+      currentPage = currentMeta.page;
+      currentPerPage = currentMeta.per_page;
       userStates = users.map(normalizeUser);
-      groupOptions = [...new Set(groups.map((item) => String(item?.name || "").trim()).filter(Boolean))]
-        .sort((a, b) => a.localeCompare(b));
-      ensureGroupOptions();
 
       const validIds = new Set(userStates.map((item) => item.id));
       for (const key of [...syncResultMap.keys()]) {
@@ -392,6 +423,7 @@
       emptyNode.classList.remove("hidden");
       emptyNode.textContent = message;
       tableWrapNode.classList.add("hidden");
+      paginationNode.classList.add("hidden");
       return false;
     }
   };
@@ -649,15 +681,45 @@
   };
 
   reloadButton.addEventListener("click", () => {
+    currentPage = 1;
     void loadUsers();
   });
 
-  addUserButton.addEventListener("click", () => {
-    openModal("create");
+  addUserButton.addEventListener("click", async () => {
+    try {
+      await loadGroupOptions();
+      openModal("create");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "加载失败";
+      setStatus(message, "error");
+    }
   });
 
   searchInput.addEventListener("input", () => {
-    renderTable();
+    currentPage = 1;
+    void loadUsers();
+  });
+
+  perPageSelect.addEventListener("change", () => {
+    currentPerPage = Number(perPageSelect.value || 20);
+    currentPage = 1;
+    void loadUsers();
+  });
+
+  prevPageButton.addEventListener("click", () => {
+    if (currentPage <= 1) {
+      return;
+    }
+    currentPage -= 1;
+    void loadUsers({ clearStatus: false });
+  });
+
+  nextPageButton.addEventListener("click", () => {
+    if (currentMeta.total_pages > 0 && currentPage >= currentMeta.total_pages) {
+      return;
+    }
+    currentPage += 1;
+    void loadUsers({ clearStatus: false });
   });
 
   fieldPermissions.addEventListener("input", () => {

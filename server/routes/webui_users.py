@@ -8,6 +8,7 @@ from typing import Any
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from nonebot.log import logger
+from sqlalchemy import func
 
 from next_bot.db import Group, Server, User, get_session
 from next_bot.time_utils import format_beijing_datetime
@@ -17,7 +18,13 @@ from next_bot.tshock_api import (
     is_success,
     request_server_api,
 )
-from server.routes import api_error, api_success, read_json_object
+from server.routes import (
+    api_error,
+    api_success,
+    build_pagination_slice,
+    read_json_object,
+    read_pagination_query,
+)
 
 router = APIRouter()
 
@@ -209,11 +216,41 @@ def _validation_error(exc: UserPayloadValidationError) -> JSONResponse:
 
 
 @router.get("/webui/api/users")
-async def webui_users_list() -> JSONResponse:
+async def webui_users_list(request: Request) -> JSONResponse:
+    pagination, error_response = read_pagination_query(request)
+    if error_response is not None:
+        return error_response
+    assert pagination is not None
+
+    keyword = str(request.query_params.get("q") or "").strip().lower()
+
     session = get_session()
     try:
         users = session.query(User).order_by(User.id.asc()).all()
-        return api_success(data=[_serialize_user(item) for item in users])
+        serialized = [_serialize_user(item) for item in users]
+        if keyword:
+            serialized = [
+                item
+                for item in serialized
+                if keyword in " ".join(
+                    [
+                        str(item.get("id") or ""),
+                        str(item.get("user_id") or ""),
+                        str(item.get("name") or ""),
+                        str(item.get("group") or ""),
+                        str(item.get("permissions") or ""),
+                    ]
+                ).lower()
+            ]
+        meta, offset, limit = build_pagination_slice(
+            total=len(serialized),
+            page=pagination["page"],
+            per_page=pagination["per_page"],
+        )
+        return api_success(
+            data=serialized[offset : offset + limit],
+            meta=meta,
+        )
     except Exception as exc:
         logger.exception(f"加载用户列表失败：reason={exc}")
         return api_error(

@@ -8,6 +8,11 @@
   const emptyNode = document.getElementById("empty");
   const tableWrapNode = document.getElementById("table-wrap");
   const tableBodyNode = document.getElementById("command-table-body");
+  const paginationNode = document.getElementById("command-pagination");
+  const paginationInfoNode = document.getElementById("command-pagination-info");
+  const perPageSelect = document.getElementById("command-per-page");
+  const prevPageButton = document.getElementById("command-prev-btn");
+  const nextPageButton = document.getElementById("command-next-btn");
 
   const modalNode = document.getElementById("param-modal");
   const modalBodyNode = document.getElementById("param-modal-body");
@@ -21,6 +26,9 @@
   let commandStates = [];
   let activeModalCommandKey = "";
   let modalSaving = false;
+  let currentPage = 1;
+  let currentPerPage = Number(perPageSelect?.value || 20);
+  let currentMeta = { total: 0, page: 1, per_page: currentPerPage, total_pages: 0 };
 
   const requiredNodesReady = Boolean(
     statusNode &&
@@ -28,18 +36,34 @@
       loadingNode &&
       emptyNode &&
       tableWrapNode &&
-      tableBodyNode
+      tableBodyNode &&
+      paginationNode &&
+      paginationInfoNode &&
+      perPageSelect &&
+      prevPageButton &&
+      nextPageButton &&
+      modalNode &&
+      modalBodyNode &&
+      modalTitleNode &&
+      modalAlertNode &&
+      modalAlertMessageNode &&
+      modalCloseButton &&
+      modalCancelButton &&
+      modalSaveButton
   );
+  if (!requiredNodesReady) {
+    return;
+  }
 
   const api = window.NextBotWebUIApi;
   const apiReady = Boolean(
     api &&
       typeof api.apiRequest === "function" &&
-      typeof api.unwrapData === "function"
+      typeof api.unwrapData === "function" &&
+      typeof api.unwrapMeta === "function"
   );
 
   const setStatus = (message, type = "") => {
-    if (!statusNode || !statusMessageNode) return;
     const text = String(message || "").trim();
     if (!text) {
       statusMessageNode.textContent = "";
@@ -56,7 +80,6 @@
   };
 
   const setModalAlert = (message = "", type = "info") => {
-    if (!modalAlertNode || !modalAlertMessageNode) return;
     const text = String(message || "").trim();
     if (!text) {
       modalAlertNode.className = "alert info modal-alert hidden";
@@ -74,15 +97,9 @@
 
   const setModalSavingState = (saving) => {
     modalSaving = Boolean(saving);
-    if (modalSaveButton) {
-      modalSaveButton.disabled = modalSaving;
-    }
-    if (modalCancelButton) {
-      modalCancelButton.disabled = modalSaving;
-    }
-    if (modalCloseButton) {
-      modalCloseButton.disabled = modalSaving;
-    }
+    modalSaveButton.disabled = modalSaving;
+    modalCancelButton.disabled = modalSaving;
+    modalCloseButton.disabled = modalSaving;
   };
 
   const coerceByType = (type, raw, fromInput = false) => {
@@ -198,19 +215,27 @@
     return commandStates.find((item) => item.command_key === commandKey) || null;
   };
 
-  const getFilteredCommands = () => {
-    const keyword = String(searchInput?.value || "").trim().toLowerCase();
-    if (!keyword) return [...commandStates];
+  const updatePagination = () => {
+    const total = Number(currentMeta.total || 0);
+    const page = Number(currentMeta.page || 1);
+    const perPage = Number(currentMeta.per_page || currentPerPage);
+    const totalPages = Number(currentMeta.total_pages || 0);
 
-    return commandStates.filter((item) => {
-      const text = [
-        String(item.display_name || "").toLowerCase(),
-        String(item.description || "").toLowerCase(),
-        String(item.usage || "").toLowerCase(),
-        String(item.permission || "").toLowerCase(),
-      ].join(" ");
-      return text.includes(keyword);
-    });
+    perPageSelect.value = String(perPage);
+    if (total <= 0) {
+      paginationNode.classList.add("hidden");
+      paginationInfoNode.textContent = "";
+      prevPageButton.disabled = true;
+      nextPageButton.disabled = true;
+      return;
+    }
+
+    paginationNode.classList.remove("hidden");
+    const start = (page - 1) * perPage + 1;
+    const end = Math.min(total, start + Math.max(commandStates.length - 1, 0));
+    paginationInfoNode.textContent = `第 ${page} / ${Math.max(totalPages, 1)} 页，共 ${total} 条，当前显示 ${start}-${end}`;
+    prevPageButton.disabled = page <= 1;
+    nextPageButton.disabled = totalPages <= 0 || page >= totalPages;
   };
 
   const buildPermissionNode = (permission) => {
@@ -226,35 +251,21 @@
   };
 
   const renderTable = () => {
-    if (!tableBodyNode || !loadingNode || !emptyNode || !tableWrapNode) return;
-
     tableBodyNode.innerHTML = "";
     loadingNode.classList.add("hidden");
 
-    const filteredCommands = getFilteredCommands();
-
     if (!commandStates.length) {
-      emptyNode.textContent = "暂无可配置命令。";
+      emptyNode.textContent = currentMeta.total > 0 ? "当前页暂无数据。" : "暂无可配置命令。";
       emptyNode.classList.remove("hidden");
       tableWrapNode.classList.add("hidden");
-      return;
-    }
-
-    if (!filteredCommands.length) {
-      emptyNode.textContent = "没有匹配的命令。";
-      emptyNode.classList.remove("hidden");
-      tableWrapNode.classList.add("hidden");
+      updatePagination();
       return;
     }
 
     emptyNode.classList.add("hidden");
     tableWrapNode.classList.remove("hidden");
 
-    filteredCommands.sort((a, b) =>
-      String(a.display_name || "").localeCompare(String(b.display_name || ""))
-    );
-
-    for (const command of filteredCommands) {
+    for (const command of commandStates) {
       const row = document.createElement("tr");
       row.dataset.commandKey = command.command_key;
 
@@ -360,11 +371,11 @@
       row.appendChild(actionCell);
       tableBodyNode.appendChild(row);
     }
+
+    updatePagination();
   };
 
   const openParamModal = (commandKey) => {
-    if (!modalNode || !modalBodyNode || !modalTitleNode) return;
-
     const command = getCommandByKey(commandKey);
     if (!command) return;
 
@@ -483,7 +494,7 @@
   };
 
   const closeParamModal = () => {
-    if (!modalNode || !modalBodyNode || modalSaving) return;
+    if (modalSaving) return;
     modalNode.classList.add("hidden");
     modalBodyNode.innerHTML = "";
     activeModalCommandKey = "";
@@ -491,7 +502,7 @@
   };
 
   const saveModalParams = async () => {
-    if (!modalBodyNode || !activeModalCommandKey || modalSaving) return;
+    if (!activeModalCommandKey || modalSaving) return;
 
     const command = getCommandByKey(activeModalCommandKey);
     if (!command) {
@@ -558,9 +569,7 @@
       } else {
         setStatus("参数保存成功，已立即生效；列表刷新失败，请手动刷新页面确认最新状态", "warning");
       }
-      setModalSavingState(false);
       closeParamModal();
-      return;
     } catch (error) {
       const message = error instanceof Error ? error.message : "保存失败";
       setModalAlert(message, "error");
@@ -571,46 +580,46 @@
 
   const loadCommands = async ({ clearStatus = true } = {}) => {
     if (!apiReady) {
-      if (loadingNode) {
-        loadingNode.classList.add("hidden");
-      }
+      loadingNode.classList.add("hidden");
       setStatus("页面资源版本不一致，请刷新页面或重启机器人", "error");
       return false;
     }
 
-    if (!requiredNodesReady) {
-      if (loadingNode) {
-        loadingNode.classList.add("hidden");
-      }
-      if (statusNode) {
-        setStatus("页面资源版本不一致，请刷新页面或重启机器人", "error");
-      }
-      return false;
-    }
-
-    if (loadingNode) {
-      loadingNode.classList.remove("hidden");
-    }
-    if (tableWrapNode) {
-      tableWrapNode.classList.add("hidden");
-    }
     if (clearStatus) {
       setStatus("");
     }
 
+    loadingNode.classList.remove("hidden");
+    tableWrapNode.classList.add("hidden");
+    emptyNode.classList.add("hidden");
+    paginationNode.classList.add("hidden");
+
     try {
-      const payload = await api.apiRequest("/webui/api/commands", {
-        method: "GET",
-        headers: {
-          Accept: "application/json",
-        },
-        action: "加载",
-        expectedStatus: 200,
-      });
+      const payload = await api.apiRequest(
+        `/webui/api/commands?page=${encodeURIComponent(String(currentPage))}&per_page=${encodeURIComponent(String(currentPerPage))}&q=${encodeURIComponent(String(searchInput.value || "").trim())}`,
+        {
+          method: "GET",
+          headers: {
+            Accept: "application/json",
+          },
+          action: "加载",
+          expectedStatus: 200,
+        }
+      );
       const commands = api.unwrapData(payload);
+      const meta = api.unwrapMeta(payload);
       if (!Array.isArray(commands)) {
         throw new Error("加载失败，返回数据格式错误");
       }
+
+      currentMeta = {
+        total: Number(meta.total || 0),
+        page: Number(meta.page || currentPage),
+        per_page: Number(meta.per_page || currentPerPage),
+        total_pages: Number(meta.total_pages || 0),
+      };
+      currentPage = currentMeta.page;
+      currentPerPage = currentMeta.per_page;
       commandStates = cloneValue(commands);
       for (const command of commandStates) {
         ensureCommandParamValues(command);
@@ -619,9 +628,13 @@
       renderTable();
       return true;
     } catch (error) {
-      renderTable();
       const message = error instanceof Error ? error.message : "加载失败";
       setStatus(message, "error");
+      loadingNode.classList.add("hidden");
+      emptyNode.classList.remove("hidden");
+      emptyNode.textContent = message;
+      tableWrapNode.classList.add("hidden");
+      paginationNode.classList.add("hidden");
       return false;
     }
   };
@@ -651,27 +664,51 @@
     return { reloaded };
   };
 
-  reloadButton?.addEventListener("click", () => {
-    loadCommands();
+  reloadButton.addEventListener("click", () => {
+    currentPage = 1;
+    void loadCommands();
   });
 
-  searchInput?.addEventListener("input", () => {
-    renderTable();
+  searchInput.addEventListener("input", () => {
+    currentPage = 1;
+    void loadCommands();
   });
 
-  modalSaveButton?.addEventListener("click", () => {
-    saveModalParams();
+  perPageSelect.addEventListener("change", () => {
+    currentPerPage = Number(perPageSelect.value || 20);
+    currentPage = 1;
+    void loadCommands();
   });
 
-  modalCancelButton?.addEventListener("click", () => {
+  prevPageButton.addEventListener("click", () => {
+    if (currentPage <= 1) {
+      return;
+    }
+    currentPage -= 1;
+    void loadCommands({ clearStatus: false });
+  });
+
+  nextPageButton.addEventListener("click", () => {
+    if (currentMeta.total_pages > 0 && currentPage >= currentMeta.total_pages) {
+      return;
+    }
+    currentPage += 1;
+    void loadCommands({ clearStatus: false });
+  });
+
+  modalSaveButton.addEventListener("click", () => {
+    void saveModalParams();
+  });
+
+  modalCancelButton.addEventListener("click", () => {
     closeParamModal();
   });
 
-  modalCloseButton?.addEventListener("click", () => {
+  modalCloseButton.addEventListener("click", () => {
     closeParamModal();
   });
 
-  modalNode?.addEventListener("click", (event) => {
+  modalNode.addEventListener("click", (event) => {
     const target = event.target;
     if (target instanceof HTMLElement && target.dataset.modalClose === "1") {
       closeParamModal();
@@ -679,10 +716,10 @@
   });
 
   window.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && modalNode && !modalNode.classList.contains("hidden")) {
+    if (event.key === "Escape" && !modalNode.classList.contains("hidden")) {
       closeParamModal();
     }
   });
 
-  loadCommands();
+  void loadCommands();
 })();

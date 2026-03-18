@@ -9,6 +9,11 @@
   const emptyNode = document.getElementById("empty");
   const tableWrapNode = document.getElementById("table-wrap");
   const tableBodyNode = document.getElementById("server-table-body");
+  const paginationNode = document.getElementById("server-pagination");
+  const paginationInfoNode = document.getElementById("server-pagination-info");
+  const perPageSelect = document.getElementById("server-per-page");
+  const prevPageButton = document.getElementById("server-prev-btn");
+  const nextPageButton = document.getElementById("server-next-btn");
 
   const modalNode = document.getElementById("server-modal");
   const modalTitleNode = document.getElementById("server-modal-title");
@@ -39,6 +44,11 @@
       emptyNode &&
       tableWrapNode &&
       tableBodyNode &&
+      paginationNode &&
+      paginationInfoNode &&
+      perPageSelect &&
+      prevPageButton &&
+      nextPageButton &&
       modalNode &&
       modalTitleNode &&
       modalAlertNode &&
@@ -88,6 +98,9 @@
   let modalSaving = false;
   let deletingServer = null;
   let deleteSaving = false;
+  let currentPage = 1;
+  let currentPerPage = Number(perPageSelect.value || 20);
+  let currentMeta = { total: 0, page: 1, per_page: currentPerPage, total_pages: 0 };
 
   const visibleTokenIds = new Set();
   const testResultMap = new Map();
@@ -143,6 +156,29 @@
     token: String(item?.token || ""),
   });
 
+  const updatePagination = () => {
+    const total = Number(currentMeta.total || 0);
+    const page = Number(currentMeta.page || 1);
+    const perPage = Number(currentMeta.per_page || currentPerPage);
+    const totalPages = Number(currentMeta.total_pages || 0);
+
+    perPageSelect.value = String(perPage);
+    if (total <= 0) {
+      paginationNode.classList.add("hidden");
+      paginationInfoNode.textContent = "";
+      prevPageButton.disabled = true;
+      nextPageButton.disabled = true;
+      return;
+    }
+
+    paginationNode.classList.remove("hidden");
+    const start = (page - 1) * perPage + 1;
+    const end = Math.min(total, start + Math.max(serverStates.length - 1, 0));
+    paginationInfoNode.textContent = `第 ${page} / ${Math.max(totalPages, 1)} 页，共 ${total} 条，当前显示 ${start}-${end}`;
+    prevPageButton.disabled = page <= 1;
+    nextPageButton.disabled = totalPages <= 0 || page >= totalPages;
+  };
+
   const formatMaskedToken = (token) => {
     const length = Math.max(8, Math.min(16, String(token).length || 8));
     return "•".repeat(length);
@@ -152,26 +188,6 @@
     button.innerHTML = visible ? HIDE_ICON_SVG : SHOW_ICON_SVG;
     button.title = visible ? "隐藏 Token" : "显示 Token";
     button.setAttribute("aria-label", button.title);
-  };
-
-  const getFilteredServers = () => {
-    const keyword = String(searchInput?.value || "").trim().toLowerCase();
-    if (!keyword) {
-      return [...serverStates];
-    }
-
-    return serverStates.filter((server) => {
-      const text = [
-        String(server.id),
-        server.name,
-        server.ip,
-        server.game_port,
-        server.restapi_port,
-      ]
-        .join(" ")
-        .toLowerCase();
-      return text.includes(keyword);
-    });
   };
 
   const buildResultBadge = (serverId) => {
@@ -211,26 +227,18 @@
     tableBodyNode.innerHTML = "";
     loadingNode.classList.add("hidden");
 
-    const filteredServers = getFilteredServers().sort((a, b) => a.id - b.id);
-
     if (!serverStates.length) {
-      emptyNode.textContent = "暂无服务器配置。";
+      emptyNode.textContent = currentMeta.total > 0 ? "当前页暂无数据。" : "暂无服务器配置。";
       emptyNode.classList.remove("hidden");
       tableWrapNode.classList.add("hidden");
-      return;
-    }
-
-    if (!filteredServers.length) {
-      emptyNode.textContent = "没有匹配的服务器。";
-      emptyNode.classList.remove("hidden");
-      tableWrapNode.classList.add("hidden");
+      updatePagination();
       return;
     }
 
     emptyNode.classList.add("hidden");
     tableWrapNode.classList.remove("hidden");
 
-    for (const server of filteredServers) {
+    for (const server of serverStates) {
       const row = document.createElement("tr");
       row.dataset.serverId = String(server.id);
 
@@ -336,6 +344,8 @@
       row.appendChild(actionCell);
       tableBodyNode.appendChild(row);
     }
+
+    updatePagination();
   };
 
   const loadServers = async ({ clearStatus = true } = {}) => {
@@ -345,19 +355,32 @@
     loadingNode.classList.remove("hidden");
     tableWrapNode.classList.add("hidden");
     emptyNode.classList.add("hidden");
+    paginationNode.classList.add("hidden");
 
     try {
-      const payload = await api.apiRequest("/webui/api/servers", {
-        method: "GET",
-        headers: { Accept: "application/json" },
-        action: "加载",
-        expectedStatus: 200,
-      });
+      const payload = await api.apiRequest(
+        `/webui/api/servers?page=${encodeURIComponent(String(currentPage))}&per_page=${encodeURIComponent(String(currentPerPage))}&q=${encodeURIComponent(String(searchInput.value || "").trim())}`,
+        {
+          method: "GET",
+          headers: { Accept: "application/json" },
+          action: "加载",
+          expectedStatus: 200,
+        }
+      );
       const servers = api.unwrapData(payload);
+      const meta = api.unwrapMeta(payload);
       if (!Array.isArray(servers)) {
         throw new Error("加载失败，返回数据格式错误");
       }
 
+      currentMeta = {
+        total: Number(meta.total || 0),
+        page: Number(meta.page || currentPage),
+        per_page: Number(meta.per_page || currentPerPage),
+        total_pages: Number(meta.total_pages || 0),
+      };
+      currentPage = currentMeta.page;
+      currentPerPage = currentMeta.per_page;
       serverStates = servers.map(normalizeServer);
       const validIds = new Set(serverStates.map((item) => item.id));
       for (const key of [...visibleTokenIds]) {
@@ -379,6 +402,7 @@
       emptyNode.classList.remove("hidden");
       emptyNode.textContent = message;
       tableWrapNode.classList.add("hidden");
+      paginationNode.classList.add("hidden");
       return false;
     }
   };
@@ -523,6 +547,7 @@
       });
 
       closeModal(true);
+      currentPage = 1;
       const reloaded = await loadServers({ clearStatus: false });
       if (reloaded) {
         setStatus(isEdit ? "更新成功" : "创建成功", "success");
@@ -605,6 +630,7 @@
   };
 
   reloadButton?.addEventListener("click", () => {
+    currentPage = 1;
     void loadServers();
   });
 
@@ -613,7 +639,30 @@
   });
 
   searchInput?.addEventListener("input", () => {
-    renderTable();
+    currentPage = 1;
+    void loadServers();
+  });
+
+  perPageSelect.addEventListener("change", () => {
+    currentPerPage = Number(perPageSelect.value || 20);
+    currentPage = 1;
+    void loadServers();
+  });
+
+  prevPageButton.addEventListener("click", () => {
+    if (currentPage <= 1) {
+      return;
+    }
+    currentPage -= 1;
+    void loadServers({ clearStatus: false });
+  });
+
+  nextPageButton.addEventListener("click", () => {
+    if (currentMeta.total_pages > 0 && currentPage >= currentMeta.total_pages) {
+      return;
+    }
+    currentPage += 1;
+    void loadServers({ clearStatus: false });
   });
 
   modalCloseButton.addEventListener("click", closeModal);

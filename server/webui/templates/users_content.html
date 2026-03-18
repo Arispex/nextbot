@@ -52,6 +52,23 @@
       <tbody id="user-table-body"></tbody>
     </table>
   </div>
+
+  <div id="user-pagination" class="pagination-bar hidden">
+    <div id="user-pagination-info" class="pagination-info"></div>
+    <div class="pagination-controls">
+      <label class="pagination-size">
+        <span>每页</span>
+        <select id="user-per-page" class="pagination-select">
+          <option value="10">10</option>
+          <option value="20" selected>20</option>
+          <option value="50">50</option>
+          <option value="100">100</option>
+        </select>
+      </label>
+      <button id="user-prev-btn" type="button" class="btn">上一页</button>
+      <button id="user-next-btn" type="button" class="btn">下一页</button>
+    </div>
+  </div>
 </section>
 
 <div id="user-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="user-modal-title">

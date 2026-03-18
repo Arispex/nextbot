@@ -50,6 +50,23 @@
       <tbody id="group-table-body"></tbody>
     </table>
   </div>
+
+  <div id="group-pagination" class="pagination-bar hidden">
+    <div id="group-pagination-info" class="pagination-info"></div>
+    <div class="pagination-controls">
+      <label class="pagination-size">
+        <span>每页</span>
+        <select id="group-per-page" class="pagination-select">
+          <option value="10">10</option>
+          <option value="20" selected>20</option>
+          <option value="50">50</option>
+          <option value="100">100</option>
+        </select>
+      </label>
+      <button id="group-prev-btn" type="button" class="btn">上一页</button>
+      <button id="group-next-btn" type="button" class="btn">下一页</button>
+    </div>
+  </div>
 </section>
 
 <div id="group-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="group-modal-title">
