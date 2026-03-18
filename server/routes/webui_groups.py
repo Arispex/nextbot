@@ -317,7 +317,7 @@ async def webui_groups_create(request: Request) -> JSONResponse:
         session.close()
 
 
-@router.patch("/webui/api/groups/{group_name}")
+@router.put("/webui/api/groups/{group_name}")
 async def webui_groups_update(group_name: str, request: Request) -> JSONResponse:
     payload, error_response = await read_json_object(request)
     if error_response is not None:

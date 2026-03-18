@@ -234,7 +234,7 @@ async def webui_servers_create(request: Request) -> JSONResponse:
         session.close()
 
 
-@router.patch("/webui/api/servers/{server_id}")
+@router.put("/webui/api/servers/{server_id}")
 async def webui_servers_update(server_id: int, request: Request) -> JSONResponse:
     payload, error_response = await read_json_object(request)
     if error_response is not None:

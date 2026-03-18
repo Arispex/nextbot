@@ -469,7 +469,7 @@
       const url = isEdit
         ? `/webui/api/groups/${encodeURIComponent(editingGroupName)}`
         : "/webui/api/groups";
-      const method = isEdit ? "PATCH" : "POST";
+      const method = isEdit ? "PUT" : "POST";
       const requestPayload = isEdit
         ? { permissions: payload.permissions, inherits: payload.inherits }
         : { name: payload.name, permissions: payload.permissions, inherits: payload.inherits };

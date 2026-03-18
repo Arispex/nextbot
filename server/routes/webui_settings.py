@@ -64,7 +64,7 @@ async def webui_settings_get() -> JSONResponse:
     )
 
 
-@router.patch("/webui/api/settings")
+@router.put("/webui/api/settings")
 async def webui_settings_put(request: Request) -> JSONResponse:
     payload, error_response = await read_json_object(request)
     if error_response is not None:

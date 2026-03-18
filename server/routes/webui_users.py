@@ -327,7 +327,7 @@ async def webui_users_create(request: Request) -> JSONResponse:
         session.close()
 
 
-@router.patch("/webui/api/users/{user_id}")
+@router.put("/webui/api/users/{user_id}")
 async def webui_users_update(user_id: int, request: Request) -> JSONResponse:
     payload, error_response = await read_json_object(request)
     if error_response is not None:

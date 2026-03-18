@@ -533,7 +533,7 @@
 
     try {
       const url = isEdit ? `/webui/api/servers/${editingServerId}` : "/webui/api/servers";
-      const method = isEdit ? "PATCH" : "POST";
+      const method = isEdit ? "PUT" : "POST";
 
       await api.apiRequest(url, {
         method,

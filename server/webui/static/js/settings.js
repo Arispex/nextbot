@@ -312,7 +312,7 @@
     setStatus("正在保存并重启...", "warning");
     try {
       await api.apiRequest("/webui/api/settings", {
-        method: "PATCH",
+        method: "PUT",
         headers: {
           "Content-Type": "application/json",
           Accept: "application/json",
