@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from nonebot.log import logger
 from sqlalchemy import func
 
@@ -422,7 +422,7 @@ async def webui_users_delete(user_id: int) -> JSONResponse:
         session.delete(user)
         session.commit()
         logger.info(f"删除用户成功：user_id={user_id}，account_id={deleted_user_id}，name={deleted_name}")
-        return JSONResponse(status_code=204, content=None)
+        return Response(status_code=204)
     except Exception as exc:
         session.rollback()
         logger.exception(f"删除用户异常：user_id={user_id}，reason={exc}")

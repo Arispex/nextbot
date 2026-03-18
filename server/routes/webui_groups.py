@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from fastapi import APIRouter, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from nonebot.log import logger
 from sqlalchemy import func
 
@@ -408,7 +408,7 @@ async def webui_groups_delete(group_name: str) -> JSONResponse:
 
         session.commit()
         logger.info(f"删除身份组成功：name={group_name}")
-        return JSONResponse(status_code=204, content=None)
+        return Response(status_code=204)
     except Exception as exc:
         session.rollback()
         logger.exception(f"删除身份组异常：name={group_name}，reason={exc}")
