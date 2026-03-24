@@ -105,17 +105,13 @@ def _to_non_negative_int(value: object) -> int | None:
 
 
 def _parse_user_info_texts(response_payload: dict[str, object]) -> dict[str, str] | None:
-    raw = response_payload.get("response")
-    if not isinstance(raw, dict):
-        return None
-
-    current_life = _to_non_negative_int(raw.get("当前生命值"))
-    max_life = _to_non_negative_int(raw.get("最大生命值"))
-    current_mana = _to_non_negative_int(raw.get("当前魔力值"))
-    max_mana = _to_non_negative_int(raw.get("最大魔力值"))
-    fishing_tasks = _to_non_negative_int(raw.get("渔夫任务数"))
-    pve_deaths = _to_non_negative_int(raw.get("PVE死亡次数"))
-    pvp_deaths = _to_non_negative_int(raw.get("PVP死亡次数"))
+    current_life = _to_non_negative_int(response_payload.get("health"))
+    max_life = _to_non_negative_int(response_payload.get("maxHealth"))
+    current_mana = _to_non_negative_int(response_payload.get("mana"))
+    max_mana = _to_non_negative_int(response_payload.get("maxMana"))
+    fishing_tasks = _to_non_negative_int(response_payload.get("questsCompleted"))
+    pve_deaths = _to_non_negative_int(response_payload.get("deathsPve"))
+    pvp_deaths = _to_non_negative_int(response_payload.get("deathsPvp"))
     if (
         current_life is None
         or max_life is None
@@ -420,8 +416,7 @@ async def handle_user_inventory(
     try:
         response = await request_server_api(
             server,
-            "/v2/users/inventory",
-            params={"user": target_user.name},
+            f"/nextbot/users/{target_user.name}/inventory",
         )
     except TShockRequestError:
         await bot.send(event, "查询失败，无法连接服务器")
@@ -431,7 +426,7 @@ async def handle_user_inventory(
         await bot.send(event, f"查询失败，{get_error_reason(response)}")
         return
 
-    inventory = response.payload.get("response")
+    inventory = response.payload.get("items")
     if not isinstance(inventory, list):
         await bot.send(event, "查询失败，返回数据格式错误")
         return
@@ -439,8 +434,7 @@ async def handle_user_inventory(
     try:
         info_response = await request_server_api(
             server,
-            "/v2/users/info",
-            params={"user": target_user.name},
+            f"/nextbot/users/{target_user.name}/stats",
         )
     except TShockRequestError:
         await bot.send(event, "查询失败，无法连接服务器")
@@ -558,8 +552,7 @@ async def handle_my_inventory(
     try:
         response = await request_server_api(
             server,
-            "/v2/users/inventory",
-            params={"user": user.name},
+            f"/nextbot/users/{user.name}/inventory",
         )
     except TShockRequestError:
         await bot.send(event, "查询失败，无法连接服务器")
@@ -569,7 +562,7 @@ async def handle_my_inventory(
         await bot.send(event, f"查询失败，{get_error_reason(response)}")
         return
 
-    inventory = response.payload.get("response")
+    inventory = response.payload.get("items")
     if not isinstance(inventory, list):
         await bot.send(event, "查询失败，返回数据格式错误")
         return
@@ -577,8 +570,7 @@ async def handle_my_inventory(
     try:
         info_response = await request_server_api(
             server,
-            "/v2/users/info",
-            params={"user": user.name},
+            f"/nextbot/users/{user.name}/stats",
         )
     except TShockRequestError:
         await bot.send(event, "查询失败，无法连接服务器")
