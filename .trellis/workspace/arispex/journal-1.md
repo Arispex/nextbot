@@ -258,3 +258,44 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 7: 新增下载地图命令
+
+**Date**: 2026-03-24
+**Task**: 新增下载地图命令
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+新增「下载地图」命令，调用 /nextbot/world/world-file API 获取 base64 编码的 .wld 文件，通过 upload_group_file / upload_private_file 发送给用户。
+
+排查并修复了 NapCat 文件上传问题：NapCat 运行在独立 Docker 容器中，无法访问宿主机 /tmp 路径，必须使用 base64:// 前缀直接传递文件数据。已将此坑记录到 .trellis/spec/backend/quality-guidelines.md。
+
+同步更新了 git remote URL 为 git@github.com:Arispex/nextbot.git。
+
+**修改文件**：
+- `nextbot/plugins/basic.py`
+- `.trellis/spec/backend/quality-guidelines.md`
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `4ecd5f5` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
