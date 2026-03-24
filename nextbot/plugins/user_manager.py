@@ -67,8 +67,7 @@ async def _sync_whitelist_to_all_servers(
         try:
             response = await request_server_api(
                 server,
-                "/v3/server/rawcmd",
-                params={"cmd": f"/bwl add {name}"},
+                f"/nextbot/whitelist/add/{name}",
             )
         except TShockRequestError:
             logger.info(
