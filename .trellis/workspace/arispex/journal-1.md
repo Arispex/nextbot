@@ -162,3 +162,35 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 4: 迁移进度接口到 NextBotAdapter API
+
+**Date**: 2026-03-24
+**Task**: 迁移进度接口到 NextBotAdapter API
+
+### Summary
+
+将进度命令从 /v2/world/progress 迁移到 /nextbot/world/progress。新接口响应为扁平 bool 字典，过滤非 bool 字段避免 status 混入，并添加英文字段到中文 Boss 名称的映射表（21 个 Boss/事件）。仅修改 nextbot/plugins/basic.py。
+
+### Main Changes
+
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `e6f9634` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
