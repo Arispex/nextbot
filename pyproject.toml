@@ -1,7 +1,7 @@
 [project]
-name = "next-bot"
+name = "nextbot"
 version = "0.1.0"
-description = "next-bot"
+description = "nextbot"
 readme = "README.md"
 requires-python = ">=3.10, <4.0"
 dependencies = [
