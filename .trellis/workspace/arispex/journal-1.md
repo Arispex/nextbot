@@ -226,3 +226,35 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 6: 新增查看地图命令
+
+**Date**: 2026-03-24
+**Task**: 新增查看地图命令
+
+### Summary
+
+在 basic 插件新增「查看地图」命令，调用 /nextbot/world/map-image API，获取 base64 编码的 PNG 地图图片并直接发送。timeout 设为 60s，支持服务器存在判断和标准错误处理。仅修改 nextbot/plugins/basic.py。
+
+### Main Changes
+
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `339f743` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
