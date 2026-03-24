@@ -5,6 +5,7 @@ from urllib.parse import urlparse, urlunparse
 
 from nonebot import get_driver, on_command
 from nonebot.adapters import Bot, Event, Message
+from nonebot.adapters.onebot.v11 import GroupMessageEvent as OBV11GroupMessageEvent
 from nonebot.adapters.onebot.v11 import MessageSegment as OBV11MessageSegment
 from nonebot.log import logger
 from nonebot.params import CommandArg
@@ -37,6 +38,7 @@ self_kick_matcher = on_command("自踢")
 inventory_matcher = on_command("用户背包")
 my_inventory_matcher = on_command("我的背包")
 map_image_matcher = on_command("查看地图")
+download_map_matcher = on_command("下载地图")
 progress_matcher = on_command("进度")
 INVENTORY_SCREENSHOT_OPTIONS = ScreenshotOptions(
     viewport_width=2000,
@@ -804,3 +806,78 @@ async def handle_map_image(
         await bot.send(event, OBV11MessageSegment.image(file=f"base64://{b64}"))
         return
     await bot.send(event, f"地图数据已获取，文件名：{response.payload.get('fileName', '')}")
+
+
+@download_map_matcher.handle()
+@command_control(
+    command_key="basic.download_map",
+    display_name="下载地图",
+    permission="basic.download_map",
+    description="下载当前世界的 .wld 文件",
+    usage="下载地图 <服务器 ID>",
+)
+@require_permission("basic.download_map")
+async def handle_download_map(
+    bot: Bot, event: Event, arg: Message = CommandArg()
+):
+    args = parse_command_args_with_fallback(event, arg, "下载地图")
+    if len(args) != 1:
+        raise_command_usage()
+
+    try:
+        server_id = int(args[0])
+    except ValueError:
+        raise_command_usage()
+
+    session = get_session()
+    try:
+        server = session.query(Server).filter(Server.id == server_id).first()
+    finally:
+        session.close()
+
+    if server is None:
+        await bot.send(event, "下载失败，服务器不存在")
+        return
+
+    try:
+        response = await request_server_api(
+            server,
+            "/nextbot/world/world-file",
+            timeout=60.0,
+        )
+    except TShockRequestError:
+        await bot.send(event, "下载失败，无法连接服务器")
+        return
+
+    if not is_success(response):
+        await bot.send(event, f"下载失败，{get_error_reason(response)}")
+        return
+
+    b64 = response.payload.get("base64")
+    file_name = response.payload.get("fileName") or "world.wld"
+    if not isinstance(b64, str) or not b64:
+        await bot.send(event, "下载失败，返回数据格式错误")
+        return
+
+    logger.info(f"世界文件下载成功：server_id={server.id} file={file_name}")
+    if bot.adapter.get_name() == "OneBot V11":
+        file_uri = f"base64://{b64}"
+        if isinstance(event, OBV11GroupMessageEvent):
+            await bot.call_api(
+                "upload_group_file",
+                group_id=event.group_id,
+                file=file_uri,
+                name=file_name,
+            )
+        else:
+            await bot.call_api(
+                "upload_private_file",
+                user_id=event.get_user_id(),
+                file=file_uri,
+                name=file_name,
+            )
+        return
+    file_data = base64.b64decode(b64)
+    file_path = Path("/tmp") / file_name
+    file_path.write_bytes(file_data)
+    await bot.send(event, f"文件已保存：{file_path}")

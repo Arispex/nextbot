@@ -51,6 +51,12 @@ Current code style strongly prefers:
 - Web UI token is currently logged in `server/web_server.py`; treat that as a risk, not a standard.
 - Validation logic is duplicated between some bot plugins and Web UI routes; avoid copying more divergence unless necessary.
 
+### NapCat file upload — do NOT use local paths
+NapCat runs in a separate Docker container. When calling `upload_group_file` / `upload_private_file` via OneBot V11, the `file` parameter must NOT be a local filesystem path (e.g. `/tmp/foo.wld`) — NapCat cannot access the host's `/tmp`. Always pass `base64://<data>` directly:
+```python
+await bot.call_api("upload_group_file", group_id=..., file=f"base64://{b64}", name=file_name)
+```
+
 ---
 
 ## Testing Requirements
