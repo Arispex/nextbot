@@ -601,3 +601,35 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 16: 新增连续签到排行榜
+
+**Date**: 2026-03-25
+**Task**: 新增连续签到排行榜
+
+### Summary
+
+在 leaderboard.py 新增「连续签到排行榜」命令，按 sign_streak 降序排列，value_label=「天」，复用现有排行榜 UI。同时修复金币排行榜 log typo（金币排行榜榜→金币排行榜）。
+
+### Main Changes
+
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ed527c8` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
