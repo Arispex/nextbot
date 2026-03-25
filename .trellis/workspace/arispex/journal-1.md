@@ -677,3 +677,35 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 18: 排行榜新增我的排名显示
+
+**Date**: 2026-03-25
+**Task**: 排行榜新增我的排名显示
+
+### Summary
+
+触发排行榜命令时，若用户已注册，在页面底部展示其个人排名，样式与列表行一致（序号徽章 + 名称 + 数值+单位）。排名通过统计超过当前用户数值的用户数计算。未注册用户不显示该区域。
+
+### Main Changes
+
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `6da6f0c` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
