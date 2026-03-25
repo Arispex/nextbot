@@ -864,3 +864,45 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 23: 菜单页面图片主题适配
+
+**Date**: 2026-03-25
+**Task**: 菜单页面图片主题适配
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+为菜单和管理菜单截图渲染新增暗色主题，与背包/进度主题适配对称实现。
+
+| 文件 | 改动 |
+|------|------|
+| `server/pages/menu_page.py` | `build_payload` / `render` 新增 `theme` 参数 |
+| `server/web_server.py` | `create_menu_page` 新增 `theme` 参数并透传 |
+| `nextbot/plugins/menu.py` | 调用 `resolve_render_theme()` 传入 theme |
+| `server/templates/menu.html` | 双主题实现：保留原卡片网格布局，新增 `[data-theme]` CSS 选择器 |
+
+**暗色主题设计**：深色石砖纹理背景、深色玻璃卡片、蓝紫边框，与进度/背包暗色同系。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `bbcb348` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
