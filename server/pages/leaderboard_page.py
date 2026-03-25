@@ -17,6 +17,7 @@ def build_payload(
     page: int,
     total_pages: int,
     entries: list[dict[str, Any]],
+    self_entry: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     normalized: list[dict[str, Any]] = []
     for item in entries:
@@ -30,6 +31,14 @@ def build_payload(
                 "value": int(item.get("value", 0)),
             }
         )
+    normalized_self: dict[str, Any] | None = None
+    if isinstance(self_entry, dict):
+        normalized_self = {
+            "rank": int(self_entry.get("rank", 0)),
+            "name": str(self_entry.get("name", "")).strip(),
+            "value": int(self_entry.get("value", 0)),
+        }
+
     return {
         "generated_at": beijing_now_text(),
         "title": str(title).strip(),
@@ -37,6 +46,7 @@ def build_payload(
         "page": int(page),
         "total_pages": int(total_pages),
         "entries": normalized,
+        "self_entry": normalized_self,
     }
 
 
@@ -49,6 +59,7 @@ def render(payload: dict[str, Any]) -> bytes:
         "page": int(payload.get("page", 1)),
         "total_pages": int(payload.get("total_pages", 1)),
         "entries": payload.get("entries", []),
+        "self_entry": payload.get("self_entry"),
     }
     data_json = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
     content = template.replace("__LEADERBOARD_DATA_JSON__", data_json)

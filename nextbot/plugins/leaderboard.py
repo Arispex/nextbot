@@ -62,6 +62,7 @@ async def _render_and_send(
     entries: list[dict],
     total_pages: int,
     file_prefix: str,
+    self_entry: dict | None = None,
 ) -> None:
     page_url = create_leaderboard_page(
         title=title,
@@ -69,6 +70,7 @@ async def _render_and_send(
         page=page,
         total_pages=total_pages,
         entries=entries,
+        self_entry=self_entry,
     )
     logger.info(
         f"{title}渲染地址：page={page}/{total_pages} entry_count={len(entries)} internal_url={page_url}"
@@ -128,6 +130,7 @@ async def handle_coins_leaderboard(
 
     limit = max(1, min(int(get_current_param("limit", 10)), 50))
 
+    caller_id = event.get_user_id()
     session = get_session()
     try:
         total_count = session.query(User).count()
@@ -147,6 +150,12 @@ async def handle_coins_leaderboard(
             {"rank": offset + i + 1, "name": u.name, "user_id": u.user_id, "value": int(u.coins or 0)}
             for i, u in enumerate(users)
         ]
+        caller = session.query(User).filter(User.user_id == caller_id).first()
+        self_entry = None
+        if caller is not None:
+            caller_coins = int(caller.coins or 0)
+            caller_rank = session.query(User).filter(User.coins > caller_coins).count() + 1
+            self_entry = {"rank": caller_rank, "name": caller.name, "value": caller_coins}
     finally:
         session.close()
 
@@ -159,6 +168,7 @@ async def handle_coins_leaderboard(
         entries=entries,
         total_pages=total_pages,
         file_prefix="leaderboard-coins",
+        self_entry=self_entry,
     )
 
 
@@ -196,6 +206,7 @@ async def handle_streak_leaderboard(
 
     limit = max(1, min(int(get_current_param("limit", 10)), 50))
 
+    caller_id = event.get_user_id()
     session = get_session()
     try:
         total_count = session.query(User).count()
@@ -215,6 +226,12 @@ async def handle_streak_leaderboard(
             {"rank": offset + i + 1, "name": u.name, "user_id": u.user_id, "value": int(u.sign_streak or 0)}
             for i, u in enumerate(users)
         ]
+        caller = session.query(User).filter(User.user_id == caller_id).first()
+        self_entry = None
+        if caller is not None:
+            caller_streak = int(caller.sign_streak or 0)
+            caller_rank = session.query(User).filter(User.sign_streak > caller_streak).count() + 1
+            self_entry = {"rank": caller_rank, "name": caller.name, "value": caller_streak}
     finally:
         session.close()
 
@@ -227,4 +244,5 @@ async def handle_streak_leaderboard(
         entries=entries,
         total_pages=total_pages,
         file_prefix="leaderboard-streak",
+        self_entry=self_entry,
     )

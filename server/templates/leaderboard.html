@@ -100,7 +100,14 @@
     <!-- List rows injected here -->
   </div>
 
-  <div class="mx-auto max-w-[820px] mt-6 flex flex-col items-center gap-1">
+  <div id="lb-self" class="mx-auto max-w-[820px] mt-4 hidden overflow-hidden rounded-2xl border border-white/[0.06]">
+    <div class="border-b border-white/[0.04] bg-white/[0.03] px-5 py-2">
+      <span class="text-[10px] font-bold uppercase tracking-widest text-slate-600">我的排名</span>
+    </div>
+    <div id="lb-self-row" class="list-row grid grid-cols-[52px_1fr_auto] items-center px-5 py-3.5"></div>
+  </div>
+
+  <div class="mx-auto max-w-[820px] mt-4 flex flex-col items-center gap-1">
     <div id="lb-pagination" class="text-sm font-semibold text-slate-500"></div>
     <div class="text-xs font-medium tracking-widest text-slate-700">Powered by NextBot</div>
   </div>
@@ -112,10 +119,41 @@
     const valueLabel = String(data.value_label || "");
     const page = Number(data.page || 1);
     const totalPages = Number(data.total_pages || 1);
+    const selfEntry = data.self_entry || null;
 
     document.getElementById("lb-title").textContent = data.title || "排行榜";
     document.getElementById("lb-generated-at").textContent = data.generated_at || "";
     document.getElementById("lb-pagination").textContent = `第 ${page} 页 / 共 ${totalPages} 页`;
+
+    if (selfEntry) {
+      document.getElementById("lb-self").classList.remove("hidden");
+      const selfRow = document.getElementById("lb-self-row");
+
+      const rankWrap = document.createElement("div");
+      const rankBadge = document.createElement("div");
+      rankBadge.className = "inline-flex h-7 w-7 items-center justify-center rounded-lg bg-white/[0.06] text-xs font-bold text-slate-500";
+      rankBadge.textContent = String(selfEntry.rank);
+      rankWrap.appendChild(rankBadge);
+
+      const nameEl = document.createElement("div");
+      nameEl.className = "text-sm font-semibold text-slate-300 pl-1";
+      nameEl.textContent = String(selfEntry.name || "");
+
+      const coinsWrap = document.createElement("div");
+      coinsWrap.className = "flex items-center gap-1";
+      const val = document.createElement("span");
+      val.className = "text-sm font-bold text-slate-400 tabular-nums";
+      val.textContent = Number(selfEntry.value).toLocaleString();
+      const unit = document.createElement("span");
+      unit.className = "text-xs text-slate-600 ml-1";
+      unit.textContent = valueLabel;
+      coinsWrap.appendChild(val);
+      coinsWrap.appendChild(unit);
+
+      selfRow.appendChild(rankWrap);
+      selfRow.appendChild(nameEl);
+      selfRow.appendChild(coinsWrap);
+    }
 
     const content = document.getElementById("lb-content");
 
