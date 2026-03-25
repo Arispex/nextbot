@@ -709,3 +709,35 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 19: 新增图片主题配置项 render_theme
+
+**Date**: 2026-03-25
+**Task**: 新增图片主题配置项 render_theme
+
+### Summary
+
+在 .env / settings_service / Web UI 新增 render_theme 配置项（dark/light/auto，默认 auto）。settings_service 加验证、默认值；WebUI 设置页新增「图片渲染」区块含 select 下拉；settings.js 处理 fillForm/buildPayload；bot.py DEFAULT_ENV_CONTENT 补上默认值。实际渲染效果待后续实现。
+
+### Main Changes
+
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `2dbbe58` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
