@@ -128,8 +128,7 @@
     // ── Podium section ──────────────────────────────────────
     if (top3.length) {
       const podiumSection = document.createElement("div");
-      podiumSection.className = "grid gap-4 mb-5";
-      podiumSection.style.gridTemplateColumns = `repeat(${top3.length}, 1fr)`;
+      podiumSection.className = "flex items-end gap-4 mb-5";
 
       const medals = {
         1: { cardClass: "podium-gold",   rankClass: "rank-num-gold",   barClass: "gold-bar",   coinClass: "coin-gold",   symbol: "coin-symbol-gold",   label: "🥇", nameColor: "#fef08a", subColor: "#ca8a04" },
@@ -137,15 +136,24 @@
         3: { cardClass: "podium-bronze", rankClass: "rank-num-bronze", barClass: "bronze-bar", coinClass: "coin-bronze", symbol: "coin-symbol-bronze", label: "🥉", nameColor: "#fde68a", subColor: "#b45309" },
       };
 
-      top3.forEach((item) => {
+      // Classic podium order: 2nd left, 1st center, 3rd right
+      const byRank = {};
+      top3.forEach(item => { byRank[Number(item?.rank)] = item; });
+      const podiumOrder = [byRank[2], byRank[1], byRank[3]].filter(Boolean);
+
+      podiumOrder.forEach((item) => {
         const rank   = Number(item?.rank);
         const name   = String(item?.name || "").trim() || "—";
         const userId = String(item?.user_id || "").trim();
         const coins  = Number(item?.value || 0);
         const m      = medals[rank] || medals[3];
+        const isFirst = rank === 1;
 
         const card = document.createElement("div");
-        card.className = `${m.cardClass} rounded-2xl px-5 py-6 flex flex-col items-center gap-3 relative overflow-hidden`;
+        card.className = `${m.cardClass} rounded-2xl px-5 flex flex-col items-center gap-3 relative overflow-hidden`;
+        card.style.flex = isFirst ? "1.2" : "1";
+        card.style.paddingTop = isFirst ? "2rem" : "1.5rem";
+        card.style.paddingBottom = isFirst ? "2rem" : "1.5rem";
 
         // Big rank number background decoration
         const bgNum = document.createElement("div");
@@ -155,7 +163,7 @@
 
         // Medal emoji
         const medal = document.createElement("div");
-        medal.className = "text-4xl leading-none relative";
+        medal.className = `${isFirst ? "text-5xl" : "text-4xl"} leading-none relative`;
         medal.textContent = m.label;
         card.appendChild(medal);
 
@@ -163,7 +171,7 @@
         const nameEl = document.createElement("div");
         nameEl.className = "text-center relative";
         const nameText = document.createElement("div");
-        nameText.className = "text-lg font-bold leading-tight";
+        nameText.className = `${isFirst ? "text-xl" : "text-lg"} font-bold leading-tight`;
         nameText.style.color = m.nameColor;
         nameText.textContent = name;
         nameEl.appendChild(nameText);
@@ -186,7 +194,7 @@
         coinsWrap.className = "flex items-center gap-1.5 relative";
 
         const coinsVal = document.createElement("span");
-        coinsVal.className = `${m.coinClass} text-2xl font-black tabular-nums`;
+        coinsVal.className = `${m.coinClass} ${isFirst ? "text-3xl" : "text-2xl"} font-black tabular-nums`;
         coinsVal.style.letterSpacing = "-0.02em";
         coinsVal.textContent = coins.toLocaleString();
 
