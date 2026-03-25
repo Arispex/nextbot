@@ -741,3 +741,45 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 20: 排行榜图片主题适配（dark/light/auto）
+
+**Date**: 2026-03-25
+**Task**: 排行榜图片主题适配（dark/light/auto）
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+为排行榜新增图片主题支持，读取 render_theme 配置（dark/light/auto）。
+
+**实现要点**：
+- `_resolve_theme()`：auto 时根据北京时间 06:00–20:00 判断亮/暗
+- `leaderboard_page.py` / `web_server.py` 新增 theme 参数链路
+- `leaderboard.html` 重构为双主题：`[data-theme="dark"]` / `[data-theme="light"]` CSS 选择器，JS 动态设置 data-theme 属性
+- 亮色主题：白色卡片底、淡金/银/铜边框、深色文字，与背包页同系风格
+- 修复 HTML 结构错误（多余的 `<html>` 标签）
+
+**修改文件**：`leaderboard.py`、`leaderboard_page.py`、`web_server.py`、`leaderboard.html`
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7dba598` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
