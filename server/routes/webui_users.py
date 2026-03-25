@@ -38,6 +38,8 @@ class ValidatedUserPayload:
     user_id: str
     name: str
     coins: int
+    sign_total: int
+    sign_streak: int
     permissions: str
     group: str
 
@@ -109,6 +111,32 @@ def _normalize_coins(raw_value: Any) -> int:
     return parsed
 
 
+def _normalize_sign_count(raw_value: Any, field: str) -> int:
+    if isinstance(raw_value, bool):
+        raise UserPayloadValidationError(f"{field} 必须是非负整数", field=field)
+    parsed: int
+    if isinstance(raw_value, int):
+        parsed = raw_value
+    elif isinstance(raw_value, float):
+        if not raw_value.is_integer():
+            raise UserPayloadValidationError(f"{field} 必须是整数", field=field)
+        parsed = int(raw_value)
+    elif isinstance(raw_value, str):
+        text = raw_value.strip()
+        if not text:
+            parsed = 0
+        else:
+            try:
+                parsed = int(text)
+            except ValueError as exc:
+                raise UserPayloadValidationError(f"{field} 必须是整数", field=field) from exc
+    else:
+        raise UserPayloadValidationError(f"{field} 必须是整数", field=field)
+    if parsed < 0:
+        raise UserPayloadValidationError(f"{field} 必须是非负整数", field=field)
+    return parsed
+
+
 def _normalize_permissions(raw_value: Any) -> str:
     if raw_value is None:
         return ""
@@ -130,12 +158,16 @@ def _validate_payload(payload: dict[str, Any]) -> ValidatedUserPayload:
     user_id = _normalize_user_id(_require_field(payload, "user_id"))
     name = _normalize_user_name(_require_field(payload, "name"))
     coins = _normalize_coins(_require_field(payload, "coins"))
+    sign_total = _normalize_sign_count(payload.get("sign_total", 0), "sign_total")
+    sign_streak = _normalize_sign_count(payload.get("sign_streak", 0), "sign_streak")
     permissions = _normalize_permissions(payload.get("permissions", ""))
     group = _normalize_group(_require_field(payload, "group"))
     return ValidatedUserPayload(
         user_id=user_id,
         name=name,
         coins=coins,
+        sign_total=sign_total,
+        sign_streak=sign_streak,
         permissions=permissions,
         group=group,
     )
@@ -151,6 +183,8 @@ def _serialize_user(user: User) -> dict[str, Any]:
         "user_id": str(user.user_id),
         "name": str(user.name),
         "coins": int(user.coins),
+        "sign_total": int(user.sign_total or 0),
+        "sign_streak": int(user.sign_streak or 0),
         "permissions": str(user.permissions or ""),
         "group": str(user.group),
         "created_at": _format_created_at(user.created_at),
@@ -304,6 +338,8 @@ async def webui_users_create(request: Request) -> JSONResponse:
             user_id=validated.user_id,
             name=validated.name,
             coins=validated.coins,
+            sign_total=validated.sign_total,
+            sign_streak=validated.sign_streak,
             permissions=validated.permissions,
             group=validated.group,
         )
@@ -387,6 +423,8 @@ async def webui_users_update(user_id: int, request: Request) -> JSONResponse:
         user.user_id = validated.user_id
         user.name = validated.name
         user.coins = validated.coins
+        user.sign_total = validated.sign_total
+        user.sign_streak = validated.sign_streak
         user.permissions = validated.permissions
         user.group = validated.group
         session.commit()

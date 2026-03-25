@@ -33,6 +33,8 @@
   const fieldUserId = document.getElementById("field-user-id");
   const fieldName = document.getElementById("field-name");
   const fieldCoins = document.getElementById("field-coins");
+  const fieldSignTotal = document.getElementById("field-sign-total");
+  const fieldSignStreak = document.getElementById("field-sign-streak");
   const fieldGroup = document.getElementById("field-group");
   const fieldPermissions = document.getElementById("field-permissions");
   const permissionPreviewNode = document.getElementById("permission-preview-list");
@@ -69,6 +71,8 @@
       fieldUserId &&
       fieldName &&
       fieldCoins &&
+      fieldSignTotal &&
+      fieldSignStreak &&
       fieldGroup &&
       fieldPermissions &&
       permissionPreviewNode
@@ -179,6 +183,8 @@
     user_id: String(item?.user_id || ""),
     name: String(item?.name || ""),
     coins: Number(item?.coins || 0),
+    sign_total: Number(item?.sign_total || 0),
+    sign_streak: Number(item?.sign_streak || 0),
     permissions: normalizePermissionsText(item?.permissions || ""),
     group: String(item?.group || ""),
     created_at: String(item?.created_at || ""),
@@ -297,6 +303,14 @@
       coinsCell.className = "coins-cell";
       coinsCell.textContent = Number(user.coins).toLocaleString("zh-CN");
 
+      const signTotalCell = document.createElement("td");
+      signTotalCell.className = "sign-total-cell";
+      signTotalCell.textContent = String(user.sign_total);
+
+      const signStreakCell = document.createElement("td");
+      signStreakCell.className = "sign-streak-cell";
+      signStreakCell.textContent = String(user.sign_streak);
+
       const groupCell = document.createElement("td");
       groupCell.className = "group-cell";
       groupCell.textContent = user.group;
@@ -361,6 +375,8 @@
       row.appendChild(userIdCell);
       row.appendChild(nameCell);
       row.appendChild(coinsCell);
+      row.appendChild(signTotalCell);
+      row.appendChild(signStreakCell);
       row.appendChild(groupCell);
       row.appendChild(permissionCell);
       row.appendChild(createdCell);
@@ -470,6 +486,8 @@
       fieldUserId.value = user.user_id;
       fieldName.value = user.name;
       fieldCoins.value = String(user.coins);
+      fieldSignTotal.value = String(user.sign_total);
+      fieldSignStreak.value = String(user.sign_streak);
       renderGroupSelectOptions(user.group);
       fieldPermissions.value = user.permissions || "";
     } else {
@@ -478,6 +496,8 @@
       fieldUserId.value = "";
       fieldName.value = "";
       fieldCoins.value = "0";
+      fieldSignTotal.value = "0";
+      fieldSignStreak.value = "0";
       renderGroupSelectOptions("default");
       fieldPermissions.value = "";
     }
@@ -491,6 +511,8 @@
     const userId = String(fieldUserId.value || "").trim();
     const name = String(fieldName.value || "").trim();
     const coinsText = String(fieldCoins.value || "").trim();
+    const signTotalText = String(fieldSignTotal.value || "0").trim();
+    const signStreakText = String(fieldSignStreak.value || "0").trim();
     const group = String(fieldGroup.value || "").trim();
     const permissions = normalizePermissionsText(fieldPermissions.value || "");
 
@@ -524,6 +546,16 @@
       throw new Error("金币必须是非负整数");
     }
 
+    const signTotalNumber = Number(signTotalText);
+    if (!Number.isInteger(signTotalNumber) || signTotalNumber < 0) {
+      throw new Error("累计签到必须是非负整数");
+    }
+
+    const signStreakNumber = Number(signStreakText);
+    if (!Number.isInteger(signStreakNumber) || signStreakNumber < 0) {
+      throw new Error("连续签到必须是非负整数");
+    }
+
     if (!group) {
       throw new Error("身份组不能为空");
     }
@@ -532,6 +564,8 @@
       user_id: userId,
       name,
       coins: coinsNumber,
+      sign_total: signTotalNumber,
+      sign_streak: signStreakNumber,
       group,
       permissions,
     };
