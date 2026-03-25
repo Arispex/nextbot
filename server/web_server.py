@@ -80,9 +80,10 @@ def create_progress_page(
 def create_leaderboard_page(
     *,
     title: str,
+    value_label: str,
     entries: list[dict[str, Any]],
 ) -> str:
-    payload = leaderboard_page.build_payload(title=title, entries=entries)
+    payload = leaderboard_page.build_payload(title=title, value_label=value_label, entries=entries)
     token = create_page("leaderboard", payload)
     settings = get_server_settings()
     return f"{_build_internal_base_url(settings)}/render/leaderboard/{token}"

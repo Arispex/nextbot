@@ -13,6 +13,7 @@ TEMPLATE_PATH = BASE_DIR / "server" / "templates" / "leaderboard.html"
 def build_payload(
     *,
     title: str,
+    value_label: str,
     entries: list[dict[str, Any]],
 ) -> dict[str, Any]:
     normalized: list[dict[str, Any]] = []
@@ -24,12 +25,13 @@ def build_payload(
                 "rank": int(item.get("rank", 0)),
                 "name": str(item.get("name", "")).strip(),
                 "user_id": str(item.get("user_id", "")).strip(),
-                "coins": int(item.get("coins", 0)),
+                "value": int(item.get("value", 0)),
             }
         )
     return {
         "generated_at": beijing_now_text(),
         "title": str(title).strip(),
+        "value_label": str(value_label).strip(),
         "entries": normalized,
     }
 
@@ -39,6 +41,7 @@ def render(payload: dict[str, Any]) -> bytes:
     data = {
         "generated_at": str(payload.get("generated_at", "")),
         "title": str(payload.get("title", "排行榜")),
+        "value_label": str(payload.get("value_label", "")),
         "entries": payload.get("entries", []),
     }
     data_json = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")

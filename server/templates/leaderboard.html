@@ -108,6 +108,7 @@
   <script>
     const data = JSON.parse(document.getElementById("leaderboard-data").textContent);
     const entries = Array.isArray(data.entries) ? data.entries : [];
+    const valueLabel = String(data.value_label || "");
 
     document.getElementById("lb-title").textContent = data.title || "排行榜";
     document.getElementById("lb-generated-at").textContent = data.generated_at || "";
@@ -140,7 +141,7 @@
         const rank   = Number(item?.rank);
         const name   = String(item?.name || "").trim() || "—";
         const userId = String(item?.user_id || "").trim();
-        const coins  = Number(item?.coins || 0);
+        const coins  = Number(item?.value || 0);
         const m      = medals[rank] || medals[3];
 
         const card = document.createElement("div");
@@ -184,17 +185,18 @@
         const coinsWrap = document.createElement("div");
         coinsWrap.className = "flex items-center gap-1.5 relative";
 
-        const coinSym = document.createElement("span");
-        coinSym.className = `coin-symbol ${m.symbol}`;
-        coinSym.textContent = "G";
-
         const coinsVal = document.createElement("span");
         coinsVal.className = `${m.coinClass} text-2xl font-black tabular-nums`;
         coinsVal.style.letterSpacing = "-0.02em";
         coinsVal.textContent = coins.toLocaleString();
 
-        coinsWrap.appendChild(coinSym);
+        const coinsUnit = document.createElement("span");
+        coinsUnit.className = "text-sm font-medium opacity-60 ml-1";
+        coinsUnit.style.color = m.coinClass.includes("gold") ? "#ca8a04" : m.coinClass.includes("silver") ? "#64748b" : "#92400e";
+        coinsUnit.textContent = valueLabel;
+
         coinsWrap.appendChild(coinsVal);
+        coinsWrap.appendChild(coinsUnit);
         card.appendChild(coinsWrap);
 
         podiumSection.appendChild(card);
@@ -212,7 +214,7 @@
         const rank   = Number(item?.rank);
         const name   = String(item?.name || "").trim() || "—";
         const userId = String(item?.user_id || "").trim();
-        const coins  = Number(item?.coins || 0);
+        const coins  = Number(item?.value || 0);
 
         const row = document.createElement("div");
         row.className = "list-row grid grid-cols-[52px_1fr_auto] items-center px-5 py-3.5";
@@ -242,13 +244,14 @@
         const coinsWrap = document.createElement("div");
         coinsWrap.className = "flex items-center gap-1";
         const sym = document.createElement("span");
-        sym.className = "coin-symbol coin-symbol-normal";
-        sym.textContent = "G";
         const val = document.createElement("span");
         val.className = "text-sm font-bold text-slate-400 tabular-nums";
         val.textContent = coins.toLocaleString();
-        coinsWrap.appendChild(sym);
+        const unit = document.createElement("span");
+        unit.className = "text-xs text-slate-600 ml-1";
+        unit.textContent = valueLabel;
         coinsWrap.appendChild(val);
+        coinsWrap.appendChild(unit);
 
         row.appendChild(rankWrap);
         row.appendChild(nameEl);

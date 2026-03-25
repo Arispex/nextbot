@@ -74,13 +74,13 @@ async def handle_coins_leaderboard(
             .all()
         )
         entries = [
-            {"rank": i + 1, "name": u.name, "user_id": u.user_id, "coins": int(u.coins or 0)}
+            {"rank": i + 1, "name": u.name, "user_id": u.user_id, "value": int(u.coins or 0)}
             for i, u in enumerate(users)
         ]
     finally:
         session.close()
 
-    page_url = create_leaderboard_page(title="金币排行榜榜", entries=entries)
+    page_url = create_leaderboard_page(title="金币排行榜", value_label="金币", entries=entries)
     logger.info(
         f"金币排行榜榜渲染地址：entry_count={len(entries)} internal_url={page_url}"
     )
