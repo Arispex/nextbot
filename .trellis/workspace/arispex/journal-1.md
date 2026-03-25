@@ -537,3 +537,35 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 14: 排行榜通用化重构
+
+**Date**: 2026-03-25
+**Task**: 排行榜通用化重构
+
+### Summary
+
+将排行榜 UI 通用化：entry 字段 coins→value，新增 value_label 参数（如「金币」「天」「次」）作为数字后单位展示。移除圆圈+G 的装饰符号，改为数字+单位文字。修复了标题 typo（金币排行榜榜→金币排行榜）。涉及 leaderboard.py、leaderboard_page.py、leaderboard.html、web_server.py。
+
+### Main Changes
+
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8a38108` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

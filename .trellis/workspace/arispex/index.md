@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 13
+- **Total Sessions**: 14
 - **Last Active**: 2026-03-25
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~539 | Active |
+| `journal-1.md` | ~571 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits |
 |---|------|-------|---------|
+| 14 | 2026-03-25 | 排行榜通用化重构 | `8a38108` |
 | 13 | 2026-03-25 | 新增排行榜插件 - 金币排行榜 | `aef9f35` |
 | 12 | 2026-03-25 | 菜单拆分为菜单/管理菜单，新增 admin 标记机制 | `fd6a8d3` |
 | 11 | 2026-03-25 | economy 插件新增转账功能 | `281cbe9` |
