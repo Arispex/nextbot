@@ -1036,3 +1036,35 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 28: WebUI 用户签到字段展示与编辑
+
+**Date**: 2026-03-25
+**Task**: WebUI 用户签到字段展示与编辑
+
+### Summary
+
+WebUI 用户管理新增 sign_total/sign_streak 字段：列表展示、新建/编辑表单输入、后端序列化与写库，前后端全链路完成
+
+### Main Changes
+
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `450d72b` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
