@@ -119,7 +119,7 @@ def ensure_default_groups() -> None:
     try:
         guest = session.query(Group).filter(Group.name == "guest").first()
         if guest is None:
-            session.add(Group(name="guest", permissions="basic.inventory.self,basic.inventory.user,basic.kick.self,basic.online,basic.progress,economy.sign,menu.root,server.list,user.info.self,user.info.user,user.register,user.whitelist.sync", inherits=""))
+            session.add(Group(name="guest", permissions="basic.inventory.self,basic.inventory.user,basic.kick.self,basic.online,basic.progress,basic.search_command,economy.sign,menu.root,server.list,user.info.self,user.info.user,user.register,user.whitelist.sync", inherits=""))
 
         default = session.query(Group).filter(Group.name == "default").first()
         if default is None:

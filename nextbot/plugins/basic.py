@@ -15,6 +15,7 @@ from server.web_server import create_inventory_page, create_progress_page
 from nextbot.command_config import (
     command_control,
     get_current_param,
+    list_command_configs,
     raise_command_usage,
 )
 from nextbot.db import Server, User, get_session
@@ -41,6 +42,7 @@ my_inventory_matcher = on_command("我的背包")
 map_image_matcher = on_command("查看地图")
 download_map_matcher = on_command("下载地图")
 progress_matcher = on_command("进度")
+search_command_matcher = on_command("搜索命令")
 INVENTORY_SCREENSHOT_OPTIONS = ScreenshotOptions(
     viewport_width=2000,
     viewport_height=1000,
@@ -904,3 +906,37 @@ async def handle_download_map(
     file_path = Path("/tmp") / file_name
     file_path.write_bytes(file_data)
     await bot.send(event, f"文件已保存：{file_path}")
+
+
+@search_command_matcher.handle()
+@command_control(
+    command_key="basic.search_command",
+    display_name="搜索命令",
+    permission="basic.search_command",
+    description="按关键词搜索命令名称",
+    usage="搜索命令 <关键词>",
+)
+@require_permission("basic.search_command")
+async def handle_search_command(
+    bot: Bot, event: Event, arg: Message = CommandArg()
+) -> None:
+    args = parse_command_args_with_fallback(event, arg, "搜索命令")
+    if len(args) != 1:
+        raise_command_usage()
+
+    keyword = args[0].strip()
+    if not keyword:
+        raise_command_usage()
+
+    all_items = list_command_configs()
+    matched = [
+        item for item in all_items
+        if keyword in str(item.get("display_name", ""))
+    ]
+
+    if not matched:
+        await bot.send(event, f"未找到包含「{keyword}」的命令")
+        return
+
+    lines = [item["display_name"] for item in matched]
+    await bot.send(event, "\n".join(lines))
