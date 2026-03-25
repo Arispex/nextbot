@@ -824,3 +824,43 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 22: 背包页面图片主题适配（dark/light）
+
+**Date**: 2026-03-25
+**Task**: 背包页面图片主题适配（dark/light）
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+为背包截图渲染新增暗色主题，支持 render_theme 配置。
+
+**实现**：inventory_page.py / web_server.py / basic.py 加 theme 参数链路，inventory.html 用 [data-theme] CSS 选择器实现双主题。暗色主题：深黑背景石砖纹理、深色分区卡片蓝紫边框、物品格微发光。
+
+**Bug 修复**：show_stats 参数仅控制 stats-section（格数统计栏），不控制 stats-header（生命/魔力属性行）。
+
+**修改文件**：`inventory_page.py`、`web_server.py`、`basic.py`、`inventory.html`
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `a3e0c1b` | (see git log) |
+| `5108446` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

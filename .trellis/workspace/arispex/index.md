@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 21
+- **Total Sessions**: 22
 - **Last Active**: 2026-03-25
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~826 | Active |
+| `journal-1.md` | ~866 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits |
 |---|------|-------|---------|
+| 22 | 2026-03-25 | 背包页面图片主题适配（dark/light） | `a3e0c1b`, `5108446` |
 | 21 | 2026-03-25 | 进度页面图片主题适配 + render_utils 公共模块 | `8904b88` |
 | 20 | 2026-03-25 | 排行榜图片主题适配（dark/light/auto） | `7dba598` |
 | 19 | 2026-03-25 | 新增图片主题配置项 render_theme | `2dbbe58` |
