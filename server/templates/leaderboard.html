@@ -1,115 +1,131 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="dark">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>NextBot - 排行榜</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    body {
+    /* ── Dark theme ─────────────────────────────────────────── */
+    [data-theme="dark"] body {
       background: linear-gradient(160deg, #0f1729 0%, #111827 50%, #0d1420 100%);
-      min-height: 100vh;
     }
-
-    /* Podium cards */
-    .podium-gold {
+    [data-theme="dark"] .podium-gold {
       background: linear-gradient(160deg, #1a1400 0%, #2d2000 60%, #1a1400 100%);
       border: 1px solid rgba(251,191,36,0.45);
       box-shadow: 0 0 0 1px rgba(251,191,36,0.1), 0 20px 60px rgba(251,191,36,0.15), inset 0 1px 0 rgba(251,191,36,0.2);
     }
-    .podium-silver {
+    [data-theme="dark"] .podium-silver {
       background: linear-gradient(160deg, #111820 0%, #1a2333 60%, #111820 100%);
       border: 1px solid rgba(148,163,184,0.35);
       box-shadow: 0 0 0 1px rgba(148,163,184,0.08), 0 16px 40px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.08);
     }
-    .podium-bronze {
+    [data-theme="dark"] .podium-bronze {
       background: linear-gradient(160deg, #1a0f00 0%, #2a1a05 60%, #1a0f00 100%);
       border: 1px solid rgba(217,119,6,0.35);
       box-shadow: 0 0 0 1px rgba(217,119,6,0.08), 0 16px 40px rgba(0,0,0,0.4), inset 0 1px 0 rgba(217,119,6,0.15);
     }
+    [data-theme="dark"] .rank-num-gold   { color: #fbbf24; text-shadow: 0 0 30px rgba(251,191,36,0.6), 0 0 60px rgba(251,191,36,0.3); }
+    [data-theme="dark"] .rank-num-silver { color: #94a3b8; text-shadow: 0 0 20px rgba(148,163,184,0.4); }
+    [data-theme="dark"] .rank-num-bronze { color: #d97706; text-shadow: 0 0 20px rgba(217,119,6,0.5); }
+    [data-theme="dark"] .coin-gold   { color: #fcd34d; }
+    [data-theme="dark"] .coin-silver { color: #94a3b8; }
+    [data-theme="dark"] .coin-bronze { color: #d97706; }
+    [data-theme="dark"] .gold-bar    { background: linear-gradient(90deg, transparent, #fbbf24, transparent); }
+    [data-theme="dark"] .silver-bar  { background: linear-gradient(90deg, transparent, #94a3b8, transparent); }
+    [data-theme="dark"] .bronze-bar  { background: linear-gradient(90deg, transparent, #d97706, transparent); }
+    [data-theme="dark"] .list-wrap   { border-color: rgba(255,255,255,0.06); }
+    [data-theme="dark"] .list-row    { background: rgba(255,255,255,0.03); border-color: rgba(255,255,255,0.06); }
+    [data-theme="dark"] .rank-badge  { background: rgba(255,255,255,0.06); color: #64748b; }
+    [data-theme="dark"] .entry-name  { color: #cbd5e1; }
+    [data-theme="dark"] .entry-value { color: #94a3b8; }
+    [data-theme="dark"] .entry-unit  { color: #475569; }
+    [data-theme="dark"] .page-header { background: linear-gradient(90deg, rgba(30,50,120,0.0) 0%, rgba(59,130,246,0.08) 50%, rgba(30,50,120,0.0) 100%); border-color: rgba(59,130,246,0.15); }
+    [data-theme="dark"] .header-title { color: white; text-shadow: 0 2px 20px rgba(59,130,246,0.3); }
+    [data-theme="dark"] .header-rule  { background: linear-gradient(90deg, #60a5fa, #3b82f6, transparent); }
+    [data-theme="dark"] .header-time  { color: #475569; }
+    [data-theme="dark"] .self-wrap    { border-color: rgba(255,255,255,0.08); background: rgba(255,255,255,0.04); }
+    [data-theme="dark"] .self-label   { color: #475569; }
+    [data-theme="dark"] .page-footer  { color: #374151; }
+    [data-theme="dark"] .pagination   { color: #64748b; }
 
-    /* Rank number glow */
-    .rank-num-gold   { color: #fbbf24; text-shadow: 0 0 30px rgba(251,191,36,0.6), 0 0 60px rgba(251,191,36,0.3); }
-    .rank-num-silver { color: #94a3b8; text-shadow: 0 0 20px rgba(148,163,184,0.4); }
-    .rank-num-bronze { color: #d97706; text-shadow: 0 0 20px rgba(217,119,6,0.5); }
-
-    /* Crown / medal icons */
-    .crown-gold   { filter: drop-shadow(0 0 8px rgba(251,191,36,0.8)); }
-    .crown-silver { filter: drop-shadow(0 0 6px rgba(148,163,184,0.6)); }
-    .crown-bronze { filter: drop-shadow(0 0 6px rgba(217,119,6,0.6)); }
-
-    /* Coins display */
-    .coin-gold   { color: #fcd34d; }
-    .coin-silver { color: #94a3b8; }
-    .coin-bronze { color: #d97706; }
-
-    /* Divider bar */
-    .gold-bar   { background: linear-gradient(90deg, transparent, #fbbf24, transparent); }
-    .silver-bar { background: linear-gradient(90deg, transparent, #94a3b8, transparent); }
-    .bronze-bar { background: linear-gradient(90deg, transparent, #d97706, transparent); }
-
-    /* List rows */
-    .list-row {
-      background: rgba(255,255,255,0.03);
-      border: 1px solid rgba(255,255,255,0.06);
-      transition: background 0.15s;
+    /* ── Light theme ────────────────────────────────────────── */
+    [data-theme="light"] body {
+      background: linear-gradient(135deg, #f0f4ff 0%, #f8fafc 40%, #eef2f7 100%);
     }
-
-    /* Header */
-    .page-header {
-      background: linear-gradient(90deg, rgba(30,50,120,0.0) 0%, rgba(59,130,246,0.08) 50%, rgba(30,50,120,0.0) 100%);
-      border-bottom: 1px solid rgba(59,130,246,0.15);
+    [data-theme="light"] .podium-gold {
+      background: linear-gradient(160deg, #fffbeb 0%, #fef3c7 60%, #fffbeb 100%);
+      border: 1px solid rgba(251,191,36,0.5);
+      box-shadow: 0 8px 30px rgba(251,191,36,0.12), inset 0 1px 0 rgba(255,255,255,0.8);
     }
-
-    /* Coin symbol */
-    .coin-symbol {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 1.1em;
-      height: 1.1em;
-      border-radius: 50%;
-      font-size: 0.7em;
-      font-weight: 900;
-      vertical-align: middle;
-      margin-right: 3px;
+    [data-theme="light"] .podium-silver {
+      background: linear-gradient(160deg, #f8fafc 0%, #f1f5f9 60%, #f8fafc 100%);
+      border: 1px solid rgba(148,163,184,0.45);
+      box-shadow: 0 6px 20px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.9);
     }
-    .coin-symbol-gold   { background: #fbbf24; color: #78350f; }
-    .coin-symbol-silver { background: #94a3b8; color: #0f172a; }
-    .coin-symbol-bronze { background: #d97706; color: #fff; }
-    .coin-symbol-normal { background: rgba(100,116,139,0.3); color: #64748b; }
+    [data-theme="light"] .podium-bronze {
+      background: linear-gradient(160deg, #fff7ed 0%, #ffedd5 60%, #fff7ed 100%);
+      border: 1px solid rgba(217,119,6,0.4);
+      box-shadow: 0 6px 20px rgba(217,119,6,0.08), inset 0 1px 0 rgba(255,255,255,0.8);
+    }
+    [data-theme="light"] .rank-num-gold   { color: #b45309; }
+    [data-theme="light"] .rank-num-silver { color: #64748b; }
+    [data-theme="light"] .rank-num-bronze { color: #92400e; }
+    [data-theme="light"] .coin-gold   { color: #b45309; }
+    [data-theme="light"] .coin-silver { color: #475569; }
+    [data-theme="light"] .coin-bronze { color: #92400e; }
+    [data-theme="light"] .gold-bar    { background: linear-gradient(90deg, transparent, rgba(251,191,36,0.4), transparent); }
+    [data-theme="light"] .silver-bar  { background: linear-gradient(90deg, transparent, rgba(148,163,184,0.4), transparent); }
+    [data-theme="light"] .bronze-bar  { background: linear-gradient(90deg, transparent, rgba(217,119,6,0.3), transparent); }
+    [data-theme="light"] .list-wrap   { border-color: #e2e8f0; background: white; box-shadow: 0 2px 12px rgba(30,50,120,0.06); }
+    [data-theme="light"] .list-row    { background: white; border-color: #f1f5f9; }
+    [data-theme="light"] .list-row:not(:last-child) { border-bottom-color: #f1f5f9; }
+    [data-theme="light"] .rank-badge  { background: #f1f5f9; color: #94a3b8; border: 1px solid #e2e8f0; }
+    [data-theme="light"] .entry-name  { color: #334155; }
+    [data-theme="light"] .entry-value { color: #1e293b; font-weight: 700; }
+    [data-theme="light"] .entry-unit  { color: #94a3b8; }
+    [data-theme="light"] .page-header { background: linear-gradient(90deg, rgba(30,50,120,0.0) 0%, rgba(59,130,246,0.05) 50%, rgba(30,50,120,0.0) 100%); border-color: rgba(59,130,246,0.1); }
+    [data-theme="light"] .header-title { color: #0f172a; }
+    [data-theme="light"] .header-rule  { background: linear-gradient(90deg, #3b82f6, #6366f1, transparent); }
+    [data-theme="light"] .header-time  { color: #94a3b8; }
+    [data-theme="light"] .self-wrap    { border-color: #e2e8f0; background: #f8fafc; }
+    [data-theme="light"] .self-label   { color: #94a3b8; }
+    [data-theme="light"] .page-footer  { color: #cbd5e1; }
+    [data-theme="light"] .pagination   { color: #64748b; }
+
+    /* ── Shared ─────────────────────────────────────────────── */
+    .rank-gold   { background: linear-gradient(135deg, #f59e0b, #fbbf24); box-shadow: 0 2px 8px rgba(245,158,11,0.4); }
+    .rank-silver { background: linear-gradient(135deg, #94a3b8, #cbd5e1); box-shadow: 0 2px 6px rgba(148,163,184,0.3); }
+    .rank-bronze { background: linear-gradient(135deg, #b45309, #d97706); box-shadow: 0 2px 6px rgba(180,83,9,0.3); }
+    .list-row { transition: background 0.1s; }
   </style>
 </head>
-<body class="px-8 py-10">
+<body class="min-h-screen px-8 py-10">
 
-  <!-- Page header -->
-  <div class="page-header mx-auto max-w-[820px] rounded-2xl px-8 py-6 mb-6">
+  <div class="page-header mx-auto max-w-[820px] rounded-2xl px-8 py-6 mb-6 border">
     <div class="flex items-end justify-between">
       <div>
-        <div class="h-1 w-16 rounded-full mb-3" style="background: linear-gradient(90deg, #60a5fa, #3b82f6, transparent);"></div>
-        <h1 id="lb-title" class="text-4xl font-black text-white tracking-tight" style="letter-spacing:-0.02em; text-shadow: 0 2px 20px rgba(59,130,246,0.3);"></h1>
+        <div class="header-rule h-1 w-16 rounded-full mb-4"></div>
+        <h1 id="lb-title" class="header-title text-4xl font-black tracking-tight" style="letter-spacing:-0.02em;"></h1>
       </div>
       <div class="text-right">
-        <div class="text-xs text-slate-600" id="lb-generated-at"></div>
+        <div class="header-time text-xs" id="lb-generated-at"></div>
       </div>
     </div>
   </div>
 
-  <div class="mx-auto max-w-[820px]" id="lb-content">
-    <!-- Podium top 3 injected here -->
-    <!-- List rows injected here -->
-  </div>
+  <div class="mx-auto max-w-[820px]" id="lb-content"></div>
 
-  <div id="lb-self" class="mx-auto max-w-[820px] mt-4 hidden overflow-hidden rounded-2xl border border-white/[0.06]">
-    <div class="border-b border-white/[0.04] bg-white/[0.03] px-5 py-2">
-      <span class="text-[10px] font-bold uppercase tracking-widest text-slate-600">我的排名</span>
+  <div id="lb-self" class="self-wrap mx-auto max-w-[820px] mt-4 hidden overflow-hidden rounded-2xl border">
+    <div class="border-b border-inherit px-5 py-2">
+      <span class="self-label text-[10px] font-bold uppercase tracking-widest">我的排名</span>
     </div>
     <div id="lb-self-row" class="list-row grid grid-cols-[52px_1fr_auto] items-center px-5 py-3.5"></div>
   </div>
 
   <div class="mx-auto max-w-[820px] mt-4 flex flex-col items-center gap-1">
-    <div id="lb-pagination" class="text-sm font-semibold text-slate-500"></div>
-    <div class="text-xs font-medium tracking-widest text-slate-700">Powered by NextBot</div>
+    <div id="lb-pagination" class="pagination text-sm font-semibold"></div>
+    <div class="page-footer text-xs font-medium tracking-widest">Powered by NextBot</div>
   </div>
 
   <script id="leaderboard-data" type="application/json">__LEADERBOARD_DATA_JSON__</script>
@@ -120,66 +136,42 @@
     const page = Number(data.page || 1);
     const totalPages = Number(data.total_pages || 1);
     const selfEntry = data.self_entry || null;
+    const theme = String(data.theme || "dark");
+
+    // Apply theme
+    document.documentElement.setAttribute("data-theme", theme);
 
     document.getElementById("lb-title").textContent = data.title || "排行榜";
     document.getElementById("lb-generated-at").textContent = data.generated_at || "";
     document.getElementById("lb-pagination").textContent = `第 ${page} 页 / 共 ${totalPages} 页`;
 
-    if (selfEntry) {
-      document.getElementById("lb-self").classList.remove("hidden");
-      const selfRow = document.getElementById("lb-self-row");
-
-      const rankWrap = document.createElement("div");
-      const rankBadge = document.createElement("div");
-      rankBadge.className = "inline-flex h-7 w-7 items-center justify-center rounded-lg bg-white/[0.06] text-xs font-bold text-slate-500";
-      rankBadge.textContent = String(selfEntry.rank);
-      rankWrap.appendChild(rankBadge);
-
-      const nameEl = document.createElement("div");
-      nameEl.className = "text-sm font-semibold text-slate-300 pl-1";
-      nameEl.textContent = String(selfEntry.name || "");
-
-      const coinsWrap = document.createElement("div");
-      coinsWrap.className = "flex items-center gap-1";
-      const val = document.createElement("span");
-      val.className = "text-sm font-bold text-slate-400 tabular-nums";
-      val.textContent = Number(selfEntry.value).toLocaleString();
-      const unit = document.createElement("span");
-      unit.className = "text-xs text-slate-600 ml-1";
-      unit.textContent = valueLabel;
-      coinsWrap.appendChild(val);
-      coinsWrap.appendChild(unit);
-
-      selfRow.appendChild(rankWrap);
-      selfRow.appendChild(nameEl);
-      selfRow.appendChild(coinsWrap);
-    }
-
     const content = document.getElementById("lb-content");
+
+    if (!entries.length) {
+      const empty = document.createElement("div");
+      empty.className = "pagination py-16 text-center text-sm";
+      empty.textContent = "暂无数据";
+      content.appendChild(empty);
+    } else {
 
     const isFirstPage = page === 1;
     const top3 = isFirstPage ? entries.filter(e => Number(e?.rank) <= 3) : [];
     const rest = isFirstPage ? entries.filter(e => Number(e?.rank) > 3) : entries;
 
-    if (!entries.length) {
-      const empty = document.createElement("div");
-      empty.className = "py-16 text-center text-slate-600";
-      empty.textContent = "暂无数据";
-      content.appendChild(empty);
-    } else {
+    const medals = {
+      1: { podiumClass: "podium-gold",   rankNumClass: "rank-num-gold",   barClass: "gold-bar",   coinClass: "coin-gold",   rankClass: "rank-gold",   label: "🥇",
+           nameColor: theme === "dark" ? "#fef08a" : "#78350f", subColor: theme === "dark" ? "#ca8a04" : "#92400e" },
+      2: { podiumClass: "podium-silver", rankNumClass: "rank-num-silver", barClass: "silver-bar", coinClass: "coin-silver", rankClass: "rank-silver", label: "🥈",
+           nameColor: theme === "dark" ? "#e2e8f0" : "#334155", subColor: theme === "dark" ? "#64748b" : "#64748b" },
+      3: { podiumClass: "podium-bronze", rankNumClass: "rank-num-bronze", barClass: "bronze-bar", coinClass: "coin-bronze", rankClass: "rank-bronze", label: "🥉",
+           nameColor: theme === "dark" ? "#fde68a" : "#7c2d12", subColor: theme === "dark" ? "#b45309" : "#b45309" },
+    };
 
-    // ── Podium section ──────────────────────────────────────
+    // Podium
     if (top3.length) {
       const podiumSection = document.createElement("div");
       podiumSection.className = "flex items-end gap-4 mb-5";
 
-      const medals = {
-        1: { cardClass: "podium-gold",   rankClass: "rank-num-gold",   barClass: "gold-bar",   coinClass: "coin-gold",   symbol: "coin-symbol-gold",   label: "🥇", nameColor: "#fef08a", subColor: "#ca8a04" },
-        2: { cardClass: "podium-silver", rankClass: "rank-num-silver", barClass: "silver-bar", coinClass: "coin-silver", symbol: "coin-symbol-silver", label: "🥈", nameColor: "#e2e8f0", subColor: "#64748b" },
-        3: { cardClass: "podium-bronze", rankClass: "rank-num-bronze", barClass: "bronze-bar", coinClass: "coin-bronze", symbol: "coin-symbol-bronze", label: "🥉", nameColor: "#fde68a", subColor: "#b45309" },
-      };
-
-      // Classic podium order: 2nd left, 1st center, 3rd right
       const byRank = {};
       top3.forEach(item => { byRank[Number(item?.rank)] = item; });
       const podiumOrder = [byRank[2], byRank[1], byRank[3]].filter(Boolean);
@@ -193,24 +185,21 @@
         const isFirst = rank === 1;
 
         const card = document.createElement("div");
-        card.className = `${m.cardClass} rounded-2xl px-5 flex flex-col items-center gap-3 relative overflow-hidden`;
+        card.className = `${m.podiumClass} rounded-2xl px-5 flex flex-col items-center gap-3 relative overflow-hidden`;
         card.style.flex = isFirst ? "1.2" : "1";
         card.style.paddingTop = isFirst ? "2rem" : "1.5rem";
         card.style.paddingBottom = isFirst ? "2rem" : "1.5rem";
 
-        // Big rank number background decoration
         const bgNum = document.createElement("div");
-        bgNum.className = `${m.rankClass} absolute -right-2 -bottom-4 text-[9rem] font-black opacity-[0.07] select-none pointer-events-none leading-none`;
+        bgNum.className = `${m.rankNumClass} absolute -right-2 -bottom-4 text-[9rem] font-black opacity-[0.07] select-none pointer-events-none leading-none`;
         bgNum.textContent = String(rank);
         card.appendChild(bgNum);
 
-        // Medal emoji
         const medal = document.createElement("div");
         medal.className = `${isFirst ? "text-5xl" : "text-4xl"} leading-none relative`;
         medal.textContent = m.label;
         card.appendChild(medal);
 
-        // Name + user ID
         const nameEl = document.createElement("div");
         nameEl.className = "text-center relative";
         const nameText = document.createElement("div");
@@ -227,25 +216,19 @@
         }
         card.appendChild(nameEl);
 
-        // Divider bar
         const bar = document.createElement("div");
         bar.className = `${m.barClass} h-px w-full opacity-40 relative`;
         card.appendChild(bar);
 
-        // Coins
         const coinsWrap = document.createElement("div");
         coinsWrap.className = "flex items-center gap-1.5 relative";
-
         const coinsVal = document.createElement("span");
         coinsVal.className = `${m.coinClass} ${isFirst ? "text-3xl" : "text-2xl"} font-black tabular-nums`;
         coinsVal.style.letterSpacing = "-0.02em";
         coinsVal.textContent = coins.toLocaleString();
-
         const coinsUnit = document.createElement("span");
-        coinsUnit.className = "text-sm font-medium opacity-60 ml-1";
-        coinsUnit.style.color = m.coinClass.includes("gold") ? "#ca8a04" : m.coinClass.includes("silver") ? "#64748b" : "#92400e";
+        coinsUnit.className = `${m.coinClass} text-sm font-medium opacity-60 ml-1`;
         coinsUnit.textContent = valueLabel;
-
         coinsWrap.appendChild(coinsVal);
         coinsWrap.appendChild(coinsUnit);
         card.appendChild(coinsWrap);
@@ -256,10 +239,10 @@
       content.appendChild(podiumSection);
     }
 
-    // ── Rest list ────────────────────────────────────────────
+    // List rows
     if (rest.length) {
       const listWrap = document.createElement("div");
-      listWrap.className = "rounded-2xl overflow-hidden border border-white/[0.06] divide-y divide-white/[0.04]";
+      listWrap.className = "list-wrap rounded-2xl overflow-hidden border divide-y divide-inherit";
 
       rest.forEach((item) => {
         const rank   = Number(item?.rank);
@@ -270,36 +253,32 @@
         const row = document.createElement("div");
         row.className = "list-row grid grid-cols-[52px_1fr_auto] items-center px-5 py-3.5";
 
-        // Rank badge
         const rankWrap = document.createElement("div");
         const rankBadge = document.createElement("div");
-        rankBadge.className = "inline-flex h-7 w-7 items-center justify-center rounded-lg bg-white/[0.06] text-xs font-bold text-slate-500";
+        rankBadge.className = "rank-badge inline-flex h-7 w-7 items-center justify-center rounded-lg text-xs font-bold";
         rankBadge.textContent = String(rank);
         rankWrap.appendChild(rankBadge);
 
-        // Name + user ID
         const nameEl = document.createElement("div");
         nameEl.className = "pl-1";
         const nameText = document.createElement("div");
-        nameText.className = "text-sm font-semibold text-slate-300";
+        nameText.className = "entry-name text-sm font-semibold";
         nameText.textContent = name;
         nameEl.appendChild(nameText);
         if (userId) {
           const idText = document.createElement("div");
-          idText.className = "text-[11px] text-slate-600 mt-0.5";
+          idText.className = "entry-unit text-[11px] mt-0.5";
           idText.textContent = `（${userId}）`;
           nameEl.appendChild(idText);
         }
 
-        // Coins
         const coinsWrap = document.createElement("div");
         coinsWrap.className = "flex items-center gap-1";
-        const sym = document.createElement("span");
         const val = document.createElement("span");
-        val.className = "text-sm font-bold text-slate-400 tabular-nums";
+        val.className = "entry-value text-sm tabular-nums";
         val.textContent = coins.toLocaleString();
         const unit = document.createElement("span");
-        unit.className = "text-xs text-slate-600 ml-1";
+        unit.className = "entry-unit text-xs ml-1";
         unit.textContent = valueLabel;
         coinsWrap.appendChild(val);
         coinsWrap.appendChild(unit);
@@ -313,6 +292,37 @@
       content.appendChild(listWrap);
     }
     } // end else
+
+    // Self entry
+    if (selfEntry) {
+      document.getElementById("lb-self").classList.remove("hidden");
+      const selfRow = document.getElementById("lb-self-row");
+
+      const rankWrap = document.createElement("div");
+      const rankBadge = document.createElement("div");
+      rankBadge.className = "rank-badge inline-flex h-7 w-7 items-center justify-center rounded-lg text-xs font-bold";
+      rankBadge.textContent = String(selfEntry.rank);
+      rankWrap.appendChild(rankBadge);
+
+      const nameEl = document.createElement("div");
+      nameEl.className = "entry-name text-sm font-semibold pl-1";
+      nameEl.textContent = String(selfEntry.name || "");
+
+      const coinsWrap = document.createElement("div");
+      coinsWrap.className = "flex items-center gap-1";
+      const val = document.createElement("span");
+      val.className = "entry-value text-sm tabular-nums";
+      val.textContent = Number(selfEntry.value).toLocaleString();
+      const unit = document.createElement("span");
+      unit.className = "entry-unit text-xs ml-1";
+      unit.textContent = valueLabel;
+      coinsWrap.appendChild(val);
+      coinsWrap.appendChild(unit);
+
+      selfRow.appendChild(rankWrap);
+      selfRow.appendChild(nameEl);
+      selfRow.appendChild(coinsWrap);
+    }
   </script>
 </body>
 </html>

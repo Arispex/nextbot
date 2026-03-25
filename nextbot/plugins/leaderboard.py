@@ -18,7 +18,7 @@ from nextbot.command_config import (
 from nextbot.db import User, get_session
 from nextbot.message_parser import parse_command_args_with_fallback
 from nextbot.permissions import require_permission
-from nextbot.time_utils import beijing_filename_timestamp
+from nextbot.time_utils import beijing_filename_timestamp, beijing_now
 from server.screenshot import RenderScreenshotError, ScreenshotOptions, screenshot_url
 from server.web_server import create_leaderboard_page
 
@@ -36,6 +36,14 @@ def _to_base64_image_uri(path: Path) -> str:
     raw = path.read_bytes()
     encoded = base64.b64encode(raw).decode("ascii")
     return f"base64://{encoded}"
+
+
+def _resolve_theme() -> str:
+    from nonebot import get_driver
+    theme = str(getattr(get_driver().config, "render_theme", "auto")).strip().lower()
+    if theme == "auto":
+        return "light" if 6 <= beijing_now().hour < 20 else "dark"
+    return theme if theme in {"dark", "light"} else "dark"
 
 
 def _parse_page_arg(args: list[str], command_name: str) -> int | None:
@@ -63,6 +71,7 @@ async def _render_and_send(
     total_pages: int,
     file_prefix: str,
     self_entry: dict | None = None,
+    theme: str,
 ) -> None:
     page_url = create_leaderboard_page(
         title=title,
@@ -71,6 +80,7 @@ async def _render_and_send(
         total_pages=total_pages,
         entries=entries,
         self_entry=self_entry,
+        theme=theme,
     )
     logger.info(
         f"{title}渲染地址：page={page}/{total_pages} entry_count={len(entries)} internal_url={page_url}"
@@ -169,6 +179,7 @@ async def handle_coins_leaderboard(
         total_pages=total_pages,
         file_prefix="leaderboard-coins",
         self_entry=self_entry,
+        theme=_resolve_theme(),
     )
 
 
@@ -245,4 +256,5 @@ async def handle_streak_leaderboard(
         total_pages=total_pages,
         file_prefix="leaderboard-streak",
         self_entry=self_entry,
+        theme=_resolve_theme(),
     )

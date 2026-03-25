@@ -18,6 +18,7 @@ def build_payload(
     total_pages: int,
     entries: list[dict[str, Any]],
     self_entry: dict[str, Any] | None = None,
+    theme: str = "dark",
 ) -> dict[str, Any]:
     normalized: list[dict[str, Any]] = []
     for item in entries:
@@ -47,6 +48,7 @@ def build_payload(
         "total_pages": int(total_pages),
         "entries": normalized,
         "self_entry": normalized_self,
+        "theme": str(theme).strip() if str(theme).strip() in {"dark", "light"} else "dark",
     }
 
 
@@ -60,6 +62,7 @@ def render(payload: dict[str, Any]) -> bytes:
         "total_pages": int(payload.get("total_pages", 1)),
         "entries": payload.get("entries", []),
         "self_entry": payload.get("self_entry"),
+        "theme": str(payload.get("theme", "dark")),
     }
     data_json = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
     content = template.replace("__LEADERBOARD_DATA_JSON__", data_json)

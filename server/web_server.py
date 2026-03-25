@@ -85,6 +85,7 @@ def create_leaderboard_page(
     total_pages: int,
     entries: list[dict[str, Any]],
     self_entry: dict[str, Any] | None = None,
+    theme: str = "dark",
 ) -> str:
     payload = leaderboard_page.build_payload(
         title=title,
@@ -93,6 +94,7 @@ def create_leaderboard_page(
         total_pages=total_pages,
         entries=entries,
         self_entry=self_entry,
+        theme=theme,
     )
     token = create_page("leaderboard", payload)
     settings = get_server_settings()
