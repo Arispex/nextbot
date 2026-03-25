@@ -109,8 +109,9 @@ def create_menu_page(
     *,
     title: str,
     commands: list[dict[str, str]],
+    theme: str = "light",
 ) -> str:
-    payload = menu_page.build_payload(title=title, commands=commands)
+    payload = menu_page.build_payload(title=title, commands=commands, theme=theme)
     token = create_page("menu", payload)
     settings = get_server_settings()
     return f"{_build_internal_base_url(settings)}/render/menu/{token}"

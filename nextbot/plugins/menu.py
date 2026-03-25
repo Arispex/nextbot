@@ -13,6 +13,7 @@ from nextbot.command_config import (
     raise_command_usage,
 )
 from nextbot.message_parser import parse_command_args_with_fallback
+from nextbot.render_utils import resolve_render_theme
 from nextbot.permissions import require_permission
 from nextbot.time_utils import beijing_filename_timestamp
 from server.screenshot import RenderScreenshotError, ScreenshotOptions, screenshot_url
@@ -40,7 +41,7 @@ async def _render_and_send_menu(
     title: str,
     render_commands: list[dict[str, str]],
 ) -> None:
-    page_url = create_menu_page(title=title, commands=render_commands)
+    page_url = create_menu_page(title=title, commands=render_commands, theme=resolve_render_theme())
     logger.info(
         f"{title}渲染地址："
         f"command_count={len(render_commands)} "

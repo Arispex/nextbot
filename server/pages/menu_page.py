@@ -10,7 +10,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 TEMPLATE_PATH = BASE_DIR / "server" / "templates" / "menu.html"
 
 
-def build_payload(*, title: str, commands: list[dict[str, str]]) -> dict[str, Any]:
+def build_payload(*, title: str, commands: list[dict[str, str]], theme: str = "light") -> dict[str, Any]:
     normalized_commands: list[dict[str, str]] = []
     for item in commands:
         if not isinstance(item, dict):
@@ -28,6 +28,7 @@ def build_payload(*, title: str, commands: list[dict[str, str]]) -> dict[str, An
         "generated_at": beijing_now_text(),
         "title": str(title).strip(),
         "commands": normalized_commands,
+        "theme": str(theme).strip() if str(theme).strip() in {"dark", "light"} else "light",
     }
 
 
@@ -37,6 +38,7 @@ def render(payload: dict[str, Any]) -> bytes:
         "generated_at": str(payload.get("generated_at", "")),
         "title": str(payload.get("title", "菜单")),
         "commands": payload.get("commands", []),
+        "theme": str(payload.get("theme", "light")),
     }
     data_json = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
     content = template.replace("__MENU_DATA_JSON__", data_json)

@@ -1,73 +1,91 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="light">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>NextBot - 菜单</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    body {
+    /* ── Light theme ────────────────────────────────────────── */
+    [data-theme="light"] body {
       background: linear-gradient(160deg, #f0f4ff 0%, #f8fafc 40%, #eef2f7 100%);
+      color: #0f172a;
     }
+    [data-theme="light"] .blob-1 { background: rgba(99,102,241,0.25); }
+    [data-theme="light"] .blob-2 { background: rgba(186,230,253,0.40); }
+    [data-theme="light"] .blob-3 { background: rgba(148,163,184,0.25); }
+    [data-theme="light"] .header-title { color: #0f172a; }
+    [data-theme="light"] .header-sub   { color: #94a3b8; }
+    [data-theme="light"] .header-rule  { background: linear-gradient(90deg, #6366f1, #818cf8, transparent); }
+    [data-theme="light"] .card         { background: white; border-color: #e8ecf4; box-shadow: 0 2px 8px rgba(30,50,120,0.06); }
+    [data-theme="light"] .index-badge  { background: #eef2ff; border-color: #e0e7ff; color: #818cf8; }
+    [data-theme="light"] .cmd-name     { color: #0f172a; }
+    [data-theme="light"] .cmd-desc     { color: #64748b; }
+    [data-theme="light"] .usage-block  { background: #f6f8ff; border-color: #e0e7ff; color: #475569; }
+    [data-theme="light"] .perm-label   { color: #cbd5e1; }
+    [data-theme="light"] .perm-badge   { background: #eef2ff; border-color: #c7d2fe; color: #4338ca; }
+    [data-theme="light"] .perm-none    { background: #fffbeb; border-color: #fde68a; color: #92400e; }
+    [data-theme="light"] .footer-text  { color: #cbd5e1; }
+    [data-theme="light"] .empty-wrap   { border-color: #e2e8f0; background: rgba(255,255,255,0.6); }
+    [data-theme="light"] .empty-title  { color: #94a3b8; }
+    [data-theme="light"] .empty-desc   { color: #cbd5e1; }
 
-    .card {
-      background: white;
-      border: 1px solid #e8ecf4;
-      box-shadow: 0 2px 8px rgba(30, 50, 120, 0.06), 0 0 0 0 transparent;
-      transition: box-shadow 0.15s;
+    /* ── Dark theme ─────────────────────────────────────────── */
+    [data-theme="dark"] body {
+      background-color: #0d0d0f;
+      background-image:
+        radial-gradient(ellipse at 15% 0%, rgba(60,40,120,0.18) 0%, transparent 55%),
+        radial-gradient(ellipse at 85% 100%, rgba(20,40,100,0.22) 0%, transparent 55%),
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64'%3E%3Crect width='64' height='64' fill='%23111114'/%3E%3Crect x='0' y='0' width='32' height='32' fill='%2312121a' opacity='0.5'/%3E%3Crect x='32' y='32' width='32' height='32' fill='%2312121a' opacity='0.5'/%3E%3C/svg%3E");
+      color: #e2e8f0;
     }
+    [data-theme="dark"] .blob-1 { background: rgba(99,102,241,0.08); }
+    [data-theme="dark"] .blob-2 { background: rgba(14,165,233,0.06); }
+    [data-theme="dark"] .blob-3 { background: rgba(50,50,80,0.15); }
+    [data-theme="dark"] .header-title { color: #e2e8f0; }
+    [data-theme="dark"] .header-sub   { color: #334155; }
+    [data-theme="dark"] .header-rule  { background: linear-gradient(90deg, #6366f1, #818cf8, transparent); }
+    [data-theme="dark"] .card         { background: rgba(20,20,30,0.9); border-color: rgba(60,65,100,0.4); box-shadow: none; }
+    [data-theme="dark"] .index-badge  { background: rgba(30,35,70,0.8); border-color: rgba(80,90,160,0.35); color: #818cf8; }
+    [data-theme="dark"] .cmd-name     { color: #e2e8f0; }
+    [data-theme="dark"] .cmd-desc     { color: #475569; }
+    [data-theme="dark"] .usage-block  { background: rgba(15,15,25,0.8); border-color: rgba(60,65,100,0.35); color: #64748b; }
+    [data-theme="dark"] .perm-label   { color: #1e293b; }
+    [data-theme="dark"] .perm-badge   { background: rgba(30,35,70,0.8); border-color: rgba(80,90,160,0.45); color: #818cf8; }
+    [data-theme="dark"] .perm-none    { background: rgba(40,30,10,0.8); border-color: rgba(120,80,20,0.4); color: #d97706; }
+    [data-theme="dark"] .footer-text  { color: #1e293b; }
+    [data-theme="dark"] .empty-wrap   { border-color: rgba(60,65,100,0.3); background: rgba(16,16,24,0.8); }
+    [data-theme="dark"] .empty-title  { color: #334155; }
+    [data-theme="dark"] .empty-desc   { color: #1e293b; }
 
-    .usage-block {
-      background: #f6f8ff;
-      border: 1px solid #e0e7ff;
-      font-family: ui-monospace, 'SFMono-Regular', Menlo, monospace;
-    }
-
-    .perm-badge {
-      background: #eef2ff;
-      border: 1px solid #c7d2fe;
-      color: #4338ca;
-    }
-
-    .perm-badge-none {
-      background: #fffbeb;
-      border: 1px solid #fde68a;
-      color: #92400e;
-    }
-
-    .header-rule {
-      background: linear-gradient(90deg, #6366f1 0%, #818cf8 50%, transparent 100%);
-    }
+    /* ── Shared ─────────────────────────────────────────────── */
+    .usage-block { font-family: ui-monospace,'SFMono-Regular',Menlo,monospace; }
   </style>
 </head>
-<body class="min-h-screen px-8 py-8 text-slate-900">
+<body class="min-h-screen px-8 py-8">
 
-  <!-- Background blobs -->
   <div class="pointer-events-none fixed inset-0 overflow-hidden">
-    <div class="absolute left-[5%] top-8 h-64 w-64 rounded-full bg-indigo-200/25 blur-3xl"></div>
-    <div class="absolute right-[6%] top-16 h-80 w-80 rounded-full bg-sky-100/40 blur-3xl"></div>
-    <div class="absolute bottom-10 left-1/2 h-72 w-[40rem] -translate-x-1/2 rounded-full bg-slate-200/25 blur-3xl"></div>
+    <div class="blob-1 absolute left-[5%] top-8 h-64 w-64 rounded-full blur-3xl"></div>
+    <div class="blob-2 absolute right-[6%] top-16 h-80 w-80 rounded-full blur-3xl"></div>
+    <div class="blob-3 absolute bottom-10 left-1/2 h-72 w-[40rem] -translate-x-1/2 rounded-full blur-3xl"></div>
   </div>
 
   <main class="relative mx-auto max-w-[1880px]">
 
-    <!-- Header -->
     <header class="mb-8">
-      <div class="h-1 w-24 rounded-full header-rule mb-5"></div>
-      <h1 id="menu-title" class="text-5xl font-bold tracking-tight text-slate-900" style="letter-spacing: -0.03em;"></h1>
-      <p class="mt-2 text-sm text-slate-400" id="footer-generated-at"></p>
+      <div class="header-rule h-1 w-24 rounded-full mb-5"></div>
+      <h1 id="menu-title" class="header-title text-5xl font-bold" style="letter-spacing: -0.03em;"></h1>
+      <p id="footer-generated-at" class="header-sub mt-2 text-sm"></p>
     </header>
 
-    <!-- Empty state -->
-    <div id="empty-state" class="hidden rounded-3xl border border-dashed border-slate-200 bg-white/60 py-20 text-center">
-      <div class="text-lg font-semibold text-slate-400">暂无命令</div>
-      <div class="mt-2 text-sm text-slate-300">当前分类下没有可显示的命令</div>
+    <div id="empty-state" class="hidden empty-wrap rounded-3xl border border-dashed py-20 text-center">
+      <div class="empty-title text-lg font-semibold">暂无命令</div>
+      <div class="empty-desc mt-2 text-sm">当前分类下没有可显示的命令</div>
     </div>
 
-    <!-- Card grid -->
     <div id="card-grid" class="grid gap-4" style="grid-template-columns: repeat(3, 1fr);"></div>
 
-    <footer class="mt-8 text-right text-xs tracking-widest text-slate-300">
+    <footer class="mt-8 text-right text-xs tracking-widest footer-text">
       Powered by NextBot
     </footer>
   </main>
@@ -76,37 +94,38 @@
   <script>
     const data = JSON.parse(document.getElementById("menu-data").textContent);
     const commands = Array.isArray(data.commands) ? data.commands : [];
+    const theme = String(data.theme || "light");
 
+    document.documentElement.setAttribute("data-theme", theme);
     document.getElementById("menu-title").textContent = data.title || "菜单";
     document.getElementById("footer-generated-at").textContent = data.generated_at || "";
 
     const grid = document.getElementById("card-grid");
-    const emptyState = document.getElementById("empty-state");
 
     if (!commands.length) {
-      emptyState.classList.remove("hidden");
+      document.getElementById("empty-state").classList.remove("hidden");
       grid.classList.add("hidden");
     }
 
     commands.forEach((item, index) => {
-      const name = String(item?.display_name || "").trim() || "-";
-      const desc = String(item?.description || "").trim() || "暂无介绍";
-      const usage = String(item?.usage || "").trim();
-      const permission = String(item?.permission || "").trim();
+      const name       = String(item?.display_name || "").trim() || "-";
+      const desc       = String(item?.description  || "").trim() || "暂无介绍";
+      const usage      = String(item?.usage        || "").trim();
+      const permission = String(item?.permission   || "").trim();
 
       const card = document.createElement("article");
-      card.className = "card rounded-2xl p-5 flex flex-col gap-3";
+      card.className = "card rounded-2xl p-5 border flex flex-col gap-3";
 
       // Header row: index badge + name
       const cardHead = document.createElement("div");
       cardHead.className = "flex items-start gap-3";
 
       const indexBadge = document.createElement("div");
-      indexBadge.className = "shrink-0 mt-0.5 h-7 w-7 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center text-[11px] font-bold text-indigo-400";
+      indexBadge.className = "index-badge shrink-0 mt-0.5 h-7 w-7 rounded-lg border flex items-center justify-center text-[11px] font-bold";
       indexBadge.textContent = String(index + 1).padStart(2, "0");
 
       const nameEl = document.createElement("h2");
-      nameEl.className = "text-xl font-bold text-slate-900 leading-tight";
+      nameEl.className = "cmd-name text-xl font-bold leading-tight";
       nameEl.style.letterSpacing = "-0.02em";
       nameEl.textContent = name;
 
@@ -115,12 +134,12 @@
 
       // Description
       const descEl = document.createElement("p");
-      descEl.className = "text-sm leading-relaxed text-slate-500";
+      descEl.className = "cmd-desc text-sm leading-relaxed";
       descEl.textContent = desc;
 
       // Usage
       const usageEl = document.createElement("div");
-      usageEl.className = "usage-block rounded-lg px-3 py-2 text-[13px] text-slate-600 leading-relaxed break-all";
+      usageEl.className = "usage-block rounded-lg border px-3 py-2 text-[13px] leading-relaxed break-all";
       usageEl.textContent = usage || "—";
 
       // Footer: permission badge
@@ -128,12 +147,12 @@
       cardFoot.className = "mt-auto pt-1 flex items-center gap-2";
 
       const permLabel = document.createElement("span");
-      permLabel.className = "text-[10px] font-semibold uppercase tracking-widest text-slate-300";
+      permLabel.className = "perm-label text-[10px] font-semibold uppercase tracking-widest";
       permLabel.textContent = "权限";
 
       const permBadge = document.createElement("span");
-      permBadge.className = "rounded-full px-2.5 py-0.5 text-[11px] font-medium break-all "
-        + (permission ? "perm-badge" : "perm-badge-none");
+      permBadge.className = "rounded-full border px-2.5 py-0.5 text-[11px] font-medium break-all "
+        + (permission ? "perm-badge" : "perm-none");
       permBadge.textContent = permission || "无需额外权限";
 
       cardFoot.appendChild(permLabel);
