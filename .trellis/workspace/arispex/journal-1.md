@@ -938,3 +938,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 25: 累计签到排行榜
+
+**Date**: 2026-03-25
+**Task**: 累计签到排行榜
+
+### Summary
+
+新增签到排行榜功能：按 sign_total 降序排列，支持翻页、自身排名显示、双主题渲染，与连续签到排行榜完全对称实现
+
+### Main Changes
+
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `3665c26` | (see git log) |
+| `a902664` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

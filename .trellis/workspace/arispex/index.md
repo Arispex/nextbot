@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 24
+- **Total Sessions**: 25
 - **Last Active**: 2026-03-25
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~940 | Active |
+| `journal-1.md` | ~973 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits |
 |---|------|-------|---------|
+| 25 | 2026-03-25 | 累计签到排行榜 | `3665c26`, `a902664` |
 | 24 | 2026-03-25 | 用户累计签到次数字段 | `3665c26` |
 | 23 | 2026-03-25 | 菜单页面图片主题适配 | `bbcb348` |
 | 22 | 2026-03-25 | 背包页面图片主题适配（dark/light） | `a3e0c1b`, `5108446` |
