@@ -445,3 +445,53 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 12: 菜单拆分为菜单/管理菜单，新增 admin 标记机制
+
+**Date**: 2026-03-25
+**Task**: 菜单拆分为菜单/管理菜单，新增 admin 标记机制
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+拆分菜单功能并重设计样式，同时建立 admin 标记机制用于菜单分类。
+
+**功能拆分**：
+- `菜单`：显示非 admin 命令（普通用户命令）
+- `管理菜单`：显示 admin=True 的命令（管理员命令）
+- 共用 `_render_and_send_menu` 内部函数，减少重复代码
+
+**admin 标记机制**：
+- `command_control` 新增 `admin: bool = False` 参数
+- `RegisteredCommand` / `RuntimeCommandState` 新增 `admin` 字段
+- `_serialize_runtime_state` 输出 `admin` 字段，供 `list_command_configs()` 使用
+- 16 个管理命令（group/permission/server/user.coins/basic.execute/map/download）标记 `admin=True`
+
+**样式重设计**：
+- 卡片式 3 列网格布局，替换原有表格
+- 标题从 `data.title` 动态读取，区分菜单/管理菜单
+
+**修改文件**：`command_config.py`、`menu.py`、`group_manager.py`、`permission_manager.py`、`server_manager.py`、`user_manager.py`、`basic.py`、`menu_page.py`、`menu.html`、`web_server.py`
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `fd6a8d3` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 11
+- **Total Sessions**: 12
 - **Last Active**: 2026-03-25
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~447 | Active |
+| `journal-1.md` | ~497 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits |
 |---|------|-------|---------|
+| 12 | 2026-03-25 | 菜单拆分为菜单/管理菜单，新增 admin 标记机制 | `fd6a8d3` |
 | 11 | 2026-03-25 | economy 插件新增转账功能 | `281cbe9` |
 | 10 | 2026-03-25 | 重设计背包页面精致亮色主题 | `98c63ba` |
 | 9 | 2026-03-25 | 重设计进度页面 Terraria 暗色主题 | `05790ea` |
