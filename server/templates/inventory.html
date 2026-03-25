@@ -3,93 +3,155 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>NextBot WebUI - 用户背包</title>
+  <title>NextBot - 用户背包</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          colors: {
-            brand: {
-              50: "#eff6ff",
-              100: "#dbeafe",
-              500: "#3b82f6",
-              600: "#2563eb",
-              700: "#1d4ed8",
-              800: "#1e40af"
-            }
-          }
-        }
-      }
-    };
-  </script>
+  <style>
+    body {
+      background: linear-gradient(135deg, #e8f0fe 0%, #f1f5f9 40%, #e2e8f0 100%);
+    }
+
+    .header-bg {
+      background: linear-gradient(120deg, #1e3a8a 0%, #1d4ed8 45%, #1e40af 100%);
+    }
+
+    .meta-chip {
+      background: rgba(255,255,255,0.14);
+      border: 1px solid rgba(255,255,255,0.18);
+      backdrop-filter: blur(4px);
+    }
+
+    .stat-chip-life   { background: rgba(254,202,202,0.18); border: 1px solid rgba(252,165,165,0.35); }
+    .stat-chip-mana   { background: rgba(191,219,254,0.18); border: 1px solid rgba(147,197,253,0.35); }
+    .stat-chip-fish   { background: rgba(167,243,208,0.18); border: 1px solid rgba(110,231,183,0.35); }
+    .stat-chip-death  { background: rgba(221,214,254,0.18); border: 1px solid rgba(196,181,253,0.35); }
+
+    .cell-occupied {
+      background: linear-gradient(145deg, #eff6ff 0%, #f8fafc 100%);
+      border: 1px solid #bfdbfe;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.8);
+    }
+    .cell-occupied:hover {
+      border-color: #60a5fa;
+      box-shadow: 0 0 0 2px rgba(96,165,250,0.2), inset 0 1px 0 rgba(255,255,255,0.8);
+    }
+    .cell-empty {
+      background: #f1f5f9;
+      border: 1px solid #e2e8f0;
+    }
+
+    .section-card {
+      background: white;
+      border: 1px solid #e2e8f0;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 8px rgba(30,64,175,0.04);
+    }
+    .section-head {
+      background: linear-gradient(90deg, #f8fafc 0%, #f1f5f9 100%);
+      border-bottom: 1px solid #e2e8f0;
+    }
+    .section-badge {
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      color: #1d4ed8;
+    }
+
+    .stat-bar-badge {
+      background: white;
+      border: 1px solid #e2e8f0;
+      color: #475569;
+    }
+    .stat-bar-badge b { color: #1e293b; }
+
+    .stack-tag {
+      background: rgba(15,23,42,0.82);
+      border: 1px solid rgba(255,255,255,0.15);
+      color: #f8fafc;
+    }
+
+    .item-hint {
+      background: #0f172a;
+      border: 1px solid #334155;
+      color: #e2e8f0;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+    }
+  </style>
 </head>
-<body class="min-h-screen bg-[radial-gradient(circle_at_top,#dbeafe_0%,#f8fafc_35%,#e2e8f0_100%)] p-5 text-slate-900">
-  <main class="mx-auto max-w-[2100px] overflow-hidden rounded-3xl border border-slate-200 bg-white/90 shadow-2xl shadow-blue-200/60 backdrop-blur">
-    <header class="relative overflow-hidden bg-gradient-to-r from-brand-700 via-brand-600 to-brand-800 px-6 py-5 text-white">
-      <div class="absolute -left-10 -top-12 h-40 w-40 rounded-full bg-white/15 blur-2xl"></div>
-      <div class="absolute -right-16 top-0 h-44 w-44 rounded-full bg-cyan-200/20 blur-3xl"></div>
+<body class="min-h-screen p-5 text-slate-900">
+  <main class="mx-auto max-w-[2100px] overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl"
+        style="box-shadow: 0 25px 60px rgba(30,64,175,0.12), 0 4px 16px rgba(0,0,0,0.06);">
+
+    <!-- Header -->
+    <header class="header-bg relative overflow-hidden px-7 py-6 text-white">
+      <div class="absolute -left-10 -top-12 h-48 w-48 rounded-full bg-white/10 blur-3xl"></div>
+      <div class="absolute -right-12 top-0 h-44 w-44 rounded-full bg-cyan-300/15 blur-3xl"></div>
+      <div class="absolute bottom-0 left-1/2 h-px w-3/4 -translate-x-1/2 bg-gradient-to-r from-transparent via-white/20 to-transparent"></div>
+
       <div class="relative">
-        <h1 class="text-3xl font-bold tracking-wide">用户背包</h1>
-        <div class="mt-4 space-y-2 text-sm">
-          <div class="grid grid-cols-2 gap-2 md:grid-cols-5">
-            <div class="rounded-lg bg-white/15 px-3 py-2">
-              <div class="text-[11px] text-blue-100">用户 ID</div>
-              <div id="meta-user-id" class="truncate font-semibold"></div>
-            </div>
-            <div class="rounded-lg bg-white/15 px-3 py-2">
-              <div class="text-[11px] text-blue-100">用户名称</div>
-              <div id="meta-user-name" class="truncate font-semibold"></div>
-            </div>
-            <div class="rounded-lg bg-white/15 px-3 py-2">
-              <div class="text-[11px] text-blue-100">服务器 ID</div>
-              <div id="meta-server-id" class="truncate font-semibold"></div>
-            </div>
-            <div class="rounded-lg bg-white/15 px-3 py-2">
-              <div class="text-[11px] text-blue-100">服务器名称</div>
-              <div id="meta-server-name" class="truncate font-semibold"></div>
-            </div>
-            <div class="rounded-lg bg-white/15 px-3 py-2">
-              <div class="text-[11px] text-blue-100">生成时间</div>
-              <div id="meta-generated-at" class="truncate font-semibold"></div>
-            </div>
+        <h1 class="text-3xl font-extrabold tracking-wider drop-shadow-sm">用户背包</h1>
+
+        <!-- 基础信息 -->
+        <div class="mt-4 grid grid-cols-2 gap-2 md:grid-cols-5">
+          <div class="meta-chip rounded-xl px-3 py-2">
+            <div class="text-[10px] font-semibold uppercase tracking-widest text-blue-200">用户 ID</div>
+            <div id="meta-user-id" class="truncate font-bold"></div>
           </div>
-          <div class="grid grid-cols-1 gap-2 md:grid-cols-5">
-            <div class="rounded-lg bg-white/15 px-3 py-2">
-              <div class="text-[11px] text-blue-100">生命值</div>
-              <div id="meta-life" class="truncate font-semibold"></div>
-            </div>
-            <div class="rounded-lg bg-white/15 px-3 py-2">
-              <div class="text-[11px] text-blue-100">魔力值</div>
-              <div id="meta-mana" class="truncate font-semibold"></div>
-            </div>
-            <div class="rounded-lg bg-white/15 px-3 py-2">
-              <div class="text-[11px] text-blue-100">渔夫任务数</div>
-              <div id="meta-fishing-tasks" class="truncate font-semibold"></div>
-            </div>
-            <div class="rounded-lg bg-white/15 px-3 py-2">
-              <div class="text-[11px] text-blue-100">PVE 死亡次数</div>
-              <div id="meta-pve-deaths" class="truncate font-semibold"></div>
-            </div>
-            <div class="rounded-lg bg-white/15 px-3 py-2">
-              <div class="text-[11px] text-blue-100">PVP 死亡次数</div>
-              <div id="meta-pvp-deaths" class="truncate font-semibold"></div>
-            </div>
+          <div class="meta-chip rounded-xl px-3 py-2">
+            <div class="text-[10px] font-semibold uppercase tracking-widest text-blue-200">用户名称</div>
+            <div id="meta-user-name" class="truncate font-bold"></div>
+          </div>
+          <div class="meta-chip rounded-xl px-3 py-2">
+            <div class="text-[10px] font-semibold uppercase tracking-widest text-blue-200">服务器 ID</div>
+            <div id="meta-server-id" class="truncate font-bold"></div>
+          </div>
+          <div class="meta-chip rounded-xl px-3 py-2">
+            <div class="text-[10px] font-semibold uppercase tracking-widest text-blue-200">服务器名称</div>
+            <div id="meta-server-name" class="truncate font-bold"></div>
+          </div>
+          <div class="meta-chip rounded-xl px-3 py-2">
+            <div class="text-[10px] font-semibold uppercase tracking-widest text-blue-200">生成时间</div>
+            <div id="meta-generated-at" class="truncate text-sm font-semibold text-blue-100"></div>
+          </div>
+        </div>
+
+        <!-- 角色属性 -->
+        <div class="mt-2 grid grid-cols-2 gap-2 md:grid-cols-5">
+          <div class="stat-chip-life rounded-xl px-3 py-2">
+            <div class="text-[10px] font-semibold uppercase tracking-widest text-red-200">生命值</div>
+            <div id="meta-life" class="truncate font-bold text-red-100"></div>
+          </div>
+          <div class="stat-chip-mana rounded-xl px-3 py-2">
+            <div class="text-[10px] font-semibold uppercase tracking-widest text-blue-200">魔力值</div>
+            <div id="meta-mana" class="truncate font-bold text-blue-100"></div>
+          </div>
+          <div class="stat-chip-fish rounded-xl px-3 py-2">
+            <div class="text-[10px] font-semibold uppercase tracking-widest text-emerald-200">渔夫任务数</div>
+            <div id="meta-fishing-tasks" class="truncate font-bold text-emerald-100"></div>
+          </div>
+          <div class="stat-chip-death rounded-xl px-3 py-2">
+            <div class="text-[10px] font-semibold uppercase tracking-widest text-purple-200">PVE 死亡</div>
+            <div id="meta-pve-deaths" class="truncate font-bold text-purple-100"></div>
+          </div>
+          <div class="stat-chip-death rounded-xl px-3 py-2">
+            <div class="text-[10px] font-semibold uppercase tracking-widest text-purple-200">PVP 死亡</div>
+            <div id="meta-pvp-deaths" class="truncate font-bold text-purple-100"></div>
           </div>
         </div>
       </div>
     </header>
-    <section id="stats-section" class="border-b border-slate-200 bg-gradient-to-r from-brand-50 to-slate-50 px-5 py-3 text-sm text-slate-700">
-      <div class="flex flex-wrap items-center gap-3">
-        <span class="rounded-full border border-brand-200 bg-white px-3 py-1">显示格数：<b id="meta-total">0</b></span>
-        <span class="rounded-full border border-emerald-200 bg-white px-3 py-1">已占用：<b id="meta-used">0</b></span>
-        <span class="rounded-full border border-slate-200 bg-white px-3 py-1">空格：<b id="meta-empty">0</b></span>
+
+    <!-- Stats bar -->
+    <section id="stats-section" class="border-b border-slate-100 bg-gradient-to-r from-blue-50/60 to-slate-50 px-6 py-3">
+      <div class="flex flex-wrap items-center gap-2 text-sm">
+        <span class="stat-bar-badge rounded-full px-3 py-1 text-xs shadow-sm">显示格数：<b id="meta-total">0</b></span>
+        <span class="stat-bar-badge rounded-full px-3 py-1 text-xs shadow-sm">已占用：<b id="meta-used">0</b></span>
+        <span class="stat-bar-badge rounded-full px-3 py-1 text-xs shadow-sm">空格：<b id="meta-empty">0</b></span>
       </div>
     </section>
-    <section class="p-4">
-      <div id="section-rows" class="space-y-4"></div>
+
+    <section class="p-5">
+      <div id="section-rows" class="space-y-5"></div>
     </section>
-    <div class="px-6 pb-4 text-right text-xs font-medium tracking-wide text-slate-400">
+
+    <div class="px-6 pb-4 text-right text-xs font-medium tracking-widest text-slate-300">
       Powered by NextBot
     </div>
   </main>
@@ -212,21 +274,18 @@
 
     function createCell(slot) {
       const cell = document.createElement("div");
-      cell.className = "group relative h-[52px] w-[52px] rounded-lg border border-slate-300 bg-gradient-to-b from-brand-50 to-slate-100 shadow-sm";
-
-      if (slot.netId <= 0) {
-        cell.classList.remove("from-brand-50", "to-slate-100");
-        cell.classList.add("bg-slate-100");
-      }
+      const occupied = slot.netId > 0;
+      cell.className = "group relative h-[52px] w-[52px] rounded-lg transition-all duration-150 "
+        + (occupied ? "cell-occupied" : "cell-empty");
 
       if (showIndex) {
         const idx = document.createElement("span");
-        idx.className = "absolute left-1 top-0.5 z-10 text-[9px] font-medium text-slate-500";
+        idx.className = "absolute left-1 top-0.5 z-10 text-[9px] font-medium text-slate-400";
         idx.textContent = String(slot.index);
         cell.appendChild(idx);
       }
 
-      if (slot.netId > 0) {
+      if (occupied) {
         const img = document.createElement("img");
         img.className = "h-full w-full object-contain p-1.5 transition-transform duration-150 group-hover:scale-110";
         img.style.imageRendering = "pixelated";
@@ -238,7 +297,7 @@
 
       if (slot.stack > 1) {
         const stackTag = document.createElement("span");
-        stackTag.className = "absolute bottom-0.5 right-0.5 rounded-md border border-white/20 bg-slate-900/80 px-1 text-[10px] font-bold text-white";
+        stackTag.className = "stack-tag absolute bottom-0.5 right-0.5 rounded border px-1 text-[10px] font-bold";
         stackTag.textContent = String(slot.stack);
         cell.appendChild(stackTag);
       }
@@ -249,7 +308,7 @@
         const hintText = buildItemHint(slot);
         if (!hintText) return;
         const hint = document.createElement("span");
-        hint.className = "pointer-events-none absolute left-1/2 top-0 z-20 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-md border border-slate-200 bg-slate-900/95 px-2 py-1 text-[11px] font-medium text-white shadow-md";
+        hint.className = "item-hint pointer-events-none absolute left-1/2 top-0 z-20 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-lg px-2.5 py-1.5 text-[11px] font-semibold";
         hint.textContent = hintText;
         cell.appendChild(hint);
         activeHintEl = hint;
@@ -263,31 +322,31 @@
       const used = sectionSlots.filter((slot) => slot.netId > 0).length;
 
       const card = document.createElement("article");
-      card.className = "inline-block w-fit overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm";
+      card.className = "section-card inline-block w-fit overflow-hidden rounded-2xl";
 
       const head = document.createElement("header");
-      head.className = "flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3";
+      head.className = "section-head flex items-center justify-between px-4 py-2.5";
 
       const titleWrap = document.createElement("div");
       const title = document.createElement("h2");
-      title.className = "text-base font-semibold text-slate-900";
+      title.className = "text-sm font-semibold text-slate-700";
       title.textContent = section.title;
       titleWrap.appendChild(title);
 
       const badge = document.createElement("span");
-      badge.className = "rounded-full border border-brand-200 bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-700";
+      badge.className = "section-badge rounded-full px-2.5 py-0.5 text-xs font-semibold";
       badge.textContent = `${used}/${sectionSlots.length}`;
 
       head.appendChild(titleWrap);
       head.appendChild(badge);
 
       const body = document.createElement("div");
-      body.className = "overflow-x-auto p-4";
+      body.className = "overflow-x-auto p-3";
 
       const grid = document.createElement("div");
-      grid.className = "grid gap-2";
+      grid.className = "grid gap-1.5";
       grid.style.gridTemplateColumns = `repeat(${section.cols}, 52px)`;
-      grid.style.minWidth = `${section.cols * 52 + Math.max(section.cols - 1, 0) * 8}px`;
+      grid.style.minWidth = `${section.cols * 52 + Math.max(section.cols - 1, 0) * 6}px`;
 
       sectionSlots.forEach((slot) => grid.appendChild(createCell(slot)));
       body.appendChild(grid);
