@@ -100,8 +100,9 @@
     <!-- List rows injected here -->
   </div>
 
-  <div class="mx-auto max-w-[820px] mt-6 text-right text-xs font-medium tracking-widest text-slate-700">
-    Powered by NextBot
+  <div class="mx-auto max-w-[820px] mt-6 flex flex-col items-center gap-1">
+    <div id="lb-pagination" class="text-sm font-semibold text-slate-500"></div>
+    <div class="text-xs font-medium tracking-widest text-slate-700">Powered by NextBot</div>
   </div>
 
   <script id="leaderboard-data" type="application/json">__LEADERBOARD_DATA_JSON__</script>
@@ -109,14 +110,18 @@
     const data = JSON.parse(document.getElementById("leaderboard-data").textContent);
     const entries = Array.isArray(data.entries) ? data.entries : [];
     const valueLabel = String(data.value_label || "");
+    const page = Number(data.page || 1);
+    const totalPages = Number(data.total_pages || 1);
 
     document.getElementById("lb-title").textContent = data.title || "排行榜";
     document.getElementById("lb-generated-at").textContent = data.generated_at || "";
+    document.getElementById("lb-pagination").textContent = `第 ${page} 页 / 共 ${totalPages} 页`;
 
     const content = document.getElementById("lb-content");
 
-    const top3 = entries.filter(e => Number(e?.rank) <= 3);
-    const rest = entries.filter(e => Number(e?.rank) > 3);
+    const isFirstPage = page === 1;
+    const top3 = isFirstPage ? entries.filter(e => Number(e?.rank) <= 3) : [];
+    const rest = isFirstPage ? entries.filter(e => Number(e?.rank) > 3) : entries;
 
     if (!entries.length) {
       const empty = document.createElement("div");

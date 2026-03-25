@@ -14,6 +14,8 @@ def build_payload(
     *,
     title: str,
     value_label: str,
+    page: int,
+    total_pages: int,
     entries: list[dict[str, Any]],
 ) -> dict[str, Any]:
     normalized: list[dict[str, Any]] = []
@@ -32,6 +34,8 @@ def build_payload(
         "generated_at": beijing_now_text(),
         "title": str(title).strip(),
         "value_label": str(value_label).strip(),
+        "page": int(page),
+        "total_pages": int(total_pages),
         "entries": normalized,
     }
 
@@ -42,6 +46,8 @@ def render(payload: dict[str, Any]) -> bytes:
         "generated_at": str(payload.get("generated_at", "")),
         "title": str(payload.get("title", "排行榜")),
         "value_label": str(payload.get("value_label", "")),
+        "page": int(payload.get("page", 1)),
+        "total_pages": int(payload.get("total_pages", 1)),
         "entries": payload.get("entries", []),
     }
     data_json = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")

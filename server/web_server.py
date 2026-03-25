@@ -81,9 +81,17 @@ def create_leaderboard_page(
     *,
     title: str,
     value_label: str,
+    page: int,
+    total_pages: int,
     entries: list[dict[str, Any]],
 ) -> str:
-    payload = leaderboard_page.build_payload(title=title, value_label=value_label, entries=entries)
+    payload = leaderboard_page.build_payload(
+        title=title,
+        value_label=value_label,
+        page=page,
+        total_pages=total_pages,
+        entries=entries,
+    )
     token = create_page("leaderboard", payload)
     settings = get_server_settings()
     return f"{_build_internal_base_url(settings)}/render/leaderboard/{token}"
