@@ -41,6 +41,7 @@ class User(Base):
     signed_today: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     last_sign_date: Mapped[str] = mapped_column(String, nullable=False, default="")
     sign_streak: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    sign_total: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     permissions: Mapped[str] = mapped_column(String, nullable=False, default="")
     group: Mapped[str] = mapped_column(String, nullable=False, default="guest")
     created_at: Mapped[datetime] = mapped_column(
@@ -199,6 +200,11 @@ def ensure_user_signin_schema() -> None:
         if "sign_streak" not in columns:
             conn.execute(
                 'ALTER TABLE "user" ADD COLUMN "sign_streak" INTEGER NOT NULL DEFAULT 0'
+            )
+            changed = True
+        if "sign_total" not in columns:
+            conn.execute(
+                'ALTER TABLE "user" ADD COLUMN "sign_total" INTEGER NOT NULL DEFAULT 0'
             )
             changed = True
         if changed:

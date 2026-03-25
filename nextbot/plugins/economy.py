@@ -156,6 +156,7 @@ async def handle_sign(bot: Bot, event: Event, arg: Message = CommandArg()) -> No
         user.signed_today = True
         user.last_sign_date = today_text
         user.sign_streak = streak_result.next_streak
+        user.sign_total = int(user.sign_total or 0) + 1
         session.commit()
 
         logger.info(
