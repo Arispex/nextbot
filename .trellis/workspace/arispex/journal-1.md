@@ -906,3 +906,35 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 24: 用户累计签到次数字段
+
+**Date**: 2026-03-25
+**Task**: 用户累计签到次数字段
+
+### Summary
+
+为 User 模型新增 sign_total 字段记录累计签到次数，每次签到成功时 +1，并加入 ensure_user_signin_schema migration 保证已有数据库自动升级
+
+### Main Changes
+
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `3665c26` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
