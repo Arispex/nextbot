@@ -24,20 +24,22 @@ def build_payload(
     for item in entries:
         if not isinstance(item, dict):
             continue
+        raw_value = item.get("value", 0)
         normalized.append(
             {
                 "rank": int(item.get("rank", 0)),
                 "name": str(item.get("name", "")).strip(),
                 "user_id": str(item.get("user_id", "")).strip(),
-                "value": int(item.get("value", 0)),
+                "value": str(raw_value) if isinstance(raw_value, str) else int(raw_value),
             }
         )
     normalized_self: dict[str, Any] | None = None
     if isinstance(self_entry, dict):
+        raw_self_value = self_entry.get("value", 0)
         normalized_self = {
             "rank": int(self_entry.get("rank", 0)),
             "name": str(self_entry.get("name", "")).strip(),
-            "value": int(self_entry.get("value", 0)),
+            "value": str(raw_self_value) if isinstance(raw_self_value, str) else int(raw_self_value),
         }
 
     return {

@@ -133,6 +133,7 @@
     const data = JSON.parse(document.getElementById("leaderboard-data").textContent);
     const entries = Array.isArray(data.entries) ? data.entries : [];
     const valueLabel = String(data.value_label || "");
+    const formatValue = (v) => typeof v === "string" ? v : Number(v).toLocaleString();
     const page = Number(data.page || 1);
     const totalPages = Number(data.total_pages || 1);
     const selfEntry = data.self_entry || null;
@@ -180,7 +181,7 @@
         const rank   = Number(item?.rank);
         const name   = String(item?.name || "").trim() || "—";
         const userId = String(item?.user_id || "").trim();
-        const coins  = Number(item?.value || 0);
+        const coins  = item?.value ?? 0;
         const m      = medals[rank] || medals[3];
         const isFirst = rank === 1;
 
@@ -225,7 +226,7 @@
         const coinsVal = document.createElement("span");
         coinsVal.className = `${m.coinClass} ${isFirst ? "text-3xl" : "text-2xl"} font-black tabular-nums`;
         coinsVal.style.letterSpacing = "-0.02em";
-        coinsVal.textContent = coins.toLocaleString();
+        coinsVal.textContent = formatValue(coins);
         const coinsUnit = document.createElement("span");
         coinsUnit.className = `${m.coinClass} text-sm font-medium opacity-60 ml-1`;
         coinsUnit.textContent = valueLabel;
@@ -248,7 +249,7 @@
         const rank   = Number(item?.rank);
         const name   = String(item?.name || "").trim() || "—";
         const userId = String(item?.user_id || "").trim();
-        const coins  = Number(item?.value || 0);
+        const coins  = item?.value ?? 0;
 
         const row = document.createElement("div");
         row.className = "list-row grid grid-cols-[52px_1fr_auto] items-center px-5 py-3.5";
@@ -276,7 +277,7 @@
         coinsWrap.className = "flex items-center gap-1";
         const val = document.createElement("span");
         val.className = "entry-value text-sm tabular-nums";
-        val.textContent = coins.toLocaleString();
+        val.textContent = formatValue(coins);
         const unit = document.createElement("span");
         unit.className = "entry-unit text-xs ml-1";
         unit.textContent = valueLabel;
@@ -312,7 +313,7 @@
       coinsWrap.className = "flex items-center gap-1";
       const val = document.createElement("span");
       val.className = "entry-value text-sm tabular-nums";
-      val.textContent = Number(selfEntry.value).toLocaleString();
+      val.textContent = formatValue(selfEntry.value);
       const unit = document.createElement("span");
       unit.className = "entry-unit text-xs ml-1";
       unit.textContent = valueLabel;

@@ -34,6 +34,7 @@ streak_leaderboard_matcher = on_command("连续签到排行榜")
 signin_leaderboard_matcher = on_command("签到排行榜")
 deaths_leaderboard_matcher = on_command("死亡排行榜")
 fishing_leaderboard_matcher = on_command("渔夫任务排行榜")
+online_time_leaderboard_matcher = on_command("在线时长排行榜")
 
 LEADERBOARD_SCREENSHOT_OPTIONS = ScreenshotOptions(
     viewport_width=900,
@@ -47,6 +48,22 @@ def _to_base64_image_uri(path: Path) -> str:
     encoded = base64.b64encode(raw).decode("ascii")
     return f"base64://{encoded}"
 
+
+
+def _format_online_seconds(seconds: int) -> str:
+    if seconds < 60:
+        return f"{seconds} 秒"
+    if seconds < 3600:
+        m, s = divmod(seconds, 60)
+        return f"{m} 分 {s} 秒" if s else f"{m} 分钟"
+    h, remainder = divmod(seconds, 3600)
+    m, s = divmod(remainder, 60)
+    parts = [f"{h} 小时"]
+    if m:
+        parts.append(f"{m} 分")
+    if s:
+        parts.append(f"{s} 秒")
+    return " ".join(parts)
 
 
 def _parse_page_arg(args: list[str], command_name: str) -> int | None:
@@ -555,6 +572,120 @@ async def handle_fishing_leaderboard(
         entries=entries,
         total_pages=total_pages,
         file_prefix="leaderboard-fishing",
+        self_entry=self_entry,
+        theme=resolve_render_theme(),
+    )
+
+
+@online_time_leaderboard_matcher.handle()
+@command_control(
+    command_key="leaderboard.online_time",
+    display_name="在线时长排行榜",
+    permission="leaderboard.online_time",
+    description="查看指定服务器的玩家在线时长排行榜",
+    usage="在线时长排行榜 <服务器 ID> [页数]",
+    params={
+        "limit": {
+            "type": "int",
+            "label": "每页名次",
+            "description": "每页显示的名次数",
+            "required": False,
+            "default": 10,
+            "min": 1,
+            "max": 50,
+        },
+    },
+)
+@require_permission("leaderboard.online_time")
+async def handle_online_time_leaderboard(
+    bot: Bot, event: Event, arg: Message = CommandArg()
+) -> None:
+    args = parse_command_args_with_fallback(event, arg, "在线时长排行榜")
+    if len(args) < 1 or len(args) > 2:
+        raise_command_usage()
+
+    try:
+        server_id = int(args[0])
+    except ValueError:
+        raise_command_usage()
+
+    page = _parse_page_arg(args[1:], "在线时长排行榜")
+    if page is None:
+        await bot.send(event, "查询失败，页数必须为正整数")
+        return
+
+    limit = max(1, min(int(get_current_param("limit", 10)), 50))
+
+    session = get_session()
+    try:
+        server = session.query(Server).filter(Server.id == server_id).first()
+        caller_id = event.get_user_id()
+        caller = session.query(User).filter(User.user_id == caller_id).first()
+        caller_name = caller.name if caller is not None else None
+    finally:
+        session.close()
+
+    if server is None:
+        await bot.send(event, "查询失败，服务器不存在")
+        return
+
+    try:
+        response = await request_server_api(server, "/nextbot/leaderboards/online-time")
+    except TShockRequestError:
+        await bot.send(event, "查询失败，无法连接服务器")
+        return
+
+    if not is_success(response):
+        await bot.send(event, f"查询失败，{get_error_reason(response)}")
+        return
+
+    raw_entries = response.payload.get("entries")
+    if not isinstance(raw_entries, list):
+        await bot.send(event, "查询失败，返回数据格式错误")
+        return
+
+    all_entries = [
+        e for e in raw_entries
+        if isinstance(e, dict) and isinstance(e.get("username"), str) and isinstance(e.get("onlineSeconds"), int)
+    ]
+
+    total_count = len(all_entries)
+    total_pages = max(1, math.ceil(total_count / limit))
+    if page > total_pages:
+        await bot.send(event, f"查询失败，超出总页数（共 {total_pages} 页）")
+        return
+
+    offset = (page - 1) * limit
+    page_entries = all_entries[offset: offset + limit]
+    entries = [
+        {"rank": offset + i + 1, "name": e["username"], "value": _format_online_seconds(int(e["onlineSeconds"]))}
+        for i, e in enumerate(page_entries)
+    ]
+
+    self_entry = None
+    if caller_name is not None:
+        for idx, e in enumerate(all_entries):
+            if e.get("username") == caller_name:
+                self_entry = {
+                    "rank": idx + 1,
+                    "name": caller_name,
+                    "value": _format_online_seconds(int(e["onlineSeconds"])),
+                }
+                break
+
+    logger.info(
+        f"在线时长排行榜查询成功：server_id={server_id} total={total_count} page={page}/{total_pages}"
+    )
+
+    await _render_and_send(
+        bot, event,
+        title="在线时长排行榜",
+        value_label="",
+        page=page,
+        limit=limit,
+        entries=entries,
+        total_pages=total_pages,
+        file_prefix="leaderboard-online-time",
         self_entry=self_entry,
         theme=resolve_render_theme(),
     )
