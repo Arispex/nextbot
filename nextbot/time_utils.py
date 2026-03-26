@@ -48,6 +48,22 @@ def beijing_filename_timestamp() -> str:
     return beijing_now().strftime(_FILENAME_TIMESTAMP_FORMAT)
 
 
+def format_online_seconds(seconds: int) -> str:
+    if seconds < 60:
+        return f"{seconds} 秒"
+    if seconds < 3600:
+        m, s = divmod(seconds, 60)
+        return f"{m} 分 {s} 秒" if s else f"{m} 分钟"
+    h, remainder = divmod(seconds, 3600)
+    m, s = divmod(remainder, 60)
+    parts = [f"{h} 小时"]
+    if m:
+        parts.append(f"{m} 分")
+    if s:
+        parts.append(f"{s} 秒")
+    return " ".join(parts)
+
+
 def seconds_until_next_beijing_midnight() -> float:
     now = beijing_now()
     next_midnight = datetime.combine(

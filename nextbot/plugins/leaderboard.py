@@ -25,7 +25,7 @@ from nextbot.tshock_api import (
 )
 from nextbot.permissions import require_permission
 from nextbot.render_utils import resolve_render_theme
-from nextbot.time_utils import beijing_filename_timestamp
+from nextbot.time_utils import beijing_filename_timestamp, format_online_seconds
 from server.screenshot import RenderScreenshotError, ScreenshotOptions, screenshot_url
 from server.web_server import create_leaderboard_page
 
@@ -48,22 +48,6 @@ def _to_base64_image_uri(path: Path) -> str:
     encoded = base64.b64encode(raw).decode("ascii")
     return f"base64://{encoded}"
 
-
-
-def _format_online_seconds(seconds: int) -> str:
-    if seconds < 60:
-        return f"{seconds} 秒"
-    if seconds < 3600:
-        m, s = divmod(seconds, 60)
-        return f"{m} 分 {s} 秒" if s else f"{m} 分钟"
-    h, remainder = divmod(seconds, 3600)
-    m, s = divmod(remainder, 60)
-    parts = [f"{h} 小时"]
-    if m:
-        parts.append(f"{m} 分")
-    if s:
-        parts.append(f"{s} 秒")
-    return " ".join(parts)
 
 
 def _parse_page_arg(args: list[str], command_name: str) -> int | None:
@@ -658,7 +642,7 @@ async def handle_online_time_leaderboard(
     offset = (page - 1) * limit
     page_entries = all_entries[offset: offset + limit]
     entries = [
-        {"rank": offset + i + 1, "name": e["username"], "value": _format_online_seconds(int(e["onlineSeconds"]))}
+        {"rank": offset + i + 1, "name": e["username"], "value": format_online_seconds(int(e["onlineSeconds"]))}
         for i, e in enumerate(page_entries)
     ]
 
@@ -669,7 +653,7 @@ async def handle_online_time_leaderboard(
                 self_entry = {
                     "rank": idx + 1,
                     "name": caller_name,
-                    "value": _format_online_seconds(int(e["onlineSeconds"])),
+                    "value": format_online_seconds(int(e["onlineSeconds"])),
                 }
                 break
 

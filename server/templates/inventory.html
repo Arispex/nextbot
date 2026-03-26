@@ -28,14 +28,17 @@
     [data-theme="light"] .stat-chip-mana   { background: rgba(191,219,254,0.18); border: 1px solid rgba(147,197,253,0.35); }
     [data-theme="light"] .stat-chip-fish   { background: rgba(167,243,208,0.18); border: 1px solid rgba(110,231,183,0.35); }
     [data-theme="light"] .stat-chip-death  { background: rgba(221,214,254,0.18); border: 1px solid rgba(196,181,253,0.35); }
+    [data-theme="light"] .stat-chip-time   { background: rgba(254,243,199,0.18); border: 1px solid rgba(252,211,77,0.35); }
     [data-theme="light"] .stat-label-life  { color: rgba(254,202,202,0.8); }
     [data-theme="light"] .stat-label-mana  { color: rgba(191,219,254,0.8); }
     [data-theme="light"] .stat-label-fish  { color: rgba(167,243,208,0.8); }
     [data-theme="light"] .stat-label-death { color: rgba(221,214,254,0.8); }
+    [data-theme="light"] .stat-label-time  { color: rgba(254,243,199,0.8); }
     [data-theme="light"] .stat-value-life  { color: #fecaca; }
     [data-theme="light"] .stat-value-mana  { color: #bfdbfe; }
     [data-theme="light"] .stat-value-fish  { color: #a7f3d0; }
     [data-theme="light"] .stat-value-death { color: #ddd6fe; }
+    [data-theme="light"] .stat-value-time  { color: #fef08a; }
     [data-theme="light"] .stats-bar   { background: linear-gradient(to right, rgba(239,246,255,0.6), #f8fafc); border-color: #f1f5f9; }
     [data-theme="light"] .stat-badge  { background: white; border: 1px solid #e2e8f0; color: #475569; }
     [data-theme="light"] .stat-badge b{ color: #1e293b; }
@@ -78,14 +81,17 @@
     [data-theme="dark"] .stat-chip-mana   { background: rgba(96,165,250,0.06);  border: 1px solid rgba(96,165,250,0.2);  }
     [data-theme="dark"] .stat-chip-fish   { background: rgba(52,211,153,0.06);  border: 1px solid rgba(52,211,153,0.2);  }
     [data-theme="dark"] .stat-chip-death  { background: rgba(167,139,250,0.06); border: 1px solid rgba(167,139,250,0.2); }
+    [data-theme="dark"] .stat-chip-time   { background: rgba(251,191,36,0.06);  border: 1px solid rgba(251,191,36,0.2);  }
     [data-theme="dark"] .stat-label-life  { color: rgba(248,113,113,0.6); }
     [data-theme="dark"] .stat-label-mana  { color: rgba(96,165,250,0.6);  }
     [data-theme="dark"] .stat-label-fish  { color: rgba(52,211,153,0.6);  }
     [data-theme="dark"] .stat-label-death { color: rgba(167,139,250,0.6); }
+    [data-theme="dark"] .stat-label-time  { color: rgba(251,191,36,0.6);  }
     [data-theme="dark"] .stat-value-life  { color: #f87171; }
     [data-theme="dark"] .stat-value-mana  { color: #60a5fa; }
     [data-theme="dark"] .stat-value-fish  { color: #34d399; }
     [data-theme="dark"] .stat-value-death { color: #a78bfa; }
+    [data-theme="dark"] .stat-value-time  { color: #fcd34d; }
     [data-theme="dark"] .stats-bar   { background: rgba(16,16,22,0.8); border-color: rgba(60,65,100,0.25); }
     [data-theme="dark"] .stat-badge  { background: rgba(20,20,30,0.8); border: 1px solid rgba(60,65,100,0.45); color: #9ca3af; }
     [data-theme="dark"] .stat-badge b{ color: #c4c8e8; }
@@ -138,7 +144,7 @@
           </div>
         </div>
 
-        <div id="stats-header" class="mt-2 grid grid-cols-2 gap-2 md:grid-cols-5">
+        <div id="stats-header" class="mt-2 grid grid-cols-2 gap-2 md:grid-cols-6">
           <div class="stat-chip-life rounded-xl px-3 py-2">
             <div class="stat-label-life text-[10px] font-semibold uppercase tracking-widest">生命值</div>
             <div id="meta-life" class="stat-value-life truncate font-bold"></div>
@@ -158,6 +164,10 @@
           <div class="stat-chip-death rounded-xl px-3 py-2">
             <div class="stat-label-death text-[10px] font-semibold uppercase tracking-widest">PVP 死亡</div>
             <div id="meta-pvp-deaths" class="stat-value-death truncate font-bold"></div>
+          </div>
+          <div id="stats-online-time" class="stat-chip-time rounded-xl px-3 py-2">
+            <div class="stat-label-time text-[10px] font-semibold uppercase tracking-widest">在线时长</div>
+            <div id="meta-online-time" class="stat-value-time truncate font-bold"></div>
           </div>
         </div>
       </div>
@@ -196,6 +206,12 @@
     document.getElementById("meta-fishing-tasks").textContent = data.fishing_tasks_text || "";
     document.getElementById("meta-pve-deaths").textContent = data.pve_deaths_text || "";
     document.getElementById("meta-pvp-deaths").textContent = data.pvp_deaths_text || "";
+    const onlineTimeText = String(data.online_time_text || "").trim();
+    if (onlineTimeText) {
+      document.getElementById("meta-online-time").textContent = onlineTimeText;
+    } else {
+      document.getElementById("stats-online-time").classList.add("hidden");
+    }
 
     const slots = Array.isArray(data.slots) ? data.slots : [];
     const showStats = Boolean(data.show_stats ?? true);

@@ -38,9 +38,10 @@ def create_inventory_page(
     fishing_tasks_text: str,
     pve_deaths_text: str,
     pvp_deaths_text: str,
-    show_stats: bool,
-    show_index: bool,
-    slots: list[dict[str, Any]],
+    online_time_text: str = "",
+    show_stats: bool = True,
+    show_index: bool = True,
+    slots: list[dict[str, Any]] = [],
     theme: str = "light",
 ) -> str:
     payload = inventory_page.build_payload(
@@ -53,6 +54,7 @@ def create_inventory_page(
         fishing_tasks_text=fishing_tasks_text,
         pve_deaths_text=pve_deaths_text,
         pvp_deaths_text=pvp_deaths_text,
+        online_time_text=online_time_text,
         show_stats=show_stats,
         show_index=show_index,
         slots=slots,
