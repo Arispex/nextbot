@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse, Response
 
 from server.page_store import get_page
-from server.pages import inventory_page, leaderboard_page, menu_page, progress_page, user_info_page
+from server.pages import admin_list_page, inventory_page, leaderboard_page, menu_page, progress_page, user_info_page
 
 router = APIRouter()
 
@@ -69,6 +69,11 @@ async def render_leaderboard(token: str) -> Response:
 @router.get("/render/user_info/{token}")
 async def render_user_info(token: str) -> Response:
     return _render_page(token, page_type="user_info", renderer=user_info_page.render)
+
+
+@router.get("/render/admin_list/{token}")
+async def render_admin_list(token: str) -> Response:
+    return _render_page(token, page_type="admin_list", renderer=admin_list_page.render)
 
 
 @router.get("/assets/items/{file_path:path}")

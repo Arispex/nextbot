@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NextBot - 管理员列表</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    /* ── Light theme ────────────────────────────────────────── */
+    [data-theme="light"] body        { background: linear-gradient(160deg, #f0f4ff 0%, #f8fafc 40%, #eef2f7 100%); }
+    [data-theme="light"] .main-card  { background: white; border-color: #e2e8f0; box-shadow: 0 20px 60px rgba(30,64,175,0.10), 0 4px 16px rgba(0,0,0,0.05); }
+    [data-theme="light"] .header-rule { background: linear-gradient(90deg, #6366f1, #818cf8, transparent); }
+    [data-theme="light"] .header-title { color: #0f172a; letter-spacing: -0.04em; }
+    [data-theme="light"] .header-sub   { color: #94a3b8; }
+    [data-theme="light"] .admin-card   { background: #f8fafc; border-color: #e2e8f0; }
+    [data-theme="light"] .admin-card:hover { border-color: #c7d2fe; }
+    [data-theme="light"] .avatar-ring  { border-color: #e2e8f0; box-shadow: 0 4px 12px rgba(30,64,175,0.10); }
+    [data-theme="light"] .admin-name   { color: #0f172a; }
+    [data-theme="light"] .admin-qq     { color: #94a3b8; }
+    [data-theme="light"] .owner-badge  { background: #eef2ff; border: 1px solid #c7d2fe; color: #4338ca; }
+    [data-theme="light"] .footer-text  { color: #cbd5e1; }
+
+    /* ── Dark theme ─────────────────────────────────────────── */
+    [data-theme="dark"] body {
+      background-color: #0d0d0f;
+      background-image:
+        radial-gradient(ellipse at 15% 0%, rgba(60,40,120,0.18) 0%, transparent 55%),
+        radial-gradient(ellipse at 85% 100%, rgba(20,40,100,0.22) 0%, transparent 55%),
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64'%3E%3Crect width='64' height='64' fill='%23111114'/%3E%3Crect x='0' y='0' width='32' height='32' fill='%2312121a' opacity='0.5'/%3E%3Crect x='32' y='32' width='32' height='32' fill='%2312121a' opacity='0.5'/%3E%3C/svg%3E");
+    }
+    [data-theme="dark"] .main-card   { background: rgba(18,18,26,0.96); border-color: rgba(60,65,100,0.35); box-shadow: 0 0 60px rgba(0,0,0,0.8); }
+    [data-theme="dark"] .header-rule { background: linear-gradient(90deg, #6366f1, #818cf8, transparent); }
+    [data-theme="dark"] .header-title { color: #e2e8f0; letter-spacing: -0.04em; }
+    [data-theme="dark"] .header-sub   { color: #334155; }
+    [data-theme="dark"] .admin-card   { background: rgba(20,20,30,0.8); border-color: rgba(60,65,100,0.35); }
+    [data-theme="dark"] .avatar-ring  { border-color: rgba(60,65,100,0.5); box-shadow: 0 4px 16px rgba(0,0,0,0.6); }
+    [data-theme="dark"] .admin-name   { color: #e2e8f0; }
+    [data-theme="dark"] .admin-qq     { color: #475569; }
+    [data-theme="dark"] .owner-badge  { background: rgba(30,35,70,0.8); border: 1px solid rgba(80,90,160,0.45); color: #818cf8; }
+    [data-theme="dark"] .footer-text  { color: #1e293b; }
+  </style>
+</head>
+<body class="min-h-screen px-6 py-8">
+
+  <main class="main-card mx-auto max-w-[820px] overflow-hidden rounded-3xl border">
+
+    <section class="px-8 pt-8 pb-6">
+      <div class="header-rule mb-4 h-1 w-20 rounded-full"></div>
+      <h1 class="header-title text-4xl font-bold">管理员列表</h1>
+      <p id="header-sub" class="header-sub mt-1 text-xs tracking-widest"></p>
+    </section>
+
+    <section class="px-8 pb-8">
+      <div id="admin-grid" class="grid grid-cols-3 gap-4"></div>
+    </section>
+
+    <div class="footer-text px-8 pb-5 text-right text-xs tracking-widest">Powered by NextBot</div>
+  </main>
+
+  <script id="admin-list-data" type="application/json">__ADMIN_LIST_DATA_JSON__</script>
+  <script>
+    const data = JSON.parse(document.getElementById("admin-list-data").textContent);
+    document.documentElement.setAttribute("data-theme", data.theme || "light");
+    document.getElementById("header-sub").textContent = data.generated_at || "";
+
+    const grid = document.getElementById("admin-grid");
+    const admins = Array.isArray(data.admins) ? data.admins : [];
+
+    admins.forEach(admin => {
+      const userId = String(admin.user_id || "");
+      const nickname = String(admin.nickname || "").trim();
+
+      const card = document.createElement("div");
+      card.className = "admin-card flex flex-col items-center gap-3 rounded-2xl border px-4 py-5 text-center";
+
+      const avatar = document.createElement("img");
+      avatar.className = "avatar-ring h-20 w-20 rounded-full border-2 object-cover";
+      avatar.src = `http://q1.qlogo.cn/g?b=qq&nk=${encodeURIComponent(userId)}&s=100`;
+      avatar.alt = nickname || userId;
+
+      const nameEl = document.createElement("div");
+      nameEl.className = "admin-name text-base font-bold leading-tight";
+      nameEl.textContent = nickname || "—";
+
+      const qqEl = document.createElement("div");
+      qqEl.className = "admin-qq font-mono text-xs";
+      qqEl.textContent = userId;
+
+      const badge = document.createElement("span");
+      badge.className = "owner-badge rounded-full px-3 py-0.5 text-[11px] font-semibold";
+      badge.textContent = "Owner";
+
+      card.appendChild(avatar);
+      card.appendChild(nameEl);
+      card.appendChild(qqEl);
+      card.appendChild(badge);
+      grid.appendChild(card);
+    });
+  </script>
+</body>
+</html>

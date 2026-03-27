@@ -1,0 +1,41 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Any
+
+from nextbot.time_utils import beijing_now_text
+
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+TEMPLATE_PATH = BASE_DIR / "server" / "templates" / "admin_list.html"
+
+
+def build_payload(
+    *,
+    admins: list[dict[str, str]],
+    theme: str = "light",
+) -> dict[str, Any]:
+    return {
+        "generated_at": beijing_now_text(),
+        "admins": [
+            {
+                "user_id": str(a.get("user_id", "")),
+                "nickname": str(a.get("nickname", "")),
+            }
+            for a in admins
+            if isinstance(a, dict)
+        ],
+        "theme": str(theme).strip() if str(theme).strip() in {"dark", "light"} else "light",
+    }
+
+
+def render(payload: dict[str, Any]) -> bytes:
+    template = TEMPLATE_PATH.read_text(encoding="utf-8")
+    data = {
+        "generated_at": str(payload.get("generated_at", "")),
+        "admins": payload.get("admins", []),
+        "theme": str(payload.get("theme", "light")),
+    }
+    data_json = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
+    content = template.replace("__ADMIN_LIST_DATA_JSON__", data_json)
+    return content.encode("utf-8")

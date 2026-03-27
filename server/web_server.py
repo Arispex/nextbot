@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from nonebot.log import logger
 
 from server.page_store import create_page
-from server.pages import inventory_page, leaderboard_page, menu_page, progress_page, user_info_page
+from server.pages import admin_list_page, inventory_page, leaderboard_page, menu_page, progress_page, user_info_page
 from server.routes.render import router as render_router
 from server.routes.webui_commands import router as webui_commands_router
 from server.routes.webui_dashboard import router as webui_dashboard_router
@@ -105,6 +105,17 @@ def create_leaderboard_page(
     token = create_page("leaderboard", payload)
     settings = get_server_settings()
     return f"{_build_internal_base_url(settings)}/render/leaderboard/{token}"
+
+
+def create_admin_list_page(
+    *,
+    admins: list[dict[str, str]],
+    theme: str = "light",
+) -> str:
+    payload = admin_list_page.build_payload(admins=admins, theme=theme)
+    token = create_page("admin_list", payload)
+    settings = get_server_settings()
+    return f"{_build_internal_base_url(settings)}/render/admin_list/{token}"
 
 
 def create_user_info_page(
