@@ -910,7 +910,10 @@ def command_control(
 
         signature = inspect.signature(func)
         try:
-            type_hints = typing.get_type_hints(func)
+            # include_extras=True preserves Annotated metadata (e.g. NoneBot2's
+            # `T_State = Annotated[Dict, _STATE_FLAG]`) so downstream injectors
+            # can still recognize the parameter after we rebuild the signature.
+            type_hints = typing.get_type_hints(func, include_extras=True)
         except Exception:
             type_hints = {}
 

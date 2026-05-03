@@ -17,6 +17,68 @@ DB_PATH = DATA_DIR / "app.db"
 DATABASE_URL = f"sqlite:///{DB_PATH}"
 STAT_COMMAND_EXECUTE_TOTAL = "command.execute.total"
 
+# Single source of truth for the factory `guest` permission set.
+# `ensure_default_groups()` seeds this on first run; `同步访客权限` admin
+# command diffs against it when補全 missing keys after upgrades.
+DEFAULT_GUEST_PERMISSIONS: frozenset[str] = frozenset({
+    "about",
+    "ban.list",
+    "economy.dice",
+    "economy.guess_number",
+    "economy.red_packet.grab",
+    "economy.red_packet.list_all",
+    "economy.red_packet.list_own",
+    "economy.red_packet.send",
+    "economy.red_packet.withdraw",
+    "economy.rob",
+    "economy.sign",
+    "economy.transfer",
+    "leaderboard.coins",
+    "leaderboard.daily_sign",
+    "leaderboard.deaths",
+    "leaderboard.dice_income",
+    "leaderboard.dice_win_rate",
+    "leaderboard.fishing",
+    "leaderboard.guess_number_income",
+    "leaderboard.guess_number_win_rate",
+    "leaderboard.online_time",
+    "leaderboard.rob_income",
+    "leaderboard.rob_loss",
+    "leaderboard.rob_penalty",
+    "leaderboard.rob_success_rate",
+    "leaderboard.signin",
+    "leaderboard.streak",
+    "leaderboard.total_online_time",
+    "lottery.draw",
+    "lottery.list",
+    "lottery.view",
+    "menu.root",
+    "menu.search",
+    "player_query.inventory.self",
+    "player_query.inventory.user",
+    "player_query.kick.self",
+    "player_query.online",
+    "player_query.progress",
+    "security.login.confirm",
+    "security.login.reject",
+    "server.list",
+    "server.send",
+    "shop.buy",
+    "shop.list",
+    "shop.view",
+    "system.tutorial",
+    "user.info.self",
+    "user.info.user",
+    "user.register",
+    "user.whitelist.sync",
+    "warehouse.claim_self",
+    "warehouse.drop_self",
+    "warehouse.gift_self",
+    "warehouse.list_self",
+    "warehouse.list_user",
+    "warehouse.recycle_self",
+})
+
 
 class Base(DeclarativeBase):
     pass
@@ -307,7 +369,11 @@ def ensure_default_groups() -> None:
     try:
         guest = session.query(Group).filter(Group.name == "guest").first()
         if guest is None:
-            session.add(Group(name="guest", permissions="about,ban.list,economy.dice,economy.guess_number,economy.red_packet.grab,economy.red_packet.list_all,economy.red_packet.list_own,economy.red_packet.send,economy.red_packet.withdraw,economy.rob,economy.sign,economy.transfer,leaderboard.coins,leaderboard.daily_sign,leaderboard.deaths,lottery.draw,lottery.list,lottery.view,leaderboard.dice_income,leaderboard.dice_win_rate,leaderboard.fishing,leaderboard.guess_number_income,leaderboard.guess_number_win_rate,leaderboard.online_time,leaderboard.rob_income,leaderboard.rob_loss,leaderboard.rob_penalty,leaderboard.rob_success_rate,leaderboard.signin,leaderboard.streak,leaderboard.total_online_time,menu.root,menu.search,player_query.inventory.self,player_query.inventory.user,player_query.kick.self,player_query.online,player_query.progress,security.login.confirm,security.login.reject,server.list,server.send,shop.buy,shop.list,shop.view,system.tutorial,user.info.self,user.info.user,user.register,user.whitelist.sync,warehouse.claim_self,warehouse.drop_self,warehouse.gift_self,warehouse.list_self,warehouse.list_user,warehouse.recycle_self", inherits=""))
+            session.add(Group(
+                name="guest",
+                permissions=",".join(sorted(DEFAULT_GUEST_PERMISSIONS)),
+                inherits="",
+            ))
 
         default = session.query(Group).filter(Group.name == "default").first()
         if default is None:

@@ -8,11 +8,11 @@ from nextbot.access_control import get_owner_ids
 from nextbot.db import Group, User, get_session
 
 
-def _split_values(value: str) -> list[str]:
+def split_csv_values(value: str) -> list[str]:
     return [item for item in (v.strip() for v in value.split(",")) if item]
 
 
-def _join_values(values: Iterable[str]) -> str:
+def join_csv_values(values: Iterable[str]) -> str:
     return ",".join(sorted(set(values)))
 
 
@@ -32,7 +32,7 @@ def get_effective_permissions(user_id: str) -> set[str]:
             user_perms: set[str] = set()
         else:
             group_name = user.group or "guest"
-            user_perms = set(_split_values(user.permissions))
+            user_perms = set(split_csv_values(user.permissions))
 
         group_perms = _get_group_permissions(session, group_name, set())
         return user_perms | group_perms
@@ -53,8 +53,8 @@ def _get_group_permissions(
     if group is None:
         return set()
 
-    perms = set(_split_values(group.permissions))
-    for parent in _split_values(group.inherits):
+    perms = set(split_csv_values(group.permissions))
+    for parent in split_csv_values(group.inherits):
         perms |= _get_group_permissions(session, parent, visited)
     return perms
 
@@ -75,7 +75,10 @@ def require_permission(permission: str):
 
         signature = inspect.signature(func)
         try:
-            type_hints = typing.get_type_hints(func)
+            # include_extras=True preserves Annotated metadata (e.g. NoneBot2's
+            # `T_State = Annotated[Dict, _STATE_FLAG]`) so downstream injectors
+            # can still recognize the parameter after we rebuild the signature.
+            type_hints = typing.get_type_hints(func, include_extras=True)
         except Exception:
             type_hints = {}
 
@@ -114,24 +117,24 @@ def require_permission(permission: str):
 
 
 def add_permission(value: str, permission: str) -> str:
-    perms = set(_split_values(value))
+    perms = set(split_csv_values(value))
     perms.add(permission)
-    return _join_values(perms)
+    return join_csv_values(perms)
 
 
 def remove_permission(value: str, permission: str) -> str:
-    perms = set(_split_values(value))
+    perms = set(split_csv_values(value))
     perms.discard(permission)
-    return _join_values(perms)
+    return join_csv_values(perms)
 
 
 def add_inherit(value: str, parent: str) -> str:
-    parents = set(_split_values(value))
+    parents = set(split_csv_values(value))
     parents.add(parent)
-    return _join_values(parents)
+    return join_csv_values(parents)
 
 
 def remove_inherit(value: str, parent: str) -> str:
-    parents = set(_split_values(value))
+    parents = set(split_csv_values(value))
     parents.discard(parent)
-    return _join_values(parents)
+    return join_csv_values(parents)

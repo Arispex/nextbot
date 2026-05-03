@@ -5,23 +5,35 @@ from nonebot import on_command
 from nonebot.adapters import Bot, Event, Message
 from nonebot.adapters.onebot.v11 import MessageSegment as OBV11MessageSegment
 from nonebot.log import logger
-from nonebot.params import CommandArg
+from nonebot.matcher import Matcher
+from nonebot.params import Arg, CommandArg
 
 from nextbot.access_control import get_owner_ids, get_owner_ids_ordered
 from nextbot.command_config import command_control, get_current_param, raise_command_usage
-from nextbot.db import Group, User, get_session
+from nextbot.db import DEFAULT_GUEST_PERMISSIONS, Group, User, get_session
 from nextbot.message_parser import (
     parse_command_args_with_fallback,
     resolve_user_id_arg_with_fallback,
 )
 from nextbot.permissions import (
     add_permission,
+    join_csv_values,
     remove_permission,
     require_permission,
+    split_csv_values,
 )
 from nextbot.render_utils import resolve_render_theme
 from nextbot.time_utils import beijing_filename_timestamp
-from nextbot.text_utils import EMOJI_GROUP, EMOJI_LOCK, EMOJI_USER, reply_block, reply_failure, reply_success
+from nextbot.text_utils import (
+    EMOJI_CHART,
+    EMOJI_GROUP,
+    EMOJI_LOCK,
+    EMOJI_USER,
+    reply_block,
+    reply_failure,
+    reply_info,
+    reply_success,
+)
 from server.screenshot import RenderScreenshotError, ScreenshotOptions, screenshot_url
 from server.web_server import create_admin_list_page
 
@@ -29,6 +41,7 @@ add_user_perm_matcher = on_command("添加用户权限")
 remove_user_perm_matcher = on_command("删除用户权限")
 set_user_group_matcher = on_command("修改用户身份组")
 admin_list_matcher = on_command("管理员列表")
+sync_guest_perms_matcher = on_command("同步访客权限")
 
 ADMIN_LIST_SCREENSHOT_OPTIONS = ScreenshotOptions(
     viewport_width=820,
@@ -297,3 +310,151 @@ async def handle_admin_list(bot: Bot, event: Event, arg: Message = CommandArg())
         await bot.send(event, OBV11MessageSegment.image(file=image_uri))
         return
     await bot.send(event, f"✅ 截图成功，文件：{screenshot_path}")
+
+
+_SYNC_CONFIRM_TOKEN = "确认"
+_SYNC_GROUP_NAME = "guest"
+
+
+def _diff_guest_default_permissions() -> tuple[list[str], list[str], int, int]:
+    """Return (current_sorted, missing_sorted, current_count, target_count).
+
+    Reads the live `guest` row, splits its CSV, diffs against the in-code default
+    set. Missing keys are returned sorted for stable display.
+    """
+    session = get_session()
+    try:
+        guest = session.query(Group).filter(Group.name == _SYNC_GROUP_NAME).first()
+        current = set(split_csv_values(guest.permissions)) if guest is not None else set()
+    finally:
+        session.close()
+    missing = sorted(DEFAULT_GUEST_PERMISSIONS - current)
+    target = current | set(missing)
+    return sorted(current), missing, len(current), len(target)
+
+
+@sync_guest_perms_matcher.handle()
+@command_control(
+    command_key="permission.group.guest.sync",
+    display_name="同步访客权限",
+    permission="permission.group.guest.sync",
+    description="把 guest 身份组补全至默认权限集（仅新增、不删除已有权限），需二次确认",
+    usage="同步访客权限",
+    category="权限管理",
+)
+@require_permission("permission.group.guest.sync")
+async def handle_sync_guest_perms(
+    bot: Bot, event: Event, matcher: Matcher, arg: Message = CommandArg(),
+) -> None:
+    args = parse_command_args_with_fallback(event, arg, "同步访客权限")
+    if args:
+        raise_command_usage()
+
+    at = OBV11MessageSegment.at(int(event.get_user_id()))
+    _, missing, current_count, target_count = _diff_guest_default_permissions()
+
+    if not missing:
+        await matcher.finish(
+            at + "\n" + reply_block(
+                reply_success("同步", "无需补全"),
+                [
+                    f"{EMOJI_GROUP} 身份组：{_SYNC_GROUP_NAME}",
+                    f"{EMOJI_CHART} 已有权限：{current_count} 个",
+                ],
+            )
+        )
+
+    matcher.state["sync_missing"] = missing
+    matcher.state["sync_current_count"] = current_count
+    matcher.state["sync_target_count"] = target_count
+    matcher.state["sync_caller_user_id"] = event.get_user_id()
+
+    preview_lines = [
+        f"{EMOJI_GROUP} 身份组：{_SYNC_GROUP_NAME}",
+        f"{EMOJI_LOCK} 缺失权限：{len(missing)} 个",
+    ]
+    preview_lines.extend(f"• {key}" for key in missing)
+    preview_lines.append(
+        f"{EMOJI_CHART} 当前已有：{current_count} 个 → 同步后：{target_count} 个",
+    )
+    await matcher.send(
+        at + "\n" + reply_block(
+            reply_info("同步预览"),
+            preview_lines,
+            hint=f"回复「{_SYNC_CONFIRM_TOKEN}」执行同步，回复其他内容取消",
+        )
+    )
+
+
+@sync_guest_perms_matcher.got("confirm_reply")
+async def handle_sync_guest_perms_confirm(
+    bot: Bot, event: Event, matcher: Matcher,
+    confirm_reply: Message = Arg("confirm_reply"),
+) -> None:
+    # Defense-in-depth: NoneBot2's session id should already scope `got` waits
+    # to the originating user in a group, but verify explicitly so a misbehaving
+    # adapter or future version can't let another group member confirm for us.
+    caller_user_id = matcher.state.get("sync_caller_user_id")
+    if caller_user_id and event.get_user_id() != caller_user_id:
+        await matcher.reject()
+
+    at = OBV11MessageSegment.at(int(event.get_user_id()))
+    text = confirm_reply.extract_plain_text().strip()
+    if text != _SYNC_CONFIRM_TOKEN:
+        await matcher.finish(
+            at + " " + reply_failure("同步", "已取消"),
+        )
+
+    missing: list[str] = matcher.state.get("sync_missing") or []
+    if not missing:
+        # Defensive: should not reach here because the first step finishes early
+        # when the diff is empty. If it does (e.g. session lost state), bail out.
+        await matcher.finish(
+            at + " " + reply_failure("同步", "缺失权限列表已失效，请重新发起命令"),
+        )
+
+    actually_added: list[str] = []
+    current: set[str] = set()
+    session = get_session()
+    try:
+        guest = session.query(Group).filter(Group.name == _SYNC_GROUP_NAME).first()
+        if guest is None:
+            await matcher.finish(
+                at + " " + reply_failure("同步", "guest 身份组不存在"),
+            )
+
+        current = set(split_csv_values(guest.permissions))
+        # Re-diff against live row in case WebUI added some of the missing keys
+        # between the preview and the confirmation.
+        actually_added = sorted(set(missing) - current)
+        if actually_added:
+            guest.permissions = join_csv_values(current | set(actually_added))
+            session.commit()
+        target_count = len(current | set(actually_added))
+    finally:
+        session.close()
+
+    if not actually_added:
+        await matcher.finish(
+            at + "\n" + reply_block(
+                reply_success("同步", "无需补全"),
+                [
+                    f"{EMOJI_GROUP} 身份组：{_SYNC_GROUP_NAME}",
+                    f"{EMOJI_CHART} 已有权限：{target_count} 个",
+                ],
+            )
+        )
+
+    logger.info(
+        f"同步访客权限成功：group={_SYNC_GROUP_NAME} added={actually_added} "
+        f"target_count={target_count}"
+    )
+    success_lines = [
+        f"{EMOJI_GROUP} 身份组：{_SYNC_GROUP_NAME}",
+        f"{EMOJI_LOCK} 新增权限：{len(actually_added)} 个",
+    ]
+    success_lines.extend(f"• {key}" for key in actually_added)
+    success_lines.append(f"{EMOJI_CHART} 已有权限：{target_count} 个")
+    await matcher.finish(
+        at + "\n" + reply_block(reply_success("同步"), success_lines),
+    )
