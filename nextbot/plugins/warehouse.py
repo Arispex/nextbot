@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from nonebot import on_command
@@ -173,6 +174,27 @@ def _load_server(server_id: int) -> Server | None:
         session.close()
 
 
+def _find_first_empty_slot(session, user_id: str) -> int | None:
+    occupied = {
+        int(s) for (s,) in session.query(WarehouseItem.slot_index)
+        .filter(WarehouseItem.user_id == user_id).all()
+    }
+    return next(
+        (i for i in range(1, WAREHOUSE_CAPACITY + 1) if i not in occupied),
+        None,
+    )
+
+
+@asynccontextmanager
+async def _acquire_two_warehouse_locks(user_a: str, user_b: str):
+    # Deterministic acquisition order prevents ABBA deadlock when two gift
+    # commands run concurrently between the same two users in opposite directions.
+    first, second = sorted((user_a, user_b))
+    async with warehouse_lock(first):
+        async with warehouse_lock(second):
+            yield
+
+
 def _load_warehouse_slots(user_id: str) -> list[dict]:
     session = get_session()
     try:
@@ -233,6 +255,7 @@ remove_matcher = on_command("删除仓库物品")
 drop_matcher = on_command("丢弃仓库物品")
 recycle_matcher = on_command("回收仓库物品")
 claim_matcher = on_command("领取仓库物品")
+gift_matcher = on_command("赠送仓库物品")
 
 
 @list_self_matcher.handle()
@@ -403,14 +426,7 @@ async def handle_add(bot: Bot, event: Event, arg: Message = CommandArg()) -> Non
     async with warehouse_lock(target_user_id):
         session = get_session()
         try:
-            occupied = {
-                int(s) for (s,) in session.query(WarehouseItem.slot_index)
-                .filter(WarehouseItem.user_id == target_user_id).all()
-            }
-            free_slot = next(
-                (i for i in range(1, WAREHOUSE_CAPACITY + 1) if i not in occupied),
-                None,
-            )
+            free_slot = _find_first_empty_slot(session, target_user_id)
             if free_slot is None:
                 await bot.send(
                     event,
@@ -455,7 +471,11 @@ async def handle_add(bot: Bot, event: Event, arg: Message = CommandArg()) -> Non
                     ),
                 )
                 return
-            used_after = len(occupied) + 1
+            used_after = (
+                session.query(WarehouseItem)
+                .filter(WarehouseItem.user_id == target_user_id)
+                .count()
+            )
         finally:
             session.close()
 
@@ -1384,6 +1404,297 @@ async def _claim_many(
                 f"{EMOJI_USER} 玩家：{player_name}",
                 process_line,
                 f"🎁 共领取：{total_qty} 件物品",
+                f"{EMOJI_CHART} 已使用：{used_after} / {WAREHOUSE_CAPACITY}",
+            ],
+        ),
+    )
+
+
+@gift_matcher.handle()
+@command_control(
+    command_key="warehouse.gift_self",
+    display_name="赠送仓库物品",
+    permission="warehouse.gift_self",
+    description="把自己仓库的物品赠送给其他用户，支持单格 / 区间 / 列表 / 全部，单格可指定数量",
+    usage="赠送仓库物品 <用户 QQ/@用户/用户名称> <格子表达式> [数量]",
+    category="仓库系统",
+)
+@require_permission("warehouse.gift_self")
+async def handle_gift(bot: Bot, event: Event, arg: Message = CommandArg()) -> None:
+    sender_id = event.get_user_id()
+    at = OBV11MessageSegment.at(int(sender_id))
+
+    target_user_id, parse_error = resolve_user_id_arg_with_fallback(
+        event, arg, "赠送仓库物品", arg_index=0,
+    )
+    if parse_error == "missing":
+        raise_command_usage()
+    if parse_error == "name_not_found":
+        await bot.send(event, at + " " + reply_failure("赠送", "未找到该用户"))
+        return
+    if parse_error == "name_ambiguous":
+        await bot.send(event, at + " " + reply_failure("赠送", "用户名存在重复，请使用 QQ 或 @用户"))
+        return
+    if parse_error or target_user_id is None:
+        raise_command_usage()
+
+    args = parse_command_args_with_fallback(event, arg, "赠送仓库物品")
+    if not (2 <= len(args) <= 3):
+        raise_command_usage()
+
+    if sender_id == target_user_id:
+        await bot.send(event, at + " " + reply_failure("赠送", "不能赠送给自己"))
+        return
+
+    try:
+        slot_indexes, is_single = _parse_slot_expression(args[1])
+    except ValueError as exc:
+        await bot.send(event, at + " " + reply_failure("赠送", str(exc)))
+        return
+
+    quantity_arg: int | None = None
+    if len(args) == 3:
+        if not is_single:
+            await bot.send(event, at + " " + reply_failure("赠送", "多格操作不支持数量参数，请使用单格"))
+            return
+        try:
+            quantity_arg = int(args[2])
+        except ValueError:
+            await bot.send(event, at + " " + reply_failure("赠送", "数量必须为正整数"))
+            return
+        if quantity_arg < 1:
+            await bot.send(event, at + " " + reply_failure("赠送", "数量必须为正整数"))
+            return
+
+    if _load_user(sender_id) is None:
+        await bot.send(event, at + " " + reply_failure("赠送", "请先注册账号"))
+        return
+
+    target_user = _load_user(target_user_id)
+    if target_user is None:
+        await bot.send(event, at + " " + reply_failure("赠送", "未找到该用户"))
+        return
+
+    target_name = str(target_user.name)
+    async with _acquire_two_warehouse_locks(sender_id, target_user_id):
+        if is_single:
+            await _gift_single(
+                bot, event, at, sender_id,
+                target_user_id, target_name, slot_indexes[0], quantity_arg,
+            )
+        else:
+            await _gift_many(
+                bot, event, at, sender_id,
+                target_user_id, target_name, slot_indexes,
+            )
+
+
+async def _gift_single(
+    bot: Bot, event: Event, at: object,
+    sender_id: str,
+    target_user_id: str, target_name: str,
+    slot_index: int, quantity_arg: int | None,
+) -> None:
+    session = get_session()
+    try:
+        item = (
+            session.query(WarehouseItem)
+            .filter(
+                WarehouseItem.user_id == sender_id,
+                WarehouseItem.slot_index == slot_index,
+            )
+            .first()
+        )
+        if item is None:
+            await bot.send(event, at + " " + reply_failure("赠送", "该格子为空"))
+            return
+
+        current_qty = int(item.quantity)
+        if quantity_arg is not None and quantity_arg > current_qty:
+            await bot.send(
+                event,
+                at + " " + reply_failure("赠送", f"数量超过该格当前数量（{current_qty}）"),
+            )
+            return
+
+        target_slot = _find_first_empty_slot(session, target_user_id)
+        if target_slot is None:
+            await bot.send(event, at + " " + reply_failure("赠送", "对方仓库已满"))
+            return
+
+        gift_qty = quantity_arg if quantity_arg is not None else current_qty
+        item_id = int(item.item_id)
+        prefix_id = int(item.prefix_id)
+        min_tier = str(item.min_tier or "none")
+        value = int(item.value or 0)
+
+        if gift_qty >= current_qty:
+            session.delete(item)
+            sender_remaining = 0
+        else:
+            item.quantity = current_qty - gift_qty
+            sender_remaining = int(item.quantity)
+
+        session.add(
+            WarehouseItem(
+                user_id=target_user_id,
+                slot_index=target_slot,
+                item_id=item_id,
+                prefix_id=prefix_id,
+                quantity=gift_qty,
+                min_tier=min_tier,
+                value=value,
+                created_at=db_now_utc_naive(),
+            )
+        )
+        try:
+            session.commit()
+        except IntegrityError:
+            # Defensive: both warehouse locks are held, so concurrent gifts can't
+            # race. Triggers only if a path bypassing the lock (e.g. WebUI) inserts
+            # into the chosen recipient slot in between.
+            session.rollback()
+            logger.warning(
+                f"赠送仓库物品冲突：sender={sender_id} target={target_user_id} "
+                f"dst_slot={target_slot}"
+            )
+            await bot.send(
+                event,
+                at + " " + reply_failure("赠送", "对方格子被占用，请稍后重试"),
+            )
+            return
+        used_after = (
+            session.query(WarehouseItem)
+            .filter(WarehouseItem.user_id == sender_id)
+            .count()
+        )
+    finally:
+        session.close()
+
+    logger.info(
+        f"赠送仓库物品成功：sender={sender_id} target={target_user_id} "
+        f"src_slot={slot_index} dst_slot={target_slot} item={item_id} "
+        f"prefix={prefix_id} qty={gift_qty} sender_remaining={sender_remaining}"
+    )
+    src_slot_line = f"{EMOJI_WAREHOUSE} 来源格子：#{slot_index}"
+    if sender_remaining > 0:
+        src_slot_line = f"{EMOJI_WAREHOUSE} 来源格子：#{slot_index}（剩余 {sender_remaining} 件）"
+    await bot.send(
+        event,
+        at + "\n" + reply_block(
+            reply_success("赠送"),
+            [
+                f"🎁 物品：{_format_item_label(item_id, prefix_id, gift_qty)}",
+                f"{EMOJI_USER} 接收者：{target_name}（{target_user_id}）",
+                src_slot_line,
+                f"{EMOJI_WAREHOUSE} 接收格子：#{target_slot}",
+                f"{EMOJI_CHART} 已使用：{used_after} / {WAREHOUSE_CAPACITY}",
+            ],
+        ),
+    )
+
+
+async def _gift_many(
+    bot: Bot, event: Event, at: object,
+    sender_id: str,
+    target_user_id: str, target_name: str,
+    slot_indexes: list[int],
+) -> None:
+    session = get_session()
+    try:
+        items = (
+            session.query(WarehouseItem)
+            .filter(
+                WarehouseItem.user_id == sender_id,
+                WarehouseItem.slot_index.in_(slot_indexes),
+            )
+            .all()
+        )
+        item_map = {int(it.slot_index): it for it in items}
+
+        skipped_empty = 0
+        skipped_full = 0
+        skipped_conflict = 0
+        processed = 0
+        total_qty = 0
+
+        # Per-slot commit so a crash mid-loop never leaves the recipient with the
+        # new row while the sender's row is still present (or vice versa).
+        for s in slot_indexes:
+            it = item_map.get(s)
+            if it is None:
+                skipped_empty += 1
+                continue
+            target_slot = _find_first_empty_slot(session, target_user_id)
+            if target_slot is None:
+                skipped_full += 1
+                continue
+            slot_qty = int(it.quantity)
+            session.add(
+                WarehouseItem(
+                    user_id=target_user_id,
+                    slot_index=target_slot,
+                    item_id=int(it.item_id),
+                    prefix_id=int(it.prefix_id),
+                    quantity=slot_qty,
+                    min_tier=str(it.min_tier or "none"),
+                    value=int(it.value or 0),
+                    created_at=db_now_utc_naive(),
+                )
+            )
+            session.delete(it)
+            try:
+                session.commit()
+            except IntegrityError:
+                # Distinct from "warehouse full" — the chosen recipient slot was
+                # taken between our scan and commit by some path that bypasses
+                # the warehouse_lock (currently only the WebUI).
+                session.rollback()
+                logger.warning(
+                    f"赠送仓库物品冲突（多格）：sender={sender_id} "
+                    f"target={target_user_id} src_slot={s} dst_slot={target_slot}"
+                )
+                skipped_conflict += 1
+                continue
+            total_qty += slot_qty
+            processed += 1
+
+        if processed == 0:
+            await bot.send(event, at + " " + reply_failure("赠送", "未找到任何可赠送的格子"))
+            return
+
+        used_after = (
+            session.query(WarehouseItem)
+            .filter(WarehouseItem.user_id == sender_id)
+            .count()
+        )
+    finally:
+        session.close()
+
+    logger.info(
+        f"批量赠送仓库物品：sender={sender_id} target={target_user_id} "
+        f"processed={processed} skipped_empty={skipped_empty} "
+        f"skipped_full={skipped_full} skipped_conflict={skipped_conflict} "
+        f"total_qty={total_qty}"
+    )
+    process_line = f"{EMOJI_WAREHOUSE} 处理格子：{processed} 个"
+    skip_parts: list[str] = []
+    if skipped_empty > 0:
+        skip_parts.append(f"{skipped_empty} 个空")
+    if skipped_full > 0:
+        skip_parts.append(f"{skipped_full} 个对方仓库已满")
+    if skipped_conflict > 0:
+        skip_parts.append(f"{skipped_conflict} 个格子冲突")
+    if skip_parts:
+        process_line = f"{EMOJI_WAREHOUSE} 处理格子：{processed} 个（跳过 {'、'.join(skip_parts)}）"
+    await bot.send(
+        event,
+        at + "\n" + reply_block(
+            reply_success("赠送"),
+            [
+                f"{EMOJI_USER} 接收者：{target_name}（{target_user_id}）",
+                process_line,
+                f"🎁 共赠送：{total_qty} 件物品",
                 f"{EMOJI_CHART} 已使用：{used_after} / {WAREHOUSE_CAPACITY}",
             ],
         ),
