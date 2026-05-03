@@ -969,3 +969,72 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 66: 仓库赠送 + 访客权限同步 + NoneBot2 T_State 注入修复
+
+**Date**: 2026-05-03
+**Task**: 仓库赠送 + 访客权限同步 + NoneBot2 T_State 注入修复
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+本次会话围绕「仓库赠送物品」与「guest 权限自动补全」两个新命令展开，并顺手修复了 `command_control` / `require_permission` 装饰器链对 NoneBot2 现代依赖注入参数的兼容性问题。
+
+| 模块 | 变更 |
+|------|------|
+| 仓库系统 | 新增 `赠送仓库物品` 命令；支持单格 / 区间 / 列表 / 全部 / `[数量]`；首个空格自动分配；`min_tier` 与 `value` 原样继承；双方仓库锁按 `min(sender, recipient)` 顺序获取避免 ABBA 死锁；多格部分成功细分跳过原因（空 / 对方仓库已满 / 格子冲突） |
+| 仓库教程 | 在「仓库系统」教程末尾新增「第 8 步：把物品送给别人」，含正反两个 verbatim 回复样例 |
+| 权限系统 | 把 `ensure_default_groups()` 内嵌的 52-key CSV 抽取为 `DEFAULT_GUEST_PERMISSIONS: frozenset[str]`，让 seeder 与新命令共用同一权威源 |
+| 权限系统 | 新增 `同步访客权限` 管理员命令；NoneBot2 `Matcher.got` 二次确认（仅接受字面 `确认`）；只新增不删除，确认前 re-diff 防 WebUI 竞态；defense-in-depth 校验回复者 user_id |
+| 权限系统 | `_split_values` / `_join_values` → `split_csv_values` / `join_csv_values` 公开化，去掉跨模块下划线导入 |
+| 装饰器链 | `command_control` 与 `require_permission` 的 `typing.get_type_hints()` 加 `include_extras=True`，保留 `Annotated` 元数据（NoneBot2 `T_State = Annotated[Dict, _STATE_FLAG]`），修复 `state: T_State` 注入被默默跳过导致的"matcher running complete 但无回复"问题 |
+
+**关键设计决策**：
+
+- 赠送命令的接收者格子分配采用 `_find_first_empty_slot` 顺扫策略，与 `添加仓库物品` / `购买商品` 一致；不做物品堆叠合并
+- 双仓库锁通过 `@asynccontextmanager` 包装的 `_acquire_two_warehouse_locks` 实现，按字典序加锁；项目内首例双锁场景
+- 多格赠送采用每格独立 commit，避免崩溃时双方仓库状态不一致
+- 同步访客权限确认 token 只接受「确认」二字（用户决策）；超时无处理（项目无先例）
+- 同步命令只处理 `guest`，不动 `default`（用户决策）
+- `T_State` 注入修复：本地用 `matcher: Matcher` 绕过（`Matcher` 注入靠 `issubclass`，能穿透 `get_type_hints()` 剥离）；上游用 `include_extras=True` 根治
+
+**Code Review 反馈应用**：
+
+- 多格赠送的 `IntegrityError` 路径由「对方仓库已满」误报修正为独立的「格子冲突」计数
+- `actually_added` 在 try 块前显式初始化，防 `guest is None` 路径下未绑定
+- `got` 处理器加发起者 user_id 校验作为 defense-in-depth
+- 预览头从硬编码 `"ℹ️ 同步预览"` 改为 `reply_info("同步预览")`
+
+**部署提示**：升级到本版本后，存量实例的 `guest` 行不会自动新增 `warehouse.gift_self` / `permission.group.guest.sync` 等 key — 但这正是本次新增 `同步访客权限` 命令解决的问题：管理员发一条命令即可补全。新建实例由 `ensure_default_groups()` 直接种入完整集合。
+
+**Updated Files**:
+- `nextbot/db.py` — `DEFAULT_GUEST_PERMISSIONS` frozenset + `ensure_default_groups()` 改读常量
+- `nextbot/permissions.py` — 公开化 `split_csv_values` / `join_csv_values`，`require_permission` 加 `include_extras=True`
+- `nextbot/command_config.py` — `command_control` 加 `include_extras=True`
+- `nextbot/plugins/warehouse.py` — 新增 `赠送仓库物品` 命令 + `_find_first_empty_slot` / `_acquire_two_warehouse_locks` 辅助
+- `nextbot/plugins/permission_manager.py` — 新增 `同步访客权限` 命令 + `_diff_guest_default_permissions` + `got()` 二次确认处理器
+- `nextbot/plugins/tutorial_data.py` — 仓库系统教程加入第 8 步
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `601b2a6` | (see git log) |
+| `99cd3ba` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 65
-- **Last Active**: 2026-04-26
+- **Total Sessions**: 66
+- **Last Active**: 2026-05-03
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~971 | Active |
+| `journal-2.md` | ~1040 | Active |
 | `journal-1.md` | ~1999 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits |
 |---|------|-------|---------|
+| 66 | 2026-05-03 | 仓库赠送 + 访客权限同步 + NoneBot2 T_State 注入修复 | `601b2a6`, `99cd3ba` |
 | 65 | 2026-04-26 | WebUI 商店 / 抽奖管理 JSON 导入导出 + Docker 镜像稳定化 + v1.4.1 release | `29cc38f`, `eac8bc8`, `4d00861`, `97a9be9`, `6159615` |
 | 64 | 2026-04-25 | 奖池系统 #N 清理 + 抽奖系统使用教程 + v1.4.0 release | `ce89fcf`, `0c23633` |
 | 63 | 2026-04-25 | 商店系统使用教程编写 + 商店/商品标识符统一为稳定 DB ID | `7c1dd03`, `18e85d0` |
