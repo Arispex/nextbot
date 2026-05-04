@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 71
+- **Total Sessions**: 72
 - **Last Active**: 2026-05-04
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~1206 | Active |
+| `journal-2.md` | ~1239 | Active |
 | `journal-1.md` | ~1999 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 72 | 2026-05-04 | 商店列表 / 查看商店 页面按 DESIGN.md 重构 | `e501ff2` | `main` |
 | 71 | 2026-05-04 | 我的仓库 / 用户仓库页按 DESIGN.md 重构 | `e2893d3` | `main` |
 | 70 | 2026-05-04 | 红包列表 / 我的红包页按 DESIGN.md 重构 | `2c7e26e` | `main` |
 | 69 | 2026-05-04 | 用户信息页按 DESIGN.md 重构（canvas-first + 数字字体修正） | `36fd875` | `main` |
