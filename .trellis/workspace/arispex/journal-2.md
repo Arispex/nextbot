@@ -1607,3 +1607,37 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 84: WebUI 侧栏 logo 切换为 SVG 并适配暗色
+
+**Date**: 2026-05-04
+**Task**: WebUI 侧栏 logo 切换为 SVG 并适配暗色
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f0eb369` | (see git log) |
+| `7b9d357` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

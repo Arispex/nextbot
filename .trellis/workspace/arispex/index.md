@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 83
+- **Total Sessions**: 84
 - **Last Active**: 2026-05-04
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~1609 | Active |
+| `journal-2.md` | ~1643 | Active |
 | `journal-1.md` | ~1999 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 84 | 2026-05-04 | WebUI 侧栏 logo 切换为 SVG 并适配暗色 | `f0eb369`, `7b9d357` | `main` |
 | 83 | 2026-05-04 | 新增 NEXT BOT logo SVG 资源 | `bc4bde4` | `main` |
 | 82 | 2026-05-04 | 菜单图片显示命令别名 | `8211186` | `main` |
 | 81 | 2026-05-04 | WebUI 侧边栏 身份组管理 图标优化 | `ac77fcf` | `main` |
