@@ -157,6 +157,12 @@
       editBtn.textContent = "编辑";
       editBtn.addEventListener("click", (e) => { e.stopPropagation(); openPoolModal(pool); });
       actions.appendChild(editBtn);
+      const deleteBtn = document.createElement("button");
+      deleteBtn.type = "button";
+      deleteBtn.className = "btn lottery-card-edit-btn action-btn-danger";
+      deleteBtn.textContent = "删除";
+      deleteBtn.addEventListener("click", (e) => { e.stopPropagation(); openPoolDeleteModal(pool); });
+      actions.appendChild(deleteBtn);
       card.appendChild(actions);
 
       card.addEventListener("click", () => {
@@ -330,6 +336,12 @@
     editBtn.textContent = "编辑";
     editBtn.addEventListener("click", () => openPrizeModal(prize));
     wrap.appendChild(editBtn);
+    const deleteBtn = document.createElement("button");
+    deleteBtn.type = "button";
+    deleteBtn.className = "btn action-btn action-btn-danger";
+    deleteBtn.textContent = "删除";
+    deleteBtn.addEventListener("click", () => openPrizeDeleteModal(prize));
+    wrap.appendChild(deleteBtn);
     tdAct.appendChild(wrap);
     tr.appendChild(tdAct);
     return tr;
@@ -346,8 +358,6 @@
     els.poolFieldCost.value = pool ? pool.cost_per_draw : 0;
     els.poolFieldSortOrder.value = pool ? pool.sort_order : 0;
     els.poolFieldEnabled.checked = pool ? !!pool.enabled : true;
-    if (pool) els.poolModalDelete.classList.remove("hidden");
-    else els.poolModalDelete.classList.add("hidden");
     showModal(els.poolModal);
     setTimeout(() => els.poolFieldName.focus(), 30);
   }
@@ -390,10 +400,16 @@
     }
   }
 
-  function openPoolDeleteModal() {
-    if (state.editingPoolId === null) return;
-    const pool = state.pools.find((p) => p.id === state.editingPoolId);
-    state.pendingDeletePool = { id: state.editingPoolId, name: pool ? pool.name : "" };
+  function openPoolDeleteModal(pool) {
+    // Direct call from a list-card "删除" button passes a pool object;
+    // calls from inside the edit modal fall back to editingPoolId.
+    let target = pool || null;
+    if (!target) {
+      if (state.editingPoolId === null) return;
+      target = state.pools.find((p) => p.id === state.editingPoolId) || null;
+    }
+    if (!target) return;
+    state.pendingDeletePool = { id: target.id, name: target.name || "" };
     els.poolDeleteName.textContent = state.pendingDeletePool.name || ("ID " + state.pendingDeletePool.id);
     hideAlert(els.poolDeleteAlert);
     showModal(els.poolDeleteModal);
@@ -471,8 +487,6 @@
     els.prizeFieldShowCommand.checked = prize ? !!prize.show_command : false;
     els.prizeFieldRequireOnline.checked = prize ? !!prize.require_online : false;
     els.prizeFieldCoinAmount.value = prize ? String(prize.coin_amount || 0) : "";
-    if (prize) els.prizeModalDelete.classList.remove("hidden");
-    else els.prizeModalDelete.classList.add("hidden");
     applyKindVisibility();
     showModal(els.prizeModal);
     setTimeout(() => els.prizeFieldName.focus(), 30);
@@ -539,12 +553,19 @@
     }
   }
 
-  function openPrizeDeleteModal() {
-    if (state.selectedPoolId === null || state.editingPrizeId === null) return;
-    const prizes = state.selectedPoolDetail && Array.isArray(state.selectedPoolDetail.prizes)
-      ? state.selectedPoolDetail.prizes : [];
-    const target = prizes.find((p) => p.id === state.editingPrizeId);
-    state.pendingDeletePrize = { id: state.editingPrizeId, name: target ? target.name : "" };
+  function openPrizeDeleteModal(prize) {
+    // Direct call from a row "删除" button passes a prize object;
+    // calls from the edit modal fall back to editingPrizeId.
+    if (state.selectedPoolId === null) return;
+    let target = prize || null;
+    if (!target) {
+      if (state.editingPrizeId === null) return;
+      const prizes = state.selectedPoolDetail && Array.isArray(state.selectedPoolDetail.prizes)
+        ? state.selectedPoolDetail.prizes : [];
+      target = prizes.find((p) => p.id === state.editingPrizeId) || null;
+    }
+    if (!target) return;
+    state.pendingDeletePrize = { id: target.id, name: target.name || "" };
     els.prizeDeleteName.textContent = state.pendingDeletePrize.name || ("ID " + state.pendingDeletePrize.id);
     hideAlert(els.prizeDeleteAlert);
     showModal(els.prizeDeleteModal);
@@ -725,7 +746,6 @@
     els.poolModalTitle = $("pool-modal-title");
     els.poolModalAlert = $("pool-modal-alert");
     els.poolModalForm = $("pool-modal-form");
-    els.poolModalDelete = $("pool-modal-delete");
     els.poolFieldName = $("pool-field-name");
     els.poolFieldDescription = $("pool-field-description");
     els.poolFieldCost = $("pool-field-cost");
@@ -741,7 +761,6 @@
     els.prizeModalTitle = $("prize-modal-title");
     els.prizeModalAlert = $("prize-modal-alert");
     els.prizeModalForm = $("prize-modal-form");
-    els.prizeModalDelete = $("prize-modal-delete");
     els.prizeFieldName = $("prize-field-name");
     els.prizeFieldDescription = $("prize-field-description");
     els.prizeFieldKind = $("prize-field-kind");
@@ -782,12 +801,10 @@
     els.reloadBtn.addEventListener("click", loadPools);
     els.poolCreateBtn.addEventListener("click", () => openPoolModal(null));
     els.poolModalForm.addEventListener("submit", submitPoolModal);
-    els.poolModalDelete.addEventListener("click", openPoolDeleteModal);
     els.poolDeleteConfirm.addEventListener("click", confirmDeletePool);
 
     els.prizeCreateBtn.addEventListener("click", () => openPrizeModal(null));
     els.prizeModalForm.addEventListener("submit", submitPrizeModal);
-    els.prizeModalDelete.addEventListener("click", openPrizeDeleteModal);
     els.prizeDeleteConfirm.addEventListener("click", confirmDeletePrize);
     els.prizeFieldKind.addEventListener("change", applyKindVisibility);
 

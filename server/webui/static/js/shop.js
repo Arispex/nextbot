@@ -156,6 +156,15 @@
         openShopModal(shop);
       });
       actions.appendChild(editBtn);
+      const deleteBtn = document.createElement("button");
+      deleteBtn.type = "button";
+      deleteBtn.className = "btn shop-card-edit-btn action-btn-danger";
+      deleteBtn.textContent = "删除";
+      deleteBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        openShopDeleteModal(shop);
+      });
+      actions.appendChild(deleteBtn);
       card.appendChild(actions);
 
       card.addEventListener("click", () => {
@@ -312,6 +321,12 @@
     editBtn.textContent = "编辑";
     editBtn.addEventListener("click", () => openItemModal(it));
     wrap.appendChild(editBtn);
+    const deleteBtn = document.createElement("button");
+    deleteBtn.type = "button";
+    deleteBtn.className = "btn action-btn action-btn-danger";
+    deleteBtn.textContent = "删除";
+    deleteBtn.addEventListener("click", () => openItemDeleteModal(it));
+    wrap.appendChild(deleteBtn);
     tdAct.appendChild(wrap);
     tr.appendChild(tdAct);
 
@@ -328,11 +343,6 @@
     els.shopFieldDescription.value = shop ? (shop.description || "") : "";
     els.shopFieldSortOrder.value = shop ? shop.sort_order : 0;
     els.shopFieldEnabled.checked = shop ? !!shop.enabled : true;
-    if (shop) {
-      els.shopModalDelete.classList.remove("hidden");
-    } else {
-      els.shopModalDelete.classList.add("hidden");
-    }
     showModal(els.shopModal);
     setTimeout(() => els.shopFieldName.focus(), 30);
   }
@@ -376,10 +386,16 @@
 
   // ---------- Shop delete confirm modal ----------
 
-  function openShopDeleteModal() {
-    if (state.editingShopId === null) return;
-    const shop = state.shops.find((s) => s.id === state.editingShopId);
-    state.pendingDeleteShop = { id: state.editingShopId, name: shop ? shop.name : "" };
+  function openShopDeleteModal(shop) {
+    // Direct call from a list-card "删除" button passes a shop object;
+    // calls from the edit modal fall back to editingShopId.
+    let target = shop || null;
+    if (!target) {
+      if (state.editingShopId === null) return;
+      target = state.shops.find((s) => s.id === state.editingShopId) || null;
+    }
+    if (!target) return;
+    state.pendingDeleteShop = { id: target.id, name: target.name || "" };
     els.shopDeleteName.textContent = state.pendingDeleteShop.name || ("ID " + state.pendingDeleteShop.id);
     hideAlert(els.shopDeleteAlert);
     showModal(els.shopDeleteModal);
@@ -469,11 +485,6 @@
     els.itemFieldCommandTemplate.value = item ? (item.command_template || "") : "";
     els.itemFieldShowCommand.checked = item ? !!item.show_command : false;
     els.itemFieldRequireOnline.checked = item ? !!item.require_online : false;
-    if (item) {
-      els.itemModalDelete.classList.remove("hidden");
-    } else {
-      els.itemModalDelete.classList.add("hidden");
-    }
     applyKindVisibility();
     showModal(els.itemModal);
     setTimeout(() => els.itemFieldName.focus(), 30);
@@ -541,12 +552,19 @@
 
   // ---------- Item delete confirm modal ----------
 
-  function openItemDeleteModal() {
-    if (state.selectedShopId === null || state.editingItemId === null) return;
-    const items = state.selectedShopDetail && Array.isArray(state.selectedShopDetail.items)
-      ? state.selectedShopDetail.items : [];
-    const target = items.find((it) => it.id === state.editingItemId);
-    state.pendingDeleteItem = { id: state.editingItemId, name: target ? target.name : "" };
+  function openItemDeleteModal(item) {
+    // Direct call from a row "删除" button passes an item object;
+    // calls from the edit modal fall back to editingItemId.
+    if (state.selectedShopId === null) return;
+    let target = item || null;
+    if (!target) {
+      if (state.editingItemId === null) return;
+      const items = state.selectedShopDetail && Array.isArray(state.selectedShopDetail.items)
+        ? state.selectedShopDetail.items : [];
+      target = items.find((it) => it.id === state.editingItemId) || null;
+    }
+    if (!target) return;
+    state.pendingDeleteItem = { id: target.id, name: target.name || "" };
     els.itemDeleteName.textContent = state.pendingDeleteItem.name || ("ID " + state.pendingDeleteItem.id);
     hideAlert(els.itemDeleteAlert);
     showModal(els.itemDeleteModal);
@@ -737,7 +755,6 @@
     els.shopModalTitle = $("shop-modal-title");
     els.shopModalAlert = $("shop-modal-alert");
     els.shopModalForm = $("shop-modal-form");
-    els.shopModalDelete = $("shop-modal-delete");
     els.shopFieldName = $("shop-field-name");
     els.shopFieldDescription = $("shop-field-description");
     els.shopFieldSortOrder = $("shop-field-sort-order");
@@ -752,7 +769,6 @@
     els.itemModalTitle = $("item-modal-title");
     els.itemModalAlert = $("item-modal-alert");
     els.itemModalForm = $("item-modal-form");
-    els.itemModalDelete = $("item-modal-delete");
     els.itemFieldName = $("item-field-name");
     els.itemFieldDescription = $("item-field-description");
     els.itemFieldKind = $("item-field-kind");
@@ -791,12 +807,10 @@
     els.shopReloadBtn.addEventListener("click", loadShops);
     els.shopCreateBtn.addEventListener("click", () => openShopModal(null));
     els.shopModalForm.addEventListener("submit", submitShopModal);
-    els.shopModalDelete.addEventListener("click", openShopDeleteModal);
     els.shopDeleteConfirm.addEventListener("click", confirmDeleteShop);
 
     els.itemCreateBtn.addEventListener("click", () => openItemModal(null));
     els.itemModalForm.addEventListener("submit", submitItemModal);
-    els.itemModalDelete.addEventListener("click", openItemDeleteModal);
     els.itemDeleteConfirm.addEventListener("click", confirmDeleteItem);
     els.itemFieldKind.addEventListener("change", applyKindVisibility);
 
