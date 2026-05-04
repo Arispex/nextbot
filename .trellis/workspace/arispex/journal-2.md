@@ -1674,3 +1674,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 86: 截图 Timeout 修复 + Playwright 性能优化
+
+**Date**: 2026-05-05
+**Task**: 截图 Timeout 修复 + Playwright 性能优化
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `21822f7` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

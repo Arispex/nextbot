@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 85
-- **Last Active**: 2026-05-04
+- **Total Sessions**: 86
+- **Last Active**: 2026-05-05
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~1676 | Active |
+| `journal-2.md` | ~1709 | Active |
 | `journal-1.md` | ~1999 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 86 | 2026-05-05 | 截图 Timeout 修复 + Playwright 性能优化 | `21822f7` | `main` |
 | 85 | 2026-05-04 | 用户抢劫状态切换（带金币消耗） | `de932cb` | `main` |
 | 84 | 2026-05-04 | WebUI 侧栏 logo 切换为 SVG 并适配暗色 | `f0eb369`, `7b9d357` | `main` |
 | 83 | 2026-05-04 | 新增 NEXT BOT logo SVG 资源 | `bc4bde4` | `main` |
