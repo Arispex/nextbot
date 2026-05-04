@@ -44,9 +44,10 @@ admin_list_matcher = on_command("管理员列表")
 sync_guest_perms_matcher = on_command("同步访客权限")
 
 ADMIN_LIST_SCREENSHOT_OPTIONS = ScreenshotOptions(
-    viewport_width=820,
+    viewport_width=920,
     viewport_height=400,
     full_page=True,
+    fit_content_height=True,
 )
 
 

@@ -1,231 +1,266 @@
 <!doctype html>
-<html lang="zh-CN" data-theme="dark">
+<html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <script src="https://cdn.tailwindcss.com"></script>
+  <title>NextBot 封禁列表</title>
+  <link rel="stylesheet" href="/assets/css/render-fonts.css" />
+  <link rel="stylesheet" href="/assets/css/render-tokens.css" />
   <style>
-    [data-theme="dark"] body {
-      background: linear-gradient(160deg, #0f0a14 0%, #110d18 50%, #0a0710 100%);
-    }
-    [data-theme="dark"] .page-header {
-      background: linear-gradient(90deg, rgba(80,20,40,0.0) 0%, rgba(220,38,38,0.08) 50%, rgba(80,20,40,0.0) 100%);
-      border-color: rgba(220,38,38,0.15);
-    }
-    [data-theme="dark"] .header-title { color: #fca5a5; text-shadow: 0 2px 20px rgba(220,38,38,0.3); }
-    [data-theme="dark"] .header-rule { background: linear-gradient(90deg, #ef4444, #dc2626, transparent); }
-    [data-theme="dark"] .header-time { color: #4b5563; }
-    [data-theme="dark"] .list-wrap { border-color: rgba(255,255,255,0.06); }
-    [data-theme="dark"] .list-card {
-      background: rgba(255,255,255,0.03);
-      border: 1px solid rgba(255,255,255,0.06);
-    }
-    [data-theme="dark"] .list-card:hover { background: rgba(255,255,255,0.05); }
-    [data-theme="dark"] .card-name { color: #f1f5f9; }
-    [data-theme="dark"] .card-qq { color: #64748b; }
-    [data-theme="dark"] .card-reason { color: #fca5a5; }
-    [data-theme="dark"] .card-time { color: #4b5563; }
-    [data-theme="dark"] .card-label { color: #374151; }
-    [data-theme="dark"] .card-index { color: #374151; }
-    [data-theme="dark"] .card-stripe { background: linear-gradient(180deg, #dc2626, #991b1b); }
-    [data-theme="dark"] .empty-text { color: #4b5563; }
-    [data-theme="dark"] .page-footer { color: #1f2937; }
-    [data-theme="dark"] .pagination { color: #64748b; }
-    [data-theme="dark"] .avatar-ring { background: linear-gradient(135deg, #dc2626, #f87171); }
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    [hidden] { display: none !important; }
 
-    [data-theme="light"] body {
-      background: linear-gradient(135deg, #fef2f2 0%, #fff7f7 40%, #fdf2f2 100%);
+    body {
+      background-color: var(--color-canvas);
+      color: var(--color-ink);
+      font-family: var(--font-body);
+      font-size: var(--type-body-md-size);
+      line-height: 1.55;
+      padding: var(--space-xxl) var(--space-xxl);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
     }
-    [data-theme="light"] .page-header {
-      background: linear-gradient(90deg, rgba(80,20,40,0.0) 0%, rgba(220,38,38,0.05) 50%, rgba(80,20,40,0.0) 100%);
-      border-color: rgba(220,38,38,0.12);
+
+    .page {
+      max-width: 920px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-xl);
     }
-    [data-theme="light"] .header-title { color: #991b1b; }
-    [data-theme="light"] .header-rule { background: linear-gradient(90deg, #ef4444, #f87171, transparent); }
-    [data-theme="light"] .header-time { color: #9ca3af; }
-    [data-theme="light"] .list-wrap { border-color: #fecaca; background: white; box-shadow: 0 2px 12px rgba(220,38,38,0.06); }
-    [data-theme="light"] .list-card {
-      background: #ffffff;
-      border: 1px solid #fee2e2;
+
+    .header-rule {
+      width: 64px;
+      height: 4px;
+      background-color: var(--color-primary);
+      border-radius: var(--radius-pill);
+      margin-bottom: var(--space-md);
     }
-    [data-theme="light"] .list-card:hover { background: #fef2f2; }
-    [data-theme="light"] .card-name { color: #1e293b; }
-    [data-theme="light"] .card-qq { color: #94a3b8; }
-    [data-theme="light"] .card-reason { color: #dc2626; }
-    [data-theme="light"] .card-time { color: #9ca3af; }
-    [data-theme="light"] .card-label { color: #d1d5db; }
-    [data-theme="light"] .card-index { color: #d1d5db; }
-    [data-theme="light"] .card-stripe { background: linear-gradient(180deg, #ef4444, #dc2626); }
-    [data-theme="light"] .empty-text { color: #9ca3af; }
-    [data-theme="light"] .page-footer { color: #d1d5db; }
-    [data-theme="light"] .pagination { color: #64748b; }
-    [data-theme="light"] .avatar-ring { background: linear-gradient(135deg, #ef4444, #fca5a5); }
+
+    .header-eyebrow {
+      color: var(--color-muted);
+      margin-bottom: var(--space-xs);
+    }
+
+    .header-title {
+      color: var(--color-ink);
+      margin: 0 0 var(--space-md) 0;
+    }
+
+    .header-meta {
+      color: var(--color-muted-soft);
+      display: flex;
+      gap: var(--space-md);
+      align-items: baseline;
+      flex-wrap: wrap;
+    }
+
+    .header-meta-divider {
+      color: var(--color-hairline);
+    }
+
+    .empty-state {
+      border: 1px dashed var(--color-hairline);
+      background-color: var(--color-surface-soft);
+      border-radius: var(--radius-lg);
+      padding: var(--space-xxl);
+      text-align: center;
+      color: var(--color-muted);
+    }
+
+    .list {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-md);
+    }
+
+    .entry {
+      background-color: var(--color-surface-card);
+      border: 1px solid var(--color-hairline);
+      border-radius: var(--radius-lg);
+      padding: var(--space-lg);
+      display: flex;
+      align-items: center;
+      gap: var(--space-md);
+    }
+
+    .avatar {
+      width: 48px;
+      height: 48px;
+      border-radius: var(--radius-pill);
+      background-color: var(--color-canvas);
+      border: 1px solid var(--color-hairline);
+      object-fit: cover;
+      flex-shrink: 0;
+    }
+
+    .info {
+      flex: 1 1 auto;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .info-top {
+      display: flex;
+      align-items: baseline;
+      gap: var(--space-xs);
+      flex-wrap: wrap;
+    }
+
+    .name {
+      color: var(--color-ink);
+      font-weight: 500;
+      font-size: 14px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .qq {
+      color: var(--color-muted-soft);
+      font-family: var(--font-code);
+      font-size: 11px;
+    }
+
+    .reason {
+      color: var(--color-primary);
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    .reason-label {
+      color: var(--color-muted);
+      font-weight: 400;
+      margin-right: 4px;
+    }
+
+    .time {
+      color: var(--color-muted-soft);
+      font-size: 11px;
+      font-feature-settings: "tnum";
+      flex-shrink: 0;
+    }
+
+    .index {
+      color: var(--color-muted-soft);
+      font-family: var(--font-body);
+      font-weight: 600;
+      font-size: 14px;
+      font-feature-settings: "tnum";
+      flex-shrink: 0;
+      min-width: 32px;
+      text-align: right;
+    }
+
+    .footer {
+      text-align: right;
+      color: var(--color-muted-soft);
+      margin-top: var(--space-md);
+    }
   </style>
 </head>
-<body class="min-h-screen px-8 py-10">
+<body>
+  <main class="page">
 
-  <div class="page-header mx-auto max-w-[820px] rounded-2xl px-8 py-6 mb-6 border">
-    <div class="flex items-end justify-between">
-      <div>
-        <div class="header-rule h-1 w-16 rounded-full mb-4"></div>
-        <h1 class="header-title text-4xl font-black tracking-tight" style="letter-spacing:-0.02em;">封禁用户列表</h1>
+    <header>
+      <div class="header-rule"></div>
+      <div class="header-eyebrow type-caption-uppercase">安全管理</div>
+      <h1 class="header-title type-display-lg">封禁列表</h1>
+      <div class="header-meta type-body-sm">
+        <span id="bl-count"></span>
+        <span class="header-meta-divider">·</span>
+        <span id="bl-page"></span>
+        <span class="header-meta-divider">·</span>
+        <span id="bl-generated-at"></span>
       </div>
-      <div class="text-right">
-        <div class="header-time text-xs" id="bl-generated-at"></div>
-      </div>
-    </div>
-  </div>
+    </header>
 
-  <div class="mx-auto max-w-[820px]" id="bl-content"></div>
+    <div id="empty-state" class="empty-state type-body-md" hidden>暂无封禁用户</div>
 
-  <div class="mx-auto max-w-[820px] mt-4 flex flex-col items-center gap-1">
-    <div id="bl-pagination" class="pagination text-sm font-semibold"></div>
-    <div class="page-footer text-xs font-medium tracking-widest">Powered by NextBot</div>
-  </div>
+    <section id="list" class="list"></section>
+
+    <footer class="footer type-caption">Powered by NextBot</footer>
+  </main>
 
   <script id="ban-list-data" type="application/json">__BAN_LIST_DATA_JSON__</script>
   <script>
-    var data = JSON.parse(document.getElementById("ban-list-data").textContent);
-    var entries = Array.isArray(data.entries) ? data.entries : [];
-    var page = Number(data.page || 1);
-    var totalPages = Number(data.total_pages || 1);
-    var theme = String(data.theme || "dark");
+    const data = JSON.parse(document.getElementById("ban-list-data").textContent);
+    const entries = Array.isArray(data.entries) ? data.entries : [];
+    const page = Number(data.page || 1);
+    const totalPages = Number(data.total_pages || 1);
 
-    document.documentElement.setAttribute("data-theme", theme);
+    document.getElementById("bl-count").textContent = `共 ${entries.length} 个封禁用户`;
+    document.getElementById("bl-page").textContent = `第 ${page} / ${totalPages} 页`;
     document.getElementById("bl-generated-at").textContent = data.generated_at || "";
-    document.getElementById("bl-pagination").textContent = "\u7B2C " + page + " \u9875 / \u5171 " + totalPages + " \u9875";
 
-    var content = document.getElementById("bl-content");
+    const listEl = document.getElementById("list");
 
     if (!entries.length) {
-      var empty = document.createElement("div");
-      empty.className = "empty-text py-16 text-center text-sm";
-      empty.textContent = "\u6682\u65E0\u5C01\u7981\u7528\u6237";
-      content.appendChild(empty);
-    } else {
-      var listWrap = document.createElement("div");
-      listWrap.className = "list-wrap rounded-2xl overflow-hidden";
-      listWrap.style.display = "grid";
-      listWrap.style.gap = "0";
-
-      for (var i = 0; i < entries.length; i++) {
-        var entry = entries[i];
-        var name = String(entry.name || "").trim() || "\u2014";
-        var userId = String(entry.user_id || "").trim();
-        var reason = String(entry.ban_reason || "").trim() || "\u672A\u8BF4\u660E";
-        var bannedAt = String(entry.banned_at || "").trim();
-
-        var card = document.createElement("div");
-        card.className = "list-card overflow-hidden flex";
-
-        var stripe = document.createElement("div");
-        stripe.className = "card-stripe";
-        stripe.style.width = "4px";
-        stripe.style.flexShrink = "0";
-        card.appendChild(stripe);
-
-        var cardBody = document.createElement("div");
-        cardBody.style.flex = "1";
-        cardBody.style.padding = "14px 18px";
-        cardBody.style.display = "flex";
-        cardBody.style.alignItems = "center";
-        cardBody.style.gap = "14px";
-        cardBody.style.position = "relative";
-
-        // Avatar
-        var ring = document.createElement("div");
-        ring.className = "avatar-ring";
-        ring.style.width = "44px";
-        ring.style.height = "44px";
-        ring.style.borderRadius = "50%";
-        ring.style.padding = "2px";
-        ring.style.flexShrink = "0";
-        var avatar = document.createElement("img");
-        avatar.style.width = "100%";
-        avatar.style.height = "100%";
-        avatar.style.borderRadius = "50%";
-        avatar.style.objectFit = "cover";
-        avatar.style.display = "block";
-        avatar.src = "http://q1.qlogo.cn/g?b=qq&nk=" + encodeURIComponent(userId) + "&s=100";
-        avatar.alt = "";
-        ring.appendChild(avatar);
-        cardBody.appendChild(ring);
-
-        // Info
-        var info = document.createElement("div");
-        info.style.flex = "1";
-        info.style.minWidth = "0";
-
-        var topRow = document.createElement("div");
-        topRow.style.display = "flex";
-        topRow.style.alignItems = "baseline";
-        topRow.style.gap = "8px";
-        var nameEl = document.createElement("span");
-        nameEl.className = "card-name";
-        nameEl.style.fontSize = "14px";
-        nameEl.style.fontWeight = "700";
-        nameEl.textContent = name;
-        var qqEl = document.createElement("span");
-        qqEl.className = "card-qq";
-        qqEl.style.fontSize = "12px";
-        qqEl.textContent = userId;
-        topRow.appendChild(nameEl);
-        topRow.appendChild(qqEl);
-        info.appendChild(topRow);
-
-        var reasonRow = document.createElement("div");
-        reasonRow.style.marginTop = "4px";
-        reasonRow.style.display = "flex";
-        reasonRow.style.alignItems = "baseline";
-        reasonRow.style.gap = "4px";
-        var reasonLabel = document.createElement("span");
-        reasonLabel.className = "card-label";
-        reasonLabel.style.fontSize = "11px";
-        reasonLabel.style.fontWeight = "600";
-        reasonLabel.textContent = "\u539F\u56E0\uFF1A";
-        var reasonVal = document.createElement("span");
-        reasonVal.className = "card-reason";
-        reasonVal.style.fontSize = "12px";
-        reasonVal.style.fontWeight = "600";
-        reasonVal.textContent = reason;
-        reasonRow.appendChild(reasonLabel);
-        reasonRow.appendChild(reasonVal);
-        info.appendChild(reasonRow);
-
-        if (bannedAt) {
-          var timeRow = document.createElement("div");
-          timeRow.style.marginTop = "2px";
-          var timeEl = document.createElement("span");
-          timeEl.className = "card-time";
-          timeEl.style.fontSize = "11px";
-          timeEl.textContent = bannedAt;
-          timeRow.appendChild(timeEl);
-          info.appendChild(timeRow);
-        }
-
-        cardBody.appendChild(info);
-
-        // Index number
-        var indexEl = document.createElement("div");
-        indexEl.className = "card-index";
-        indexEl.style.fontSize = "2.5rem";
-        indexEl.style.fontWeight = "900";
-        indexEl.style.opacity = "0.15";
-        indexEl.style.position = "absolute";
-        indexEl.style.right = "18px";
-        indexEl.style.top = "50%";
-        indexEl.style.transform = "translateY(-50%)";
-        indexEl.style.lineHeight = "1";
-        indexEl.style.pointerEvents = "none";
-        indexEl.style.userSelect = "none";
-        indexEl.textContent = String(entry.index || (i + 1));
-        cardBody.appendChild(indexEl);
-
-        card.appendChild(cardBody);
-        listWrap.appendChild(card);
-      }
-      content.appendChild(listWrap);
+      document.getElementById("empty-state").hidden = false;
+      listEl.hidden = true;
     }
+
+    entries.forEach((entry, i) => {
+      const name = String(entry?.name || "").trim() || "—";
+      const userId = String(entry?.user_id || "").trim();
+      const reason = String(entry?.ban_reason || "").trim() || "未说明";
+      const bannedAt = String(entry?.banned_at || "").trim();
+      const index = entry?.index ?? (i + 1);
+
+      const row = document.createElement("article");
+      row.className = "entry";
+
+      const avatar = document.createElement("img");
+      avatar.className = "avatar";
+      avatar.alt = "";
+      avatar.src = `http://q1.qlogo.cn/g?b=qq&nk=${encodeURIComponent(userId)}&s=100`;
+      row.appendChild(avatar);
+
+      const info = document.createElement("div");
+      info.className = "info";
+
+      const top = document.createElement("div");
+      top.className = "info-top";
+      const nameEl = document.createElement("span");
+      nameEl.className = "name";
+      nameEl.textContent = name;
+      top.appendChild(nameEl);
+      if (userId) {
+        const qqEl = document.createElement("span");
+        qqEl.className = "qq";
+        qqEl.textContent = `(${userId})`;
+        top.appendChild(qqEl);
+      }
+      info.appendChild(top);
+
+      const reasonRow = document.createElement("div");
+      reasonRow.className = "reason";
+      const reasonLabel = document.createElement("span");
+      reasonLabel.className = "reason-label";
+      reasonLabel.textContent = "封禁原因";
+      reasonRow.appendChild(reasonLabel);
+      reasonRow.appendChild(document.createTextNode(reason));
+      info.appendChild(reasonRow);
+
+      if (bannedAt) {
+        const timeEl = document.createElement("div");
+        timeEl.className = "time";
+        timeEl.textContent = bannedAt;
+        info.appendChild(timeEl);
+      }
+
+      row.appendChild(info);
+
+      const indexEl = document.createElement("div");
+      indexEl.className = "index";
+      indexEl.textContent = `#${index}`;
+      row.appendChild(indexEl);
+
+      listEl.appendChild(row);
+    });
   </script>
 </body>
 </html>

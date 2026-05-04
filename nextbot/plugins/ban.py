@@ -27,9 +27,10 @@ unban_matcher = on_command("解封用户")
 ban_list_matcher = on_command("封禁列表")
 
 BAN_LIST_SCREENSHOT_OPTIONS = ScreenshotOptions(
-    viewport_width=900,
+    viewport_width=920,
     viewport_height=800,
     full_page=True,
+    fit_content_height=True,
 )
 
 
