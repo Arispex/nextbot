@@ -45,7 +45,6 @@ _FIELD_SPECS: tuple[FieldSpec, ...] = (
     FieldSpec("web_server_public_base_url", "WEB_SERVER_PUBLIC_BASE_URL"),
     FieldSpec("command_disabled_mode", "COMMAND_DISABLED_MODE"),
     FieldSpec("command_disabled_message", "COMMAND_DISABLED_MESSAGE"),
-    FieldSpec("render_theme", "RENDER_THEME"),
     FieldSpec("login_notify_all_groups", "LOGIN_NOTIFY_ALL_GROUPS"),
     FieldSpec("player_notify_mode", "PLAYER_NOTIFY_MODE"),
     FieldSpec("player_notify_group_id", "PLAYER_NOTIFY_GROUP_ID"),
@@ -70,7 +69,6 @@ _SINGLE_LINE_STRING_FIELDS = {
     "web_server_public_base_url",
     "command_disabled_mode",
     "command_disabled_message",
-    "render_theme",
     "player_notify_mode",
     "player_notify_group_id",
     "player_notify_online_template",
@@ -274,14 +272,6 @@ def _normalize_field(field: str, value: Any) -> Any:
         return mode
     if field == "command_disabled_message":
         return _coerce_string(value, field=field)
-    if field == "render_theme":
-        theme = _coerce_string(value, field=field).lower()
-        if theme not in {"dark", "light", "auto"}:
-            raise SettingsValidationError(
-                "render_theme 仅支持 dark、light 或 auto",
-                field=field,
-            )
-        return theme
     if field == "login_notify_all_groups":
         return _coerce_bool(value, field=field)
     if field == "player_notify_mode":
@@ -371,8 +361,6 @@ def _load_value_from_config(field: str, config: Any) -> Any:
         raw_value = "reply"
     if field == "command_disabled_message" and raw_value is None:
         raw_value = "该命令暂时关闭"
-    if field == "render_theme" and raw_value is None:
-        raw_value = "auto"
     if field == "login_notify_all_groups":
         return _coerce_bool(raw_value if raw_value is not None else False, field=field)
     if field == "player_notify_mode" and raw_value is None:

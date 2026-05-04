@@ -23,7 +23,6 @@ from nextbot.db import (
 from nextbot.message_parser import parse_command_args_with_fallback
 from nextbot.permissions import require_permission
 from nextbot.progression import PROGRESSION_KEY_TO_ZH
-from nextbot.render_utils import resolve_render_theme
 from nextbot.text_utils import (
     EMOJI_COIN,
     EMOJI_SERVER,
@@ -209,7 +208,6 @@ async def handle_shop_list(bot: Bot, event: Event, arg: Message = CommandArg()) 
         page=page,
         total_pages=total_pages,
         total=total,
-        theme=resolve_render_theme(),
     )
     logger.info(
         f"商店列表渲染地址：page={page}/{total_pages} total={total} "
@@ -350,7 +348,6 @@ async def handle_shop_view(bot: Bot, event: Event, arg: Message = CommandArg()) 
         page=page,
         total_pages=total_pages,
         total=total,
-        theme=resolve_render_theme(),
     )
     logger.info(
         f"商店详情渲染地址：shop_id={shop_id} page={page}/{total_pages} "

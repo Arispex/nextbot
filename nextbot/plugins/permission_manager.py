@@ -22,7 +22,6 @@ from nextbot.permissions import (
     require_permission,
     split_csv_values,
 )
-from nextbot.render_utils import resolve_render_theme
 from nextbot.time_utils import beijing_filename_timestamp
 from nextbot.text_utils import (
     EMOJI_CHART,
@@ -290,7 +289,7 @@ async def handle_admin_list(bot: Bot, event: Event, arg: Message = CommandArg())
         admins.append({"user_id": qq, "nickname": nickname})
         logger.info(f"管理员昵称获取：qq={qq} nickname={nickname!r}")
 
-    page_url = create_admin_list_page(admins=admins, theme=resolve_render_theme())
+    page_url = create_admin_list_page(admins=admins)
     logger.info(f"管理员列表渲染地址：admin_count={len(admins)} internal_url={page_url}")
 
     screenshot_path = Path("/tmp") / f"admin-list-{beijing_filename_timestamp()}.png"

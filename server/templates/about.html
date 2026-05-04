@@ -1,331 +1,299 @@
 <!doctype html>
-<html lang="zh-CN" data-theme="light">
+<html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <script src="https://cdn.tailwindcss.com"></script>
+  <title>NextBot 关于</title>
+  <link rel="stylesheet" href="/assets/css/render-fonts.css" />
+  <link rel="stylesheet" href="/assets/css/render-tokens.css" />
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: 'Inter', system-ui, -apple-system, sans-serif; min-height: 100vh; }
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    [hidden] { display: none !important; }
 
-    /* ── Light Theme ── */
-    [data-theme="light"] body { background: #edeef2; color: #1a1a2e; }
-    [data-theme="light"] .page-card { background: #f6f6f9; border: 1px solid rgba(0,0,0,0.06); }
-    [data-theme="light"] .hero-area {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
-    }
-    [data-theme="light"] .hero-area::before {
-      content: "";
-      position: absolute; inset: 0;
-      background:
-        radial-gradient(circle at 20% 50%, rgba(255,255,255,0.15) 0%, transparent 50%),
-        radial-gradient(circle at 80% 30%, rgba(255,255,255,0.1) 0%, transparent 40%);
-    }
-    [data-theme="light"] .hero-title { color: #ffffff; }
-    [data-theme="light"] .hero-desc { color: rgba(255,255,255,0.88); }
-    [data-theme="light"] .hero-badge {
-      background: rgba(255,255,255,0.2);
-      border: 1px solid rgba(255,255,255,0.3);
-      color: #ffffff;
-    }
-    [data-theme="light"] .section-card {
-      background: #ffffff;
-      border: 1px solid rgba(0,0,0,0.06);
-    }
-    [data-theme="light"] .section-title { color: #374151; }
-    [data-theme="light"] .section-stripe-purple { background: #8b5cf6; }
-    [data-theme="light"] .section-stripe-amber { background: #f59e0b; }
-    [data-theme="light"] .info-label { color: #9ca3af; }
-    [data-theme="light"] .info-value { color: #374151; }
-    [data-theme="light"] .info-link { color: #6366f1; }
-    [data-theme="light"] .thanks-card {
-      background: #f9fafb;
-      border: 1px solid rgba(0,0,0,0.06);
-    }
-    [data-theme="light"] .thanks-card:hover { border-color: rgba(99,102,241,0.3); }
-    [data-theme="light"] .thanks-name { color: #1f2937; }
-    [data-theme="light"] .thanks-qq { color: #9ca3af; }
-    [data-theme="light"] .avatar-ring {
-      background: linear-gradient(135deg, #667eea, #764ba2);
-    }
-    [data-theme="light"] .footer-text { color: #9ca3af; }
-    [data-theme="light"] .page-title-text { color: #374151; }
-    [data-theme="light"] .page-title-rule {
-      background: linear-gradient(90deg, #6366f1, #8b5cf6, #a78bfa, transparent);
+    body {
+      background-color: var(--color-canvas);
+      color: var(--color-ink);
+      font-family: var(--font-body);
+      font-size: var(--type-body-md-size);
+      line-height: 1.55;
+      padding: var(--space-xxl) var(--space-xxl);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
     }
 
-    /* ── Dark Theme ── */
-    [data-theme="dark"] body { background: #07070a; color: #e5e7eb; }
-    [data-theme="dark"] .page-card { background: #0e0e12; border: 1px solid rgba(255,255,255,0.06); }
-    [data-theme="dark"] .hero-area {
-      background: linear-gradient(135deg, #1a1033 0%, #0f0a1e 50%, #1a0a2e 100%);
-    }
-    [data-theme="dark"] .hero-area::before {
-      content: "";
-      position: absolute; inset: 0;
-      background:
-        radial-gradient(circle at 30% 40%, rgba(139,92,246,0.2) 0%, transparent 50%),
-        radial-gradient(circle at 70% 60%, rgba(212,160,23,0.12) 0%, transparent 40%);
-    }
-    [data-theme="dark"] .hero-title { color: #fde68a; }
-    [data-theme="dark"] .hero-desc { color: rgba(253,230,138,0.7); }
-    [data-theme="dark"] .hero-badge {
-      background: rgba(212,160,23,0.15);
-      border: 1px solid rgba(212,160,23,0.3);
-      color: #fde68a;
-    }
-    [data-theme="dark"] .section-card {
-      background: #141419;
-      border: 1px solid rgba(255,255,255,0.06);
-    }
-    [data-theme="dark"] .section-title { color: #e5e7eb; }
-    [data-theme="dark"] .section-stripe-purple { background: #a78bfa; }
-    [data-theme="dark"] .section-stripe-amber { background: #d4a017; }
-    [data-theme="dark"] .info-label { color: #6b7280; }
-    [data-theme="dark"] .info-value { color: #d1d5db; }
-    [data-theme="dark"] .info-link { color: #fde68a; }
-    [data-theme="dark"] .thanks-card {
-      background: #1a1a22;
-      border: 1px solid rgba(255,255,255,0.06);
-    }
-    [data-theme="dark"] .thanks-card:hover { border-color: rgba(212,160,23,0.3); }
-    [data-theme="dark"] .thanks-name { color: #f3f4f6; }
-    [data-theme="dark"] .thanks-qq { color: #6b7280; }
-    [data-theme="dark"] .avatar-ring {
-      background: linear-gradient(135deg, #d4a017, #fde68a);
-    }
-    [data-theme="dark"] .footer-text { color: #4b5563; }
-    [data-theme="dark"] .page-title-text { color: #e5e7eb; }
-    [data-theme="dark"] .page-title-rule {
-      background: linear-gradient(90deg, #d4a017, #fde68a, #fef3c7, transparent);
+    .page {
+      max-width: 920px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-xl);
     }
 
-    /* ── Shared Styles ── */
-    .page-card {
-      max-width: 900px;
-      margin: 32px auto;
-      border-radius: 20px;
-      overflow: hidden;
-      box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+    .header-rule {
+      width: 64px;
+      height: 4px;
+      background-color: var(--color-primary);
+      border-radius: var(--radius-pill);
+      margin-bottom: var(--space-md);
     }
 
-    .page-title-area {
-      padding: 28px 32px 0;
-    }
-    .page-title-rule {
-      height: 3px;
-      border-radius: 2px;
-      margin-bottom: 6px;
-      width: 120px;
-    }
-    .page-title-text {
-      font-size: 2.25rem;
-      font-weight: 900;
-      letter-spacing: -0.02em;
+    .header-eyebrow {
+      color: var(--color-muted);
+      margin-bottom: var(--space-xs);
     }
 
-    .hero-area {
-      position: relative;
-      padding: 48px 40px;
+    .header-title {
+      color: var(--color-ink);
+      margin: 0 0 var(--space-md) 0;
+    }
+
+    .header-meta {
+      color: var(--color-muted-soft);
+      display: flex;
+      gap: var(--space-md);
+      align-items: baseline;
+      flex-wrap: wrap;
+    }
+
+    .header-meta-divider {
+      color: var(--color-hairline);
+    }
+
+    /* ── Hero (project tagline + tech badges, no gradient bg) ─ */
+    .hero {
+      background-color: var(--color-surface-card);
+      border: 1px solid var(--color-hairline);
+      border-radius: var(--radius-lg);
+      padding: var(--space-xxl);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: var(--space-md);
       text-align: center;
-      overflow: hidden;
     }
-    .hero-content { position: relative; z-index: 1; }
+
     .hero-logo {
-      width: 280px;
+      width: 180px;
       height: auto;
-      border-radius: 14px;
-      margin: 0 auto 20px;
-      box-shadow: 0 8px 32px rgba(0,0,0,0.2);
       object-fit: contain;
     }
-    .hero-title {
-      font-size: 2rem;
-      font-weight: 800;
-      letter-spacing: -0.02em;
-      margin-bottom: 8px;
-    }
-    .hero-desc {
-      font-size: 1rem;
-      font-weight: 500;
-      margin-bottom: 20px;
-    }
-    .hero-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 6px 16px;
-      border-radius: 999px;
-      font-size: 0.8rem;
+
+    .hero-name {
+      color: var(--color-ink);
+      font-family: var(--font-display);
       font-weight: 600;
-      backdrop-filter: blur(8px);
+      font-size: 36px;
+      letter-spacing: -0.01em;
+      line-height: 1.1;
     }
-    .hero-badges { display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; }
 
-    .content-area { padding: 24px 32px 28px; }
+    .hero-desc {
+      color: var(--color-muted);
+      font-size: var(--type-body-md-size);
+      max-width: 520px;
+    }
 
-    .section-card {
-      border-radius: 14px;
-      overflow: hidden;
+    .badges {
       display: flex;
+      gap: var(--space-xs);
+      flex-wrap: wrap;
+      justify-content: center;
+      margin-top: var(--space-xs);
     }
-    .section-stripe {
-      width: 4px;
-      flex-shrink: 0;
-    }
-    .section-inner {
-      flex: 1;
-      padding: 20px 24px;
-    }
-    .section-title {
-      font-size: 0.85rem;
-      font-weight: 700;
 
-      letter-spacing: 0.06em;
-      margin-bottom: 14px;
+    .badge {
+      background-color: var(--color-canvas);
+      color: var(--color-accent-teal);
+      border: 1px solid var(--color-accent-teal);
+      border-radius: var(--radius-pill);
+      padding: 2px var(--space-sm);
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.02em;
+    }
+
+    /* ── Section card (cream-card with title + content) ───── */
+    .section {
+      background-color: var(--color-surface-card);
+      border: 1px solid var(--color-hairline);
+      border-radius: var(--radius-lg);
+      padding: var(--space-lg) var(--space-xl);
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-md);
+    }
+
+    .section-title {
+      color: var(--color-muted);
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
     }
 
     .info-grid {
       display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 12px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: var(--space-md) var(--space-lg);
     }
-    .info-item { display: flex; flex-direction: column; gap: 2px; }
-    .info-label { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
-    .info-value { font-size: 0.9rem; font-weight: 600; }
-    .info-link { text-decoration: none; font-weight: 600; }
-    .info-link:hover { text-decoration: underline; }
 
+    .info-item {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
+    }
+
+    .info-label {
+      color: var(--color-muted);
+      font-size: 11px;
+      font-weight: 500;
+    }
+
+    .info-value {
+      color: var(--color-ink);
+      font-size: 14px;
+      font-weight: 500;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .info-value.code {
+      font-family: var(--font-code);
+      font-feature-settings: "tnum";
+    }
+
+    .info-link {
+      color: var(--color-primary);
+      text-decoration: none;
+    }
+
+    /* ── Thanks grid ──────────────────────────────────────── */
     .thanks-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-      gap: 12px;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: var(--space-sm);
     }
+
     .thanks-card {
+      background-color: var(--color-canvas);
+      border: 1px solid var(--color-hairline);
+      border-radius: var(--radius-md);
+      padding: var(--space-sm) var(--space-md);
       display: flex;
       align-items: center;
-      gap: 14px;
-      padding: 14px 16px;
-      border-radius: 12px;
-      transition: border-color 0.2s;
+      gap: var(--space-sm);
     }
-    .avatar-ring {
-      width: 52px;
-      height: 52px;
-      border-radius: 50%;
-      padding: 2.5px;
+
+    .thanks-avatar {
+      width: 44px;
+      height: 44px;
+      border-radius: var(--radius-pill);
+      background-color: var(--color-surface-card);
+      border: 1px solid var(--color-hairline);
+      object-fit: cover;
       flex-shrink: 0;
     }
-    .avatar-img {
-      width: 100%;
-      height: 100%;
-      border-radius: 50%;
-      object-fit: cover;
-      display: block;
-    }
-    .thanks-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-    .thanks-name { font-size: 0.9rem; font-weight: 700; }
-    .thanks-qq { font-size: 0.78rem; font-weight: 500; font-family: 'SF Mono', 'Cascadia Code', monospace; }
 
-    .footer-area {
-      padding: 16px 32px;
-      text-align: center;
+    .thanks-info {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
     }
-    .footer-text { font-size: 0.75rem; font-weight: 500; }
 
-    /* SVG grid texture for hero */
-    .hero-grid {
-      position: absolute; inset: 0;
-      opacity: 0.06;
-      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40'%3E%3Cpath d='M0 0h40v40H0z' fill='none' stroke='%23ffffff' stroke-width='0.5'/%3E%3C/svg%3E");
+    .thanks-name {
+      color: var(--color-ink);
+      font-weight: 500;
+      font-size: 14px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .thanks-qq {
+      color: var(--color-muted-soft);
+      font-family: var(--font-code);
+      font-size: 11px;
+      font-feature-settings: "tnum";
+    }
+
+    .footer {
+      text-align: right;
+      color: var(--color-muted-soft);
+      margin-top: var(--space-md);
     }
   </style>
 </head>
 <body>
-  <div class="page-card">
-    <div class="page-title-area">
-      <div class="page-title-rule"></div>
-      <div class="page-title-text">关于</div>
-    </div>
+  <main class="page">
 
-    <div class="hero-area">
-      <div class="hero-grid"></div>
-      <div class="hero-content">
-        <img id="hero-logo" class="hero-logo" src="" alt="Logo" />
-        <div id="hero-title" class="hero-title"></div>
-        <div id="hero-desc" class="hero-desc"></div>
-        <div class="hero-badges">
-          <span class="hero-badge">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
-            NoneBot2
-          </span>
-<span class="hero-badge">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-            OneBot V11
-          </span>
+    <header>
+      <div class="header-rule"></div>
+      <div class="header-eyebrow type-caption-uppercase">系统功能</div>
+      <h1 class="header-title type-display-lg">关于</h1>
+      <div class="header-meta type-body-sm">
+        <span id="meta-time"></span>
+      </div>
+    </header>
+
+    <section class="hero">
+      <img id="hero-logo" class="hero-logo" alt="Logo" />
+      <div class="hero-name" id="hero-name"></div>
+      <div class="hero-desc" id="hero-desc"></div>
+      <div class="badges">
+        <span class="badge">NoneBot2</span>
+        <span class="badge">OneBot V11</span>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-title">项目信息</div>
+      <div class="info-grid">
+        <div class="info-item">
+          <span class="info-label">作者</span>
+          <a id="info-author" class="info-value info-link" href="#"></a>
+        </div>
+        <div class="info-item">
+          <span class="info-label">仓库</span>
+          <a id="info-repo" class="info-value info-link" href="#"></a>
+        </div>
+        <div class="info-item">
+          <span class="info-label">框架</span>
+          <span class="info-value">NoneBot2</span>
+        </div>
+        <div class="info-item">
+          <span class="info-label">许可证</span>
+          <span class="info-value">AGPL-3.0</span>
+        </div>
+        <div class="info-item">
+          <span class="info-label">QQ 交流群</span>
+          <span class="info-value code">1091215316</span>
         </div>
       </div>
-    </div>
+    </section>
 
-    <div class="content-area" style="display:grid;gap:16px;">
-      <!-- Project Info -->
-      <div class="section-card">
-        <div class="section-stripe section-stripe-purple"></div>
-        <div class="section-inner">
-          <div class="section-title">项目信息</div>
-          <div class="info-grid">
-            <div class="info-item">
-              <span class="info-label">作者</span>
-              <a id="info-author" class="info-value info-link" href="#" target="_blank"></a>
-            </div>
-            <div class="info-item">
-              <span class="info-label">仓库</span>
-              <a id="info-repo" class="info-value info-link" href="#" target="_blank"></a>
-            </div>
-            <div class="info-item">
-              <span class="info-label">框架</span>
-              <span class="info-value">NoneBot2</span>
-            </div>
-            <div class="info-item">
-              <span class="info-label">许可证</span>
-              <span class="info-value">AGPL-3.0</span>
-            </div>
-            <div class="info-item">
-              <span class="info-label">QQ 交流群</span>
-              <span class="info-value">1091215316</span>
-            </div>
-          </div>
-        </div>
-      </div>
+    <section class="section">
+      <div class="section-title">特别感谢</div>
+      <div id="thanks-grid" class="thanks-grid"></div>
+    </section>
 
-      <!-- Special Thanks -->
-      <div class="section-card">
-        <div class="section-stripe section-stripe-amber"></div>
-        <div class="section-inner">
-          <div class="section-title">特别感谢</div>
-          <div id="thanks-grid" class="thanks-grid"></div>
-        </div>
-      </div>
-    </div>
-
-    <div class="footer-area">
-      <span id="footer-text" class="footer-text"></span>
-    </div>
-  </div>
+    <footer class="footer type-caption">Powered by NextBot</footer>
+  </main>
 
   <script id="page-data" type="application/json">__ABOUT_DATA_JSON__</script>
   <script>
     const data = JSON.parse(document.getElementById("page-data").textContent);
-    document.documentElement.setAttribute("data-theme", data.theme || "light");
 
-    // Hero
-    var logoSrc = data.theme === "dark" ? "/assets/imgs/logo-dark.png" : "/assets/imgs/logo-light.png";
-    document.getElementById("hero-logo").src = logoSrc;
-    document.getElementById("hero-title").textContent = data.project_name || "NextBot";
+    document.getElementById("meta-time").textContent = data.generated_at || "";
+
+    // Hero — always use light logo (no theme switching).
+    document.getElementById("hero-logo").src = "/assets/imgs/logo-light.png";
+    document.getElementById("hero-name").textContent = data.project_name || "NextBot";
     document.getElementById("hero-desc").textContent = data.project_desc || "";
 
-    // Project info
     const authorEl = document.getElementById("info-author");
     authorEl.textContent = data.author || "";
     authorEl.href = data.author_url || "#";
@@ -335,46 +303,37 @@
     repoEl.textContent = repoUrl;
     repoEl.href = repoUrl;
 
-    // Mask QQ
     function maskQQ(qq) {
       if (!qq || qq.length <= 4) return qq || "";
-      var middle = qq.length - 4;
+      const middle = qq.length - 4;
       return qq.slice(0, 2) + "*".repeat(middle) + qq.slice(-2);
     }
 
-    // Thanks
     const thanksGrid = document.getElementById("thanks-grid");
-    (data.thanks || []).forEach(function(t) {
-      var card = document.createElement("div");
+    (data.thanks || []).forEach((t) => {
+      const card = document.createElement("div");
       card.className = "thanks-card";
 
-      var ring = document.createElement("div");
-      ring.className = "avatar-ring";
-      var img = document.createElement("img");
-      img.className = "avatar-img";
-      img.src = "http://q1.qlogo.cn/g?b=qq&nk=" + encodeURIComponent(t.qq) + "&s=100";
+      const img = document.createElement("img");
+      img.className = "thanks-avatar";
+      img.src = `http://q1.qlogo.cn/g?b=qq&nk=${encodeURIComponent(t.qq)}&s=100`;
       img.alt = "";
-      ring.appendChild(img);
+      card.appendChild(img);
 
-      var info = document.createElement("div");
+      const info = document.createElement("div");
       info.className = "thanks-info";
-      var nameSpan = document.createElement("span");
-      nameSpan.className = "thanks-name";
-      nameSpan.textContent = t.name || "";
-      var qqSpan = document.createElement("span");
-      qqSpan.className = "thanks-qq";
-      qqSpan.textContent = maskQQ(t.qq);
-      info.appendChild(nameSpan);
-      info.appendChild(qqSpan);
+      const nameEl = document.createElement("div");
+      nameEl.className = "thanks-name";
+      nameEl.textContent = t.name || "";
+      const qqEl = document.createElement("div");
+      qqEl.className = "thanks-qq";
+      qqEl.textContent = maskQQ(t.qq);
+      info.appendChild(nameEl);
+      info.appendChild(qqEl);
 
-      card.appendChild(ring);
       card.appendChild(info);
       thanksGrid.appendChild(card);
     });
-
-    // Footer
-    document.getElementById("footer-text").textContent =
-      "Powered by NextBot \u00B7 " + (data.generated_at || "");
   </script>
 </body>
 </html>

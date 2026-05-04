@@ -16,7 +16,6 @@
   const webServerPublicBaseUrlInput = document.getElementById("field-web-server-public-base-url");
   const commandDisabledModeInput = document.getElementById("field-command-disabled-mode");
   const commandDisabledMessageInput = document.getElementById("field-command-disabled-message");
-  const renderThemeInput = document.getElementById("field-render-theme");
   const loginNotifyAllGroupsInput = document.getElementById("field-login-notify-all-groups");
   const playerNotifyModeInput = document.getElementById("field-player-notify-mode");
   const playerNotifyGroupIdInput = document.getElementById("field-player-notify-group-id");
@@ -84,7 +83,6 @@
     web_server_public_base_url: "Web 服务对外地址",
     command_disabled_mode: "命令关闭模式",
     command_disabled_message: "命令关闭提示语",
-    render_theme: "图片主题",
     login_notify_all_groups: "登入通知范围",
     player_notify_mode: "上下线通知范围",
     player_notify_group_id: "上下线通知群号",
@@ -99,11 +97,6 @@
     group_farewell_template: "退群送别模板",
     group_auto_ban_on_leave_enabled: "退群自动封禁",
     group_auto_ban_on_leave_notify: "退群封禁通知",
-  };
-  const RENDER_THEME_LABELS = {
-    auto: "跟随时间",
-    light: "亮色",
-    dark: "暗色",
   };
   const MODE_LABELS = {
     reply: "回复提示",
@@ -313,7 +306,6 @@
       web_server_public_base_url: parsedBaseUrl.toString().replace(/\/$/, ""),
       command_disabled_mode: commandDisabledMode,
       command_disabled_message: commandDisabledMessage,
-      render_theme: renderThemeInput.value,
       login_notify_all_groups: loginNotifyAllGroupsInput.value === "true",
       player_notify_mode: playerNotifyModeInput.value,
       player_notify_group_id: playerNotifyGroupIdInput.value.trim(),
@@ -343,7 +335,6 @@
     webServerPublicBaseUrlInput.value = String(data.web_server_public_base_url ?? "");
     commandDisabledModeInput.value = String(data.command_disabled_mode ?? "reply");
     commandDisabledMessageInput.value = String(data.command_disabled_message ?? "");
-    renderThemeInput.value = String(data.render_theme ?? "auto");
     loginNotifyAllGroupsInput.value = data.login_notify_all_groups ? "true" : "false";
     playerNotifyModeInput.value = String(data.player_notify_mode ?? "all");
     playerNotifyGroupIdInput.value = String(data.player_notify_group_id ?? "");

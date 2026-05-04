@@ -23,7 +23,6 @@ from nextbot.db import (
 )
 from nextbot.message_parser import parse_command_args_with_fallback
 from nextbot.permissions import require_permission
-from nextbot.render_utils import resolve_render_theme
 from nextbot.text_utils import reply_failure
 from nextbot.time_utils import beijing_filename_timestamp, db_now_utc_naive
 from nextbot.tshock_api import TShockRequestError, get_error_reason, is_success, request_server_api
@@ -226,7 +225,7 @@ async def handle_lottery_list(bot: Bot, event: Event, arg: Message = CommandArg(
 
     page_url = create_lottery_list_page(
         entries=render_entries, page=page, total_pages=total_pages,
-        total=total, theme=resolve_render_theme(),
+        total=total,
     )
     logger.info(
         f"奖池列表渲染地址：page={page}/{total_pages} total={total} "
@@ -357,7 +356,6 @@ async def handle_lottery_view(bot: Bot, event: Event, arg: Message = CommandArg(
         cost_per_draw=cost_per_draw, prizes=render_prizes,
         miss_probability=float(miss_pct),
         page=page, total_pages=total_pages, total=total,
-        theme=resolve_render_theme(),
     )
     logger.info(
         f"奖池详情渲染地址：pool_id={pool_id} page={page}/{total_pages} "
@@ -704,7 +702,7 @@ async def handle_lottery_draw(bot: Bot, event: Event, arg: Message = CommandArg(
         total_cost=total_cost, coin_delta=coin_delta,
         item_value_gained=item_value_gained,
         outcomes=outcomes, item_slots_used=needed_slots,
-        command_results=cmd_results, theme=resolve_render_theme(),
+        command_results=cmd_results,
     )
     logger.info(
         f"抽奖结果渲染地址：user_id={user_id} pool_id={pool_id} draws={draw_count} "

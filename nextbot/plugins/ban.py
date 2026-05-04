@@ -14,7 +14,6 @@ from nextbot.command_config import command_control, get_current_param, raise_com
 from nextbot.db import Server, User, get_session
 from nextbot.message_parser import parse_command_args_with_fallback, resolve_user_id_arg_with_fallback
 from nextbot.permissions import require_permission
-from nextbot.render_utils import resolve_render_theme
 from nextbot.time_utils import beijing_filename_timestamp, db_now_utc_naive
 from nextbot.time_utils import format_beijing_datetime
 from nextbot.tshock_api import TShockRequestError, get_error_reason, is_success, request_server_api
@@ -157,7 +156,7 @@ async def handle_ban_list(bot: Bot, event: Event, arg: Message = CommandArg()) -
 
     if total == 0:
         page_url = create_ban_list_page(
-            page=1, total_pages=1, entries=[], theme=resolve_render_theme(),
+            page=1, total_pages=1, entries=[],
         )
     else:
         if page > total_pages:
@@ -177,7 +176,7 @@ async def handle_ban_list(bot: Bot, event: Event, arg: Message = CommandArg()) -
             for i, u in enumerate(page_users)
         ]
         page_url = create_ban_list_page(
-            page=page, total_pages=total_pages, entries=entries, theme=resolve_render_theme(),
+            page=page, total_pages=total_pages, entries=entries,
         )
 
     logger.info(

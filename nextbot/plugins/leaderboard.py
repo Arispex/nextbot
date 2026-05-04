@@ -24,7 +24,6 @@ from nextbot.tshock_api import (
     request_server_api,
 )
 from nextbot.permissions import require_permission
-from nextbot.render_utils import resolve_render_theme
 from nextbot.time_utils import (
     beijing_filename_timestamp,
     beijing_today_text,
@@ -201,7 +200,6 @@ async def handle_coins_leaderboard(
         total_pages=total_pages,
         file_prefix="leaderboard-coins",
         self_entry=self_entry,
-        theme=resolve_render_theme(),
     )
 
 
@@ -279,7 +277,6 @@ async def handle_streak_leaderboard(
         total_pages=total_pages,
         file_prefix="leaderboard-streak",
         self_entry=self_entry,
-        theme=resolve_render_theme(),
     )
 
 
@@ -357,7 +354,6 @@ async def handle_signin_leaderboard(
         total_pages=total_pages,
         file_prefix="leaderboard-signin",
         self_entry=self_entry,
-        theme=resolve_render_theme(),
     )
 
 
@@ -468,7 +464,6 @@ async def handle_deaths_leaderboard(
         total_pages=total_pages,
         file_prefix="leaderboard-deaths",
         self_entry=self_entry,
-        theme=resolve_render_theme(),
     )
 
 
@@ -579,7 +574,6 @@ async def handle_fishing_leaderboard(
         total_pages=total_pages,
         file_prefix="leaderboard-fishing",
         self_entry=self_entry,
-        theme=resolve_render_theme(),
     )
 
 
@@ -694,7 +688,6 @@ async def handle_online_time_leaderboard(
         total_pages=total_pages,
         file_prefix="leaderboard-online-time",
         self_entry=self_entry,
-        theme=resolve_render_theme(),
     )
 
 
@@ -807,7 +800,6 @@ async def handle_total_online_time_leaderboard(
         total_pages=total_pages,
         file_prefix="leaderboard-total-online-time",
         self_entry=self_entry,
-        theme=resolve_render_theme(),
     )
 
 
@@ -925,7 +917,6 @@ async def handle_daily_sign_leaderboard(
         total_pages=total_pages,
         file_prefix="leaderboard-daily-sign",
         self_entry=self_entry,
-        theme=resolve_render_theme(),
     )
 
 
@@ -1003,7 +994,6 @@ async def handle_rob_income_leaderboard(
         total_pages=total_pages,
         file_prefix="leaderboard-rob-income",
         self_entry=self_entry,
-        theme=resolve_render_theme(),
     )
 
 
@@ -1082,7 +1072,6 @@ async def handle_rob_loss_leaderboard(
         total_pages=total_pages,
         file_prefix="leaderboard-rob-loss",
         self_entry=self_entry,
-        theme=resolve_render_theme(),
     )
 
 
@@ -1161,7 +1150,6 @@ async def handle_rob_penalty_leaderboard(
         total_pages=total_pages,
         file_prefix="leaderboard-rob-penalty",
         self_entry=self_entry,
-        theme=resolve_render_theme(),
     )
 
 
@@ -1264,7 +1252,6 @@ async def handle_rob_success_rate_leaderboard(
         total_pages=total_pages,
         file_prefix="leaderboard-rob-rate",
         self_entry=self_entry,
-        theme=resolve_render_theme(),
     )
 
 
@@ -1360,7 +1347,6 @@ async def handle_guess_income_leaderboard(
         total_pages=total_pages,
         file_prefix="leaderboard-guess-income",
         self_entry=self_entry,
-        theme=resolve_render_theme(),
     )
 
 
@@ -1461,7 +1447,6 @@ async def handle_guess_win_rate_leaderboard(
         total_pages=total_pages,
         file_prefix="leaderboard-guess-win-rate",
         self_entry=self_entry,
-        theme=resolve_render_theme(),
     )
 
 
@@ -1535,7 +1520,6 @@ async def handle_dice_income_leaderboard(
         total_pages=total_pages,
         file_prefix="leaderboard-dice-income",
         self_entry=self_entry,
-        theme=resolve_render_theme(),
     )
 
 
@@ -1636,5 +1620,4 @@ async def handle_dice_win_rate_leaderboard(
         total_pages=total_pages,
         file_prefix="leaderboard-dice-win-rate",
         self_entry=self_entry,
-        theme=resolve_render_theme(),
     )

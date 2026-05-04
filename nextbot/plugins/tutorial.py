@@ -13,7 +13,6 @@ from nextbot.command_config import command_control, raise_command_usage
 from nextbot.message_parser import parse_command_args_with_fallback
 from nextbot.permissions import require_permission
 from nextbot.plugins.tutorial_data import get_tutorial, list_tutorials
-from nextbot.render_utils import resolve_render_theme
 from nextbot.text_utils import EMOJI_GUIDE, reply_failure, reply_list
 from nextbot.time_utils import beijing_filename_timestamp
 from server.screenshot import RenderScreenshotError, ScreenshotOptions, screenshot_url
@@ -22,9 +21,10 @@ from server.web_server import create_tutorial_page
 tutorial_matcher = on_command("使用教程")
 
 TUTORIAL_SCREENSHOT_OPTIONS = ScreenshotOptions(
-    viewport_width=1000,
+    viewport_width=920,
     viewport_height=1400,
     full_page=True,
+    fit_content_height=True,
 )
 
 
@@ -92,7 +92,6 @@ async def handle_tutorial(bot: Bot, event: Event, arg: Message = CommandArg()) -
     page_url = create_tutorial_page(
         tutorial=target,
         self_user_id=user_id,
-        theme=resolve_render_theme(),
     )
     logger.info(
         f"使用教程渲染地址：slug={target.get('slug')} user_id={user_id} internal_url={page_url}"

@@ -20,7 +20,6 @@ from nextbot.message_parser import (
 )
 from nextbot.permissions import require_permission
 from nextbot.progression import PROGRESSION_KEY_TO_ZH, TIER_OPTIONS, parse_tier
-from nextbot.render_utils import resolve_render_theme
 from nextbot.text_utils import (
     EMOJI_CHART,
     EMOJI_COIN,
@@ -286,7 +285,6 @@ async def handle_list_self(bot: Bot, event: Event, arg: Message = CommandArg()) 
         owner_user_id=user_id,
         owner_user_name=str(user.name),
         slots=slots,
-        theme=resolve_render_theme(),
     )
     logger.info(
         f"我的仓库渲染：user_id={user_id} used={len(slots)} internal_url={page_url}"
@@ -333,7 +331,6 @@ async def handle_list_user(bot: Bot, event: Event, arg: Message = CommandArg()) 
         owner_user_id=target_user_id,
         owner_user_name=str(user.name),
         slots=slots,
-        theme=resolve_render_theme(),
     )
     logger.info(
         f"用户仓库渲染：user_id={target_user_id} used={len(slots)} internal_url={page_url}"

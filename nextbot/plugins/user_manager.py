@@ -13,7 +13,6 @@ from nextbot.message_parser import (
     resolve_user_id_arg_with_fallback,
 )
 from nextbot.permissions import require_permission
-from nextbot.render_utils import resolve_render_theme
 from nextbot.time_utils import beijing_filename_timestamp, format_beijing_datetime
 from server.screenshot import RenderScreenshotError, ScreenshotOptions, screenshot_url
 from server.web_server import create_user_info_page
@@ -260,7 +259,6 @@ async def _render_and_send_user_info(bot: Bot, event: Event, user: User, days: i
         created_at=created_at,
         sign_dates=sign_dates,
         days=days,
-        theme=resolve_render_theme(),
     )
     logger.info(
         f"用户信息渲染地址：user_id={user.user_id} name={user.name} "

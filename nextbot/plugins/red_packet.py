@@ -17,7 +17,6 @@ from nextbot.command_config import command_control, get_current_param, raise_com
 from nextbot.db import RedPacket, RedPacketClaim, User, get_session
 from nextbot.message_parser import parse_command_args_with_fallback
 from nextbot.permissions import require_permission
-from nextbot.render_utils import resolve_render_theme
 from nextbot.text_utils import (
     EMOJI_CHART,
     EMOJI_COIN,
@@ -518,7 +517,7 @@ async def handle_list_own(bot: Bot, event: Event, arg: Message = CommandArg()) -
         )
 
     page_url = create_red_packet_own_page(
-        page=page, total_pages=total_pages, entries=entries, theme=resolve_render_theme(),
+        page=page, total_pages=total_pages, entries=entries,
     )
     logger.info(
         f"我的红包渲染地址：user_id={user_id} page={page}/{total_pages} total={total} internal_url={page_url}"
@@ -613,7 +612,7 @@ async def handle_list_all(bot: Bot, event: Event, arg: Message = CommandArg()) -
         )
 
     page_url = create_red_packet_all_page(
-        page=page, total_pages=total_pages, entries=entries, theme=resolve_render_theme(),
+        page=page, total_pages=total_pages, entries=entries,
     )
     logger.info(
         f"红包列表渲染地址：page={page}/{total_pages} total={total} internal_url={page_url}"

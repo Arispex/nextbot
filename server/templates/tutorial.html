@@ -1,285 +1,371 @@
 <!doctype html>
-<html lang="zh-CN" data-theme="light">
+<html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <script src="https://cdn.tailwindcss.com"></script>
+  <title>NextBot 教程</title>
+  <link rel="stylesheet" href="/assets/css/render-fonts.css" />
+  <link rel="stylesheet" href="/assets/css/render-tokens.css" />
   <style>
-    [data-theme="dark"] body {
-      background: linear-gradient(160deg, #140a0a 0%, #1a0d09 50%, #0f0605 100%);
-    }
-    [data-theme="dark"] .page-header {
-      background: linear-gradient(90deg, rgba(220,38,38,0.0) 0%, rgba(234,179,8,0.10) 50%, rgba(220,38,38,0.0) 100%);
-      border-color: rgba(234,179,8,0.20);
-    }
-    [data-theme="dark"] .header-title { color: #fbbf24; text-shadow: 0 2px 20px rgba(234,179,8,0.30); }
-    [data-theme="dark"] .header-subtitle { color: #cbd5e1; }
-    [data-theme="dark"] .header-rule { background: linear-gradient(90deg, #dc2626, #eab308, transparent); }
-    [data-theme="dark"] .header-time { color: #64748b; }
-    [data-theme="dark"] .step-card {
-      background: rgba(255,255,255,0.03);
-      border: 1px solid rgba(234,179,8,0.10);
-    }
-    [data-theme="dark"] .step-stripe { background: linear-gradient(180deg, #dc2626, #eab308); }
-    [data-theme="dark"] .step-number {
-      background: linear-gradient(135deg, #dc2626, #eab308);
-      color: #fff7ed;
-      box-shadow: 0 6px 18px rgba(220,38,38,0.30);
-    }
-    [data-theme="dark"] .step-title { color: #f1f5f9; }
-    [data-theme="dark"] .step-desc { color: #cbd5e1; }
-    [data-theme="dark"] .chat-window {
-      background: #0f172a;
-      border: 1px solid rgba(148,163,184,0.20);
-    }
-    [data-theme="dark"] .chat-header {
-      background: rgba(30,41,59,0.6);
-      color: #94a3b8;
-      border-bottom: 1px solid rgba(148,163,184,0.15);
-    }
-    [data-theme="dark"] .chat-nick { color: #94a3b8; }
-    [data-theme="dark"] .bubble-bot {
-      background: #1e293b;
-      color: #e2e8f0;
-      border: 1px solid rgba(148,163,184,0.15);
-    }
-    [data-theme="dark"] .bubble-user { background: #3b82f6; color: #ffffff; }
-    [data-theme="dark"] .bot-avatar {
-      background: linear-gradient(135deg, #dc2626, #eab308);
-      color: #fff7ed;
-    }
-    [data-theme="dark"] .tip-warn { background: rgba(234,179,8,0.15); border-color: rgba(234,179,8,0.30); color: #fde68a; }
-    [data-theme="dark"] .tip-hint { background: rgba(59,130,246,0.15); border-color: rgba(59,130,246,0.30); color: #bfdbfe; }
-    [data-theme="dark"] .tip-info { background: rgba(148,163,184,0.15); border-color: rgba(148,163,184,0.30); color: #cbd5e1; }
-    [data-theme="dark"] .page-footer { color: #1f2937; }
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    [hidden] { display: none !important; }
 
-    [data-theme="light"] body {
-      background: linear-gradient(135deg, #fef5ed 0%, #fff8f1 40%, #fef5ed 100%);
+    body {
+      background-color: var(--color-canvas);
+      color: var(--color-ink);
+      font-family: var(--font-body);
+      font-size: var(--type-body-md-size);
+      line-height: 1.55;
+      padding: var(--space-xxl) var(--space-xxl);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
     }
-    [data-theme="light"] .page-header {
-      background: linear-gradient(90deg, rgba(220,38,38,0.0) 0%, rgba(234,179,8,0.08) 50%, rgba(220,38,38,0.0) 100%);
-      border-color: rgba(234,179,8,0.25);
+
+    .page {
+      max-width: 920px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-xl);
     }
-    [data-theme="light"] .header-title { color: #b45309; }
-    [data-theme="light"] .header-subtitle { color: #78350f; }
-    [data-theme="light"] .header-rule { background: linear-gradient(90deg, #dc2626, #eab308, transparent); }
-    [data-theme="light"] .header-time { color: #a8a29e; }
-    [data-theme="light"] .step-card {
-      background: #ffffff;
-      border: 1px solid #fef3c7;
-      box-shadow: 0 2px 12px rgba(234,179,8,0.06);
+
+    .header-rule {
+      width: 64px;
+      height: 4px;
+      background-color: var(--color-primary);
+      border-radius: var(--radius-pill);
+      margin-bottom: var(--space-md);
     }
-    [data-theme="light"] .step-stripe { background: linear-gradient(180deg, #dc2626, #f59e0b); }
-    [data-theme="light"] .step-number {
-      background: linear-gradient(135deg, #dc2626, #f59e0b);
-      color: #ffffff;
-      box-shadow: 0 6px 18px rgba(220,38,38,0.20);
+
+    .header-eyebrow {
+      color: var(--color-muted);
+      margin-bottom: var(--space-xs);
     }
-    [data-theme="light"] .step-title { color: #1e293b; }
-    [data-theme="light"] .step-desc { color: #475569; }
-    [data-theme="light"] .chat-window {
-      background: #f8fafc;
-      border: 1px solid #e2e8f0;
+
+    .header-title {
+      color: var(--color-ink);
+      margin: 0 0 var(--space-md) 0;
     }
-    [data-theme="light"] .chat-header {
-      background: #f1f5f9;
-      color: #64748b;
-      border-bottom: 1px solid #e2e8f0;
+
+    .header-subtitle {
+      color: var(--color-muted);
+      font-size: var(--type-body-md-size);
+      max-width: 720px;
+      margin-bottom: var(--space-xs);
     }
-    [data-theme="light"] .chat-nick { color: #64748b; }
-    [data-theme="light"] .bubble-bot {
-      background: #ffffff;
-      color: #1e293b;
-      border: 1px solid #e2e8f0;
-      box-shadow: 0 1px 3px rgba(15,23,42,0.06);
+
+    .header-meta {
+      color: var(--color-muted-soft);
+      display: flex;
+      gap: var(--space-md);
+      align-items: baseline;
+      flex-wrap: wrap;
     }
-    [data-theme="light"] .bubble-user { background: #3b82f6; color: #ffffff; }
-    [data-theme="light"] .bot-avatar {
-      background: linear-gradient(135deg, #dc2626, #f59e0b);
-      color: #ffffff;
+
+    .steps {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-md);
     }
-    [data-theme="light"] .tip-warn { background: #fef3c7; border-color: #fde68a; color: #854d0e; }
-    [data-theme="light"] .tip-hint { background: #dbeafe; border-color: #bfdbfe; color: #1e40af; }
-    [data-theme="light"] .tip-info { background: #f1f5f9; border-color: #e2e8f0; color: #475569; }
-    [data-theme="light"] .page-footer { color: #e7e5e4; }
+
+    .step {
+      background-color: var(--color-surface-card);
+      border: 1px solid var(--color-hairline);
+      border-radius: var(--radius-lg);
+      padding: var(--space-lg) var(--space-xl);
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-sm);
+    }
+
+    .step-head {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+    }
+
+    .step-number {
+      width: 32px;
+      height: 32px;
+      border-radius: var(--radius-pill);
+      background-color: var(--color-primary);
+      color: var(--color-on-primary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-body);
+      font-weight: 600;
+      font-size: 14px;
+      font-feature-settings: "tnum";
+      flex-shrink: 0;
+    }
+
+    .step-title {
+      color: var(--color-ink);
+      font-weight: 600;
+      font-size: 18px;
+      line-height: 1.3;
+    }
+
+    .step-desc {
+      color: var(--color-muted);
+      font-size: 14px;
+      line-height: 1.7;
+      white-space: pre-wrap;
+    }
+
+    /* ── Chat mock ────────────────────────────────────────── */
+    .chat {
+      background-color: var(--color-canvas);
+      border: 1px solid var(--color-hairline);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      margin-top: var(--space-xs);
+    }
+
+    .chat-header {
+      background-color: var(--color-surface-soft);
+      border-bottom: 1px solid var(--color-hairline);
+      padding: var(--space-xs) var(--space-md);
+      color: var(--color-muted);
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .chat-body {
+      padding: var(--space-md);
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-sm);
+    }
+
+    .chat-row {
+      display: flex;
+      align-items: flex-start;
+      gap: var(--space-sm);
+    }
+
+    .chat-row.user {
+      flex-direction: row-reverse;
+    }
+
+    .chat-avatar {
+      width: 36px;
+      height: 36px;
+      border-radius: var(--radius-pill);
+      background-color: var(--color-surface-card);
+      border: 1px solid var(--color-hairline);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-display);
+      font-weight: 600;
+      font-size: 16px;
+      color: var(--color-primary);
+      flex-shrink: 0;
+      overflow: hidden;
+    }
+
+    .chat-avatar img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .chat-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      max-width: calc(100% - 60px);
+    }
+
+    .chat-row.user .chat-stack {
+      align-items: flex-end;
+    }
+
+    .chat-nick {
+      color: var(--color-muted-soft);
+      font-size: 10px;
+      font-weight: 500;
+      padding: 0 4px;
+    }
+
+    .chat-bubble {
+      padding: 8px var(--space-sm);
+      border-radius: var(--radius-md);
+      font-size: 13px;
+      line-height: 1.55;
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-width: 100%;
+    }
+
+    .chat-bubble.bot {
+      background-color: var(--color-surface-card);
+      color: var(--color-ink);
+      border: 1px solid var(--color-hairline);
+    }
+
+    .chat-bubble.user {
+      background-color: var(--color-primary);
+      color: var(--color-on-primary);
+      border: 1px solid var(--color-primary);
+    }
+
+    /* ── Tip box (4-tier semantic) ────────────────────────── */
+    .tip {
+      border-radius: var(--radius-md);
+      padding: var(--space-sm) var(--space-md);
+      font-size: 13px;
+      line-height: 1.6;
+      border: 1px solid transparent;
+      margin-top: var(--space-xs);
+    }
+
+    .tip.warn {
+      background-color: var(--color-canvas);
+      color: var(--color-accent-amber);
+      border-color: var(--color-accent-amber);
+    }
+
+    .tip.hint {
+      background-color: var(--color-canvas);
+      color: var(--color-accent-teal);
+      border-color: var(--color-accent-teal);
+    }
+
+    .tip.info {
+      background-color: var(--color-surface-soft);
+      color: var(--color-muted);
+      border-color: var(--color-hairline);
+    }
+
+    .tip-label {
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      font-size: 10px;
+      margin-right: var(--space-xs);
+    }
+
+    .footer {
+      text-align: right;
+      color: var(--color-muted-soft);
+      margin-top: var(--space-md);
+    }
   </style>
 </head>
-<body class="min-h-screen px-8 py-10">
+<body>
+  <main class="page">
 
-  <div class="page-header mx-auto max-w-[900px] rounded-2xl px-8 py-6 mb-6 border">
-    <div class="flex items-end justify-between">
-      <div>
-        <div class="header-rule h-1 w-16 rounded-full mb-4"></div>
-        <h1 class="header-title text-4xl font-black tracking-tight" style="letter-spacing:-0.02em;" id="tut-title"></h1>
-        <div class="header-subtitle text-base font-medium mt-2" id="tut-subtitle"></div>
+    <header>
+      <div class="header-rule"></div>
+      <div class="header-eyebrow type-caption-uppercase">系统功能</div>
+      <h1 id="tut-title" class="header-title type-display-lg"></h1>
+      <div id="tut-subtitle" class="header-subtitle" hidden></div>
+      <div class="header-meta type-body-sm">
+        <span id="tut-time"></span>
       </div>
-      <div class="text-right">
-        <div class="header-time text-xs" id="tut-generated-at"></div>
-      </div>
-    </div>
-  </div>
+    </header>
 
-  <div class="mx-auto max-w-[900px]" id="tut-steps" style="display:flex; flex-direction:column; gap:16px;"></div>
+    <section id="steps" class="steps"></section>
 
-  <div class="mx-auto max-w-[900px] mt-6 flex flex-col items-center gap-1">
-    <div class="page-footer text-xs font-medium tracking-widest">Powered by NextBot</div>
-  </div>
+    <footer class="footer type-caption">Powered by NextBot</footer>
+  </main>
 
   <script id="tut-data" type="application/json">__TUTORIAL_DATA_JSON__</script>
   <script>
     (function () {
-      var data = JSON.parse(document.getElementById("tut-data").textContent);
-      var steps = Array.isArray(data.steps) ? data.steps : [];
-      var theme = String(data.theme || "light");
+      const data = JSON.parse(document.getElementById("tut-data").textContent);
+      const steps = Array.isArray(data.steps) ? data.steps : [];
 
-      document.documentElement.setAttribute("data-theme", theme);
-      document.getElementById("tut-title").textContent =
-        (String(data.emoji || "").trim() ? (String(data.emoji).trim() + " ") : "") +
-        String(data.title || "");
-      document.getElementById("tut-subtitle").textContent = String(data.subtitle || "");
-      document.getElementById("tut-generated-at").textContent = String(data.generated_at || "");
+      // Title — drop emoji prefix per warm-canvas convention.
+      document.getElementById("tut-title").textContent = String(data.title || "教程").trim() || "教程";
+      const subtitle = String(data.subtitle || "").trim();
+      if (subtitle) {
+        const subEl = document.getElementById("tut-subtitle");
+        subEl.textContent = subtitle;
+        subEl.hidden = false;
+      }
+      document.getElementById("tut-time").textContent = String(data.generated_at || "");
 
-      var stepsEl = document.getElementById("tut-steps");
+      const stepsEl = document.getElementById("steps");
 
-      steps.forEach(function (step, i) {
-        var card = document.createElement("div");
-        card.className = "step-card overflow-hidden flex rounded-2xl";
+      const TIP_LABEL = { warn: "注意", hint: "提示", info: "说明" };
 
-        var stripe = document.createElement("div");
-        stripe.className = "step-stripe";
-        stripe.style.width = "4px";
-        stripe.style.flexShrink = "0";
-        card.appendChild(stripe);
+      steps.forEach((step, i) => {
+        const card = document.createElement("article");
+        card.className = "step";
 
-        var body = document.createElement("div");
-        body.style.flex = "1";
-        body.style.padding = "20px 24px";
-        body.style.display = "flex";
-        body.style.flexDirection = "column";
-        body.style.gap = "10px";
-
-        // Title row with step number
-        var titleRow = document.createElement("div");
-        titleRow.style.display = "flex";
-        titleRow.style.alignItems = "center";
-        titleRow.style.gap = "12px";
-
-        var num = document.createElement("div");
+        const head = document.createElement("div");
+        head.className = "step-head";
+        const num = document.createElement("div");
         num.className = "step-number";
-        num.style.width = "34px";
-        num.style.height = "34px";
-        num.style.borderRadius = "10px";
-        num.style.display = "flex";
-        num.style.alignItems = "center";
-        num.style.justifyContent = "center";
-        num.style.fontSize = "16px";
-        num.style.fontWeight = "800";
-        num.style.flexShrink = "0";
         num.textContent = String(step.index || (i + 1));
-        titleRow.appendChild(num);
+        head.appendChild(num);
+        const title = document.createElement("div");
+        title.className = "step-title";
+        title.textContent = String(step.title || "");
+        head.appendChild(title);
+        card.appendChild(head);
 
-        var titleEl = document.createElement("div");
-        titleEl.className = "step-title";
-        titleEl.style.fontSize = "18px";
-        titleEl.style.fontWeight = "700";
-        titleEl.textContent = String(step.title || "");
-        titleRow.appendChild(titleEl);
-        body.appendChild(titleRow);
-
-        // Desc
-        var descText = String(step.desc || "");
+        const descText = String(step.desc || "");
         if (descText) {
-          var desc = document.createElement("div");
+          const desc = document.createElement("div");
           desc.className = "step-desc";
-          desc.style.fontSize = "14px";
-          desc.style.lineHeight = "1.7";
-          desc.style.whiteSpace = "pre-wrap";
           desc.textContent = descText;
-          body.appendChild(desc);
+          card.appendChild(desc);
         }
 
-        // Chat mock
-        var chat = Array.isArray(step.chat) ? step.chat : [];
+        const chat = Array.isArray(step.chat) ? step.chat : [];
         if (chat.length > 0) {
-          var chatWrap = document.createElement("div");
-          chatWrap.className = "chat-window rounded-xl overflow-hidden";
-          chatWrap.style.marginTop = "4px";
+          const chatWrap = document.createElement("div");
+          chatWrap.className = "chat";
 
-          var chatHeader = document.createElement("div");
+          const chatHeader = document.createElement("div");
           chatHeader.className = "chat-header";
-          chatHeader.style.padding = "8px 14px";
-          chatHeader.style.fontSize = "11px";
-          chatHeader.style.fontWeight = "600";
-          chatHeader.style.letterSpacing = "0.05em";
-          chatHeader.textContent = "\u6A21\u62DF\u5BF9\u8BDD";  // 模拟对话
+          chatHeader.textContent = "模拟对话";
           chatWrap.appendChild(chatHeader);
 
-          var chatBody = document.createElement("div");
-          chatBody.style.padding = "14px";
-          chatBody.style.display = "flex";
-          chatBody.style.flexDirection = "column";
-          chatBody.style.gap = "12px";
+          const chatBody = document.createElement("div");
+          chatBody.className = "chat-body";
 
-          chat.forEach(function (msg) {
-            var isUser = String(msg.role || "") === "user";
-            var row = document.createElement("div");
-            row.style.display = "flex";
-            row.style.alignItems = "flex-start";
-            row.style.gap = "10px";
-            row.style.flexDirection = isUser ? "row-reverse" : "row";
+          chat.forEach((msg) => {
+            const isUser = String(msg.role || "") === "user";
+            const row = document.createElement("div");
+            row.className = "chat-row " + (isUser ? "user" : "bot");
 
-            // Avatar
-            var avatar = document.createElement("div");
-            avatar.style.width = "40px";
-            avatar.style.height = "40px";
-            avatar.style.borderRadius = "50%";
-            avatar.style.flexShrink = "0";
-            avatar.style.overflow = "hidden";
-            avatar.style.display = "flex";
-            avatar.style.alignItems = "center";
-            avatar.style.justifyContent = "center";
-            var avatarSrc = String(msg.avatar || "");
+            const avatar = document.createElement("div");
+            avatar.className = "chat-avatar";
+            const avatarSrc = String(msg.avatar || "");
             if (avatarSrc === "__BOT__") {
-              avatar.className = "bot-avatar";
-              avatar.style.fontSize = "20px";
-              avatar.textContent = "\uD83E\uDD16";  // 🤖
-            } else {
-              var img = document.createElement("img");
+              avatar.textContent = "B";
+            } else if (avatarSrc) {
+              const img = document.createElement("img");
               img.src = avatarSrc;
               img.alt = "";
-              img.style.width = "100%";
-              img.style.height = "100%";
-              img.style.objectFit = "cover";
-              img.style.display = "block";
               avatar.appendChild(img);
+            } else {
+              avatar.textContent = isUser ? "U" : "B";
             }
             row.appendChild(avatar);
 
-            // Message stack
-            var stack = document.createElement("div");
-            stack.style.display = "flex";
-            stack.style.flexDirection = "column";
-            stack.style.gap = "4px";
-            stack.style.maxWidth = "calc(100% - 60px)";
-            stack.style.alignItems = isUser ? "flex-end" : "flex-start";
+            const stack = document.createElement("div");
+            stack.className = "chat-stack";
 
-            var nick = document.createElement("div");
-            nick.className = "chat-nick";
-            nick.style.fontSize = "11px";
-            nick.style.fontWeight = "500";
-            nick.style.padding = "0 4px";
-            nick.textContent = String(msg.name || "");
-            stack.appendChild(nick);
+            const nameStr = String(msg.name || "").trim();
+            if (nameStr) {
+              const nick = document.createElement("div");
+              nick.className = "chat-nick";
+              nick.textContent = nameStr;
+              stack.appendChild(nick);
+            }
 
-            var bubble = document.createElement("div");
-            bubble.className = isUser ? "bubble-user" : "bubble-bot";
-            bubble.style.padding = "10px 14px";
-            bubble.style.borderRadius = "14px";
-            bubble.style.fontSize = "14px";
-            bubble.style.lineHeight = "1.55";
-            bubble.style.whiteSpace = "pre-wrap";
-            bubble.style.wordBreak = "break-word";
-            bubble.style.maxWidth = "100%";
+            const bubble = document.createElement("div");
+            bubble.className = "chat-bubble " + (isUser ? "user" : "bot");
             bubble.textContent = String(msg.text || "");
             stack.appendChild(bubble);
 
@@ -288,43 +374,22 @@
           });
 
           chatWrap.appendChild(chatBody);
-          body.appendChild(chatWrap);
+          card.appendChild(chatWrap);
         }
 
-        // Tip
         if (step.tip && typeof step.tip === "object") {
-          var kind = String(step.tip.type || "info");
-          var tipClass = "tip-info";
-          var tipEmoji = "\u2139\uFE0F";  // ℹ️
-          if (kind === "warn") { tipClass = "tip-warn"; tipEmoji = "\u26A0\uFE0F"; }
-          else if (kind === "hint") { tipClass = "tip-hint"; tipEmoji = "\uD83D\uDCA1"; }
-
-          var tip = document.createElement("div");
-          tip.className = tipClass + " rounded-xl border";
-          tip.style.padding = "10px 14px";
-          tip.style.fontSize = "13px";
-          tip.style.fontWeight = "500";
-          tip.style.lineHeight = "1.6";
-          tip.style.display = "flex";
-          tip.style.alignItems = "flex-start";
-          tip.style.gap = "8px";
-          tip.style.marginTop = "4px";
-
-          var tipIcon = document.createElement("span");
-          tipIcon.textContent = tipEmoji;
-          tipIcon.style.fontSize = "14px";
-          tipIcon.style.flexShrink = "0";
-          tip.appendChild(tipIcon);
-
-          var tipText = document.createElement("span");
-          tipText.textContent = String(step.tip.text || "");
-          tipText.style.flex = "1";
-          tip.appendChild(tipText);
-
-          body.appendChild(tip);
+          const kind = String(step.tip.type || "info");
+          const cls = (kind === "warn" || kind === "hint") ? kind : "info";
+          const tip = document.createElement("div");
+          tip.className = "tip " + cls;
+          const label = document.createElement("span");
+          label.className = "tip-label";
+          label.textContent = TIP_LABEL[cls] || "说明";
+          tip.appendChild(label);
+          tip.appendChild(document.createTextNode(String(step.tip.text || "")));
+          card.appendChild(tip);
         }
 
-        card.appendChild(body);
         stepsEl.appendChild(card);
       });
     })();
