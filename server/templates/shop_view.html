@@ -1,153 +1,363 @@
 <!doctype html>
-<html lang="zh-CN" data-theme="light">
+<html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <script src="https://cdn.tailwindcss.com"></script>
+  <title>NextBot 查看商店</title>
+  <link rel="stylesheet" href="/assets/css/render-fonts.css" />
+  <link rel="stylesheet" href="/assets/css/render-tokens.css" />
   <style>
-    [data-theme="dark"] body {
-      background: linear-gradient(160deg, #140a0a 0%, #1a0d09 50%, #0f0605 100%);
-    }
-    [data-theme="dark"] .page-header {
-      background: linear-gradient(90deg, rgba(220,38,38,0.0) 0%, rgba(234,179,8,0.10) 50%, rgba(220,38,38,0.0) 100%);
-      border-color: rgba(234,179,8,0.20);
-    }
-    [data-theme="dark"] .header-title { color: #fbbf24; text-shadow: 0 2px 20px rgba(234,179,8,0.30); }
-    [data-theme="dark"] .header-subtitle { color: #cbd5e1; }
-    [data-theme="dark"] .header-rule { background: linear-gradient(90deg, #dc2626, #eab308, transparent); }
-    [data-theme="dark"] .header-time { color: #64748b; }
-    [data-theme="dark"] .list-card {
-      background: rgba(255,255,255,0.03);
-      border: 1px solid rgba(234,179,8,0.10);
-    }
-    [data-theme="dark"] .item-row {
-      background: rgba(255,255,255,0.03);
-      border: 1px solid rgba(148,163,184,0.18);
-    }
-    [data-theme="dark"] .item-name { color: #fde68a; }
-    [data-theme="dark"] .item-desc { color: #cbd5e1; }
-    [data-theme="dark"] .item-meta { color: #94a3b8; }
-    [data-theme="dark"] .price-pill { background: rgba(234,179,8,0.15); color: #fde68a; border: 1px solid rgba(234,179,8,0.40); }
-    [data-theme="dark"] .index-pill { background: rgba(148,163,184,0.18); color: #cbd5e1; }
-    [data-theme="dark"] .kind-item { background: rgba(59,130,246,0.20); color: #bfdbfe; }
-    [data-theme="dark"] .kind-command { background: rgba(168,85,247,0.20); color: #e9d5ff; }
-    [data-theme="dark"] .cmd-block { background: rgba(15,23,42,0.85); color: #e2e8f0; border: 1px solid rgba(148,163,184,0.18); }
-    [data-theme="dark"] .page-footer { color: #1f2937; }
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
 
-    [data-theme="light"] body {
-      background: linear-gradient(135deg, #fef5ed 0%, #fff8f1 40%, #fef5ed 100%);
+    body {
+      background-color: var(--color-canvas);
+      color: var(--color-ink);
+      font-family: var(--font-body);
+      font-size: var(--type-body-md-size);
+      line-height: 1.55;
+      padding: var(--space-xxl) var(--space-xxl);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
     }
-    [data-theme="light"] .page-header {
-      background: linear-gradient(90deg, rgba(220,38,38,0.0) 0%, rgba(234,179,8,0.08) 50%, rgba(220,38,38,0.0) 100%);
-      border-color: rgba(234,179,8,0.25);
-    }
-    [data-theme="light"] .header-title { color: #b45309; }
-    [data-theme="light"] .header-subtitle { color: #78350f; }
-    [data-theme="light"] .header-rule { background: linear-gradient(90deg, #dc2626, #eab308, transparent); }
-    [data-theme="light"] .header-time { color: #a8a29e; }
-    [data-theme="light"] .list-card {
-      background: #ffffff;
-      border: 1px solid #fef3c7;
-      box-shadow: 0 2px 12px rgba(234,179,8,0.06);
-    }
-    [data-theme="light"] .item-row {
-      background: #fafaf9;
-      border: 1px solid #e7e5e4;
-    }
-    [data-theme="light"] .item-name { color: #1e293b; }
-    [data-theme="light"] .item-desc { color: #475569; }
-    [data-theme="light"] .item-meta { color: #78716c; }
-    [data-theme="light"] .price-pill { background: #fffbeb; color: #b45309; border: 1px solid #fde68a; }
-    [data-theme="light"] .index-pill { background: #f1f5f9; color: #475569; }
-    [data-theme="light"] .kind-item { background: #dbeafe; color: #1e40af; }
-    [data-theme="light"] .kind-command { background: #ede9fe; color: #6d28d9; }
-    [data-theme="light"] .cmd-block { background: #f8fafc; color: #1e293b; border: 1px solid #e2e8f0; }
-    [data-theme="light"] .page-footer { color: #e7e5e4; }
 
-    .tier-chip { font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 6px; line-height: 1.4; background: #f1f5f9; color: #475569; }
-    .tier-chip.tier-none { background: #f1f5f9; color: #64748b; }
-    .tier-chip.tier-0,.tier-chip.tier-1,.tier-chip.tier-2,.tier-chip.tier-3,.tier-chip.tier-4,
-    .tier-chip.tier-5 { background: #dbeafe; color: #1e40af; }
-    .tier-chip.tier-6,.tier-chip.tier-7,.tier-chip.tier-8,.tier-chip.tier-9,.tier-chip.tier-10 {
-      background: #ede9fe; color: #6d28d9;
+    .page {
+      max-width: 1080px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-xl);
     }
-    .tier-chip.tier-11,.tier-chip.tier-12,.tier-chip.tier-13,.tier-chip.tier-14,.tier-chip.tier-15 {
-      background: #fce7f3; color: #be185d;
+
+    /* ── Header (text-hero — coral rule + eyebrow + serif shop name).
+     * The shop name lives in the h1 because each shop_view is an editorial
+     * "shop profile" page; eyebrow keeps it consistent with shop_list. */
+    .header-rule {
+      width: 64px;
+      height: 4px;
+      background-color: var(--color-primary);
+      border-radius: var(--radius-pill);
+      margin-bottom: var(--space-md);
     }
-    .tier-chip.tier-16,.tier-chip.tier-17,.tier-chip.tier-18,.tier-chip.tier-19,.tier-chip.tier-20 {
-      background: linear-gradient(135deg, #fde68a, #fbbf24); color: #78350f;
+
+    .header-eyebrow {
+      color: var(--color-muted);
+      margin-bottom: var(--space-xs);
     }
-    [data-theme="dark"] .tier-chip { background: rgba(148,163,184,0.18); color: #cbd5e1; }
-    [data-theme="dark"] .tier-chip.tier-none { background: rgba(148,163,184,0.18); color: #94a3b8; }
-    [data-theme="dark"] .tier-chip.tier-0,[data-theme="dark"] .tier-chip.tier-1,[data-theme="dark"] .tier-chip.tier-2,
-    [data-theme="dark"] .tier-chip.tier-3,[data-theme="dark"] .tier-chip.tier-4,[data-theme="dark"] .tier-chip.tier-5 {
-      background: rgba(59,130,246,0.18); color: #bfdbfe;
+
+    .header-title {
+      color: var(--color-ink);
+      margin: 0 0 var(--space-md) 0;
     }
-    [data-theme="dark"] .tier-chip.tier-6,[data-theme="dark"] .tier-chip.tier-7,[data-theme="dark"] .tier-chip.tier-8,
-    [data-theme="dark"] .tier-chip.tier-9,[data-theme="dark"] .tier-chip.tier-10 {
-      background: rgba(139,92,246,0.18); color: #ddd6fe;
+
+    .header-meta {
+      color: var(--color-muted-soft);
+      display: flex;
+      gap: var(--space-md);
+      align-items: baseline;
+      flex-wrap: wrap;
     }
-    [data-theme="dark"] .tier-chip.tier-11,[data-theme="dark"] .tier-chip.tier-12,[data-theme="dark"] .tier-chip.tier-13,
-    [data-theme="dark"] .tier-chip.tier-14,[data-theme="dark"] .tier-chip.tier-15 {
-      background: rgba(236,72,153,0.18); color: #fbcfe8;
+
+    .header-meta-divider {
+      color: var(--color-hairline);
     }
-    [data-theme="dark"] .tier-chip.tier-16,[data-theme="dark"] .tier-chip.tier-17,[data-theme="dark"] .tier-chip.tier-18,
-    [data-theme="dark"] .tier-chip.tier-19,[data-theme="dark"] .tier-chip.tier-20 {
-      background: linear-gradient(135deg, #fcd34d, #f59e0b); color: #1f2937;
+
+    .shop-id-value {
+      color: var(--color-ink);
+      font-feature-settings: "tnum";
+    }
+
+    .shop-desc {
+      color: var(--color-muted);
+      font-size: var(--type-body-sm-size);
+      margin-top: var(--space-xs);
+      max-width: 760px;
+    }
+
+    /* ── Empty state ───────────────────────────────────────── */
+    .empty-state {
+      border: 1px dashed var(--color-hairline);
+      background-color: var(--color-surface-soft);
+      border-radius: var(--radius-lg);
+      padding: var(--space-xxl);
+      text-align: center;
+      color: var(--color-muted);
+    }
+
+    /* ── Item rows (each on canvas, no outer wrapper) ─────── */
+    .list {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-md);
+    }
+
+    .item {
+      background-color: var(--color-surface-card);
+      border: 1px solid var(--color-hairline);
+      border-radius: var(--radius-lg);
+      padding: var(--space-lg);
+      display: flex;
+      align-items: stretch;
+      gap: var(--space-lg);
+    }
+
+    .item-icon {
+      flex: 0 0 auto;
+      width: 64px;
+      height: 64px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background-color: var(--color-canvas);
+      border: 1px solid var(--color-hairline);
+      border-radius: var(--radius-md);
+    }
+
+    .item-icon img {
+      width: 48px;
+      height: 48px;
+      object-fit: contain;
+      image-rendering: pixelated;
+    }
+
+    .item-icon.mystery {
+      background-color: var(--color-canvas);
+      border: 1px dashed var(--color-accent-amber);
+      color: var(--color-accent-amber);
+      font-family: var(--font-display);
+      font-size: 32px;
+      font-weight: 600;
+    }
+
+    .item-icon.command {
+      background-color: var(--color-canvas);
+      border: 1px solid var(--color-hairline);
+      color: var(--color-accent-teal);
+      font-size: 28px;
+      line-height: 1;
+    }
+
+    .item-mid {
+      flex: 1 1 auto;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-xs);
+    }
+
+    .item-head {
+      display: flex;
+      /* center, not baseline — keeps small pills optically aligned with the
+       * larger name baseline (matches warehouse / red_packet decision). */
+      align-items: center;
+      gap: var(--space-sm);
+      flex-wrap: wrap;
+    }
+
+    .item-name {
+      color: var(--color-ink);
+      margin: 0;
+      overflow-wrap: break-word;
+      word-break: break-word;
+    }
+
+    /* ── Pills ─────────────────────────────────────────────── */
+    .index-pill,
+    .kind-pill {
+      border-radius: var(--radius-pill);
+      padding: 2px var(--space-xs);
+      font-size: 11px;
+      font-weight: 500;
+      line-height: 1.3;
+      border: 1px solid transparent;
+      font-feature-settings: "tnum";
+    }
+
+    .index-pill {
+      background-color: var(--color-canvas);
+      color: var(--color-muted);
+      border-color: var(--color-hairline);
+    }
+
+    .kind-pill.kind-item {
+      background-color: var(--color-canvas);
+      color: var(--color-accent-teal);
+      border-color: var(--color-accent-teal);
+    }
+
+    .kind-pill.kind-command {
+      background-color: var(--color-canvas);
+      color: var(--color-accent-amber);
+      border-color: var(--color-accent-amber);
+    }
+
+    .item-desc {
+      color: var(--color-muted);
+      font-size: var(--type-body-sm-size);
+      line-height: 1.5;
+    }
+
+    .item-meta {
+      color: var(--color-muted);
+      font-size: var(--type-caption-size);
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: var(--space-sm);
+    }
+
+    .item-meta-divider {
+      color: var(--color-hairline);
+    }
+
+    .cmd-block {
+      background-color: var(--color-canvas);
+      color: var(--color-ink);
+      border: 1px solid var(--color-hairline);
+      border-radius: var(--radius-sm);
+      font-family: var(--font-code);
+      font-size: 12px;
+      padding: 6px 10px;
+      white-space: pre-wrap;
+      word-break: break-all;
+      margin-top: var(--space-xxs);
+    }
+
+    /* ── Tier chips: 4-tier semantic mapping per DESIGN.md ─── */
+    .tier-chip {
+      font-family: var(--font-body);
+      font-size: 10px;
+      font-weight: 600;
+      line-height: 1.4;
+      padding: 1px 5px;
+      border-radius: var(--radius-sm);
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      border: 1px solid transparent;
+    }
+
+    .tier-chip.tier-none,
+    .tier-chip.tier-0, .tier-chip.tier-1, .tier-chip.tier-2,
+    .tier-chip.tier-3, .tier-chip.tier-4, .tier-chip.tier-5 {
+      background-color: var(--color-canvas);
+      color: var(--color-muted);
+      border-color: var(--color-hairline);
+    }
+
+    .tier-chip.tier-6, .tier-chip.tier-7, .tier-chip.tier-8,
+    .tier-chip.tier-9, .tier-chip.tier-10 {
+      background-color: var(--color-canvas);
+      color: var(--color-accent-teal);
+      border-color: var(--color-accent-teal);
+    }
+
+    .tier-chip.tier-11, .tier-chip.tier-12, .tier-chip.tier-13,
+    .tier-chip.tier-14, .tier-chip.tier-15 {
+      background-color: var(--color-canvas);
+      color: var(--color-accent-amber);
+      border-color: var(--color-accent-amber);
+    }
+
+    .tier-chip.tier-16, .tier-chip.tier-17, .tier-chip.tier-18,
+    .tier-chip.tier-19, .tier-chip.tier-20 {
+      background-color: var(--color-primary);
+      color: var(--color-on-primary);
+      border-color: var(--color-primary);
+    }
+
+    /* ── Right column: price + buy hint ────────────────────── */
+    .item-right {
+      flex: 0 0 auto;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      justify-content: center;
+      gap: var(--space-xs);
+      min-width: 140px;
+    }
+
+    .price {
+      color: var(--color-primary);
+      font-family: var(--font-body);
+      font-size: 18px;
+      font-weight: 600;
+      line-height: 1.2;
+      font-feature-settings: "tnum";
+    }
+
+    .price-unit {
+      color: var(--color-muted);
+      font-size: 11px;
+      font-weight: 500;
+      margin-left: 4px;
+    }
+
+    .buy-hint {
+      color: var(--color-muted-soft);
+      font-family: var(--font-code);
+      font-size: 11px;
+      text-align: right;
+    }
+
+    .footer {
+      text-align: right;
+      color: var(--color-muted-soft);
+      margin-top: var(--space-md);
     }
   </style>
 </head>
-<body class="px-8 py-6">
+<body>
+  <main class="page">
 
-  <div class="page-header mx-auto max-w-[1080px] rounded-2xl px-8 py-4 mb-4 border">
-    <div class="flex items-start justify-between gap-6">
-      <div style="flex:0 0 auto;">
-        <div class="header-rule h-1 w-16 rounded-full mb-3"></div>
-        <h1 class="header-title text-4xl font-black tracking-tight" style="letter-spacing:-0.02em;">商店</h1>
+    <header>
+      <div class="header-rule"></div>
+      <div id="header-eyebrow" class="header-eyebrow type-caption-uppercase"></div>
+      <h1 id="header-title" class="header-title type-display-lg"></h1>
+      <div class="header-meta type-body-sm">
+        <span>ID <span class="shop-id-value" id="shop-id"></span></span>
+        <span class="header-meta-divider">·</span>
+        <span id="header-count"></span>
+        <span class="header-meta-divider">·</span>
+        <span id="header-page"></span>
+        <span class="header-meta-divider">·</span>
+        <span id="header-generated-at"></span>
       </div>
-      <div style="flex:1 1 auto; text-align:center; align-self:center;">
-        <div id="shop-name" class="header-title text-3xl font-black tracking-tight" style="letter-spacing:-0.02em; line-height:1.1;"></div>
-        <div id="shop-id-line" class="header-subtitle text-sm font-medium mt-1"></div>
-        <div id="shop-desc" class="header-subtitle text-sm font-medium mt-1"></div>
-      </div>
-      <div style="flex:0 0 auto; text-align:right;">
-        <div class="header-time text-xs" id="generated-at"></div>
-      </div>
-    </div>
-  </div>
+      <div id="shop-desc" class="shop-desc" hidden></div>
+    </header>
 
-  <div class="list-card mx-auto max-w-[1080px] rounded-2xl p-4">
-    <div id="item-list" style="display:flex; flex-direction:column; gap:10px;"></div>
-    <div id="empty-state" style="display:none; padding:40px 0; text-align:center;" class="item-meta">该商店暂无可购买的商品</div>
-  </div>
+    <div id="empty-state" class="empty-state type-body-md" hidden>该商店暂无可购买的商品</div>
 
-  <div class="mx-auto max-w-[1080px] mt-4 flex flex-col items-center gap-1">
-    <div id="shop-pagination" class="item-meta text-sm font-semibold" style="display:none;"></div>
-    <div class="page-footer text-xs font-medium tracking-widest">Powered by NextBot</div>
-  </div>
+    <section id="item-list" class="list"></section>
+
+    <footer class="footer type-caption">Powered by NextBot</footer>
+  </main>
 
   <script id="shop-view-data" type="application/json">__SHOP_VIEW_DATA_JSON__</script>
   <script>
     (async function () {
       const data = JSON.parse(document.getElementById("shop-view-data").textContent);
       const items = Array.isArray(data.items) ? data.items : [];
-      const theme = String(data.theme || "light");
-      document.documentElement.setAttribute("data-theme", theme);
-
-      document.getElementById("shop-name").textContent = data.shop_name || "未命名商店";
       const total = Number(data.total || items.length || 0);
       const totalPages = Number(data.total_pages || 1);
       const page = Number(data.page || 1);
-      document.getElementById("shop-id-line").textContent = "ID：" + (data.shop_id || "-") + "  ·  共 " + total + " 件商品";
-      document.getElementById("shop-desc").textContent = data.shop_description || "";
-      document.getElementById("generated-at").textContent = data.generated_at || "";
 
-      const pagination = document.getElementById("shop-pagination");
-      if (totalPages > 1) {
-        pagination.textContent = "第 " + page + " 页 / 共 " + totalPages + " 页";
-        pagination.style.display = "block";
+      document.getElementById("header-eyebrow").textContent = "商店系统";
+      document.getElementById("header-title").textContent = String(data.shop_name || "未命名商店").trim() || "未命名商店";
+      document.getElementById("shop-id").textContent = String(data.shop_id ?? "-");
+      document.getElementById("header-count").textContent = `共 ${total} 件商品`;
+      document.getElementById("header-page").textContent = `第 ${page} / ${totalPages} 页`;
+      document.getElementById("header-generated-at").textContent = data.generated_at || "";
+
+      const descText = String(data.shop_description || "").trim();
+      if (descText) {
+        const descEl = document.getElementById("shop-desc");
+        descEl.textContent = descText;
+        descEl.hidden = false;
       }
 
+      // Item / prefix dictionaries — fetched async, fallback to numeric ids.
       const itemNameMap = new Map();
       const prefixNameMap = new Map();
       try {
@@ -173,141 +383,97 @@
         }
       } catch (e) { /* dict fetch failed → fall back to numeric ids */ }
 
-      const list = document.getElementById("item-list");
-      const empty = document.getElementById("empty-state");
-      if (items.length === 0) {
-        empty.style.display = "block";
-      } else {
-        items.forEach((it) => list.appendChild(renderRow(it)));
+      const listEl = document.getElementById("item-list");
+
+      if (!items.length) {
+        document.getElementById("empty-state").hidden = false;
+        listEl.hidden = true;
       }
 
-      function renderRow(it) {
-        const row = document.createElement("div");
-        row.className = "item-row rounded-xl";
-        row.style.padding = "14px 16px";
-        row.style.display = "flex";
-        row.style.alignItems = "stretch";
-        row.style.gap = "16px";
+      for (const it of items) {
+        const row = document.createElement("article");
+        row.className = "item";
 
-        const left = document.createElement("div");
-        left.style.flex = "0 0 auto";
-        left.style.display = "flex";
-        left.style.alignItems = "center";
-        left.style.justifyContent = "center";
-        left.style.width = "64px";
-        left.style.height = "64px";
+        // ── Left: icon (item image / mystery / command gear) ──
+        const iconWrap = document.createElement("div");
+        iconWrap.className = "item-icon";
         if (it.kind === "item" && it.is_mystery) {
-          const mystery = document.createElement("div");
-          mystery.style.width = "56px";
-          mystery.style.height = "56px";
-          mystery.style.borderRadius = "12px";
-          mystery.style.display = "flex";
-          mystery.style.alignItems = "center";
-          mystery.style.justifyContent = "center";
-          mystery.style.fontSize = "32px";
-          mystery.style.fontWeight = "900";
-          mystery.style.background = theme === "dark" ? "rgba(234,179,8,0.16)" : "#fffbeb";
-          mystery.style.color = theme === "dark" ? "#fde68a" : "#b45309";
-          mystery.style.border = "2px dashed " + (theme === "dark" ? "rgba(234,179,8,0.35)" : "#fcd34d");
-          mystery.textContent = "?";
-          left.appendChild(mystery);
+          iconWrap.classList.add("mystery");
+          iconWrap.textContent = "?";
         } else if (it.kind === "item" && Number(it.item_id || 0) > 0) {
           const img = document.createElement("img");
-          img.src = "/assets/items/Item_" + it.item_id + ".png";
+          img.src = `/assets/items/Item_${it.item_id}.png`;
           img.alt = String(it.item_id);
-          img.style.width = "56px";
-          img.style.height = "56px";
-          img.style.objectFit = "contain";
-          img.style.imageRendering = "pixelated";
-          left.appendChild(img);
+          iconWrap.appendChild(img);
         } else {
-          const icon = document.createElement("div");
-          icon.style.fontSize = "40px";
-          icon.style.lineHeight = "1";
-          icon.textContent = "⚙️";
-          left.appendChild(icon);
+          iconWrap.classList.add("command");
+          iconWrap.textContent = "⚙";
         }
-        row.appendChild(left);
+        row.appendChild(iconWrap);
 
+        // ── Middle: head + desc + meta + (optional) cmd block ──
         const mid = document.createElement("div");
-        mid.style.flex = "1 1 auto";
-        mid.style.minWidth = "0";
-        mid.style.display = "flex";
-        mid.style.flexDirection = "column";
-        mid.style.gap = "4px";
+        mid.className = "item-mid";
 
         const head = document.createElement("div");
-        head.style.display = "flex";
-        head.style.alignItems = "center";
-        head.style.gap = "8px";
-        head.style.flexWrap = "wrap";
+        head.className = "item-head";
+
+        const nameEl = document.createElement("h2");
+        nameEl.className = "item-name type-title-md";
+        nameEl.textContent = String(it?.name || "").trim() || "未命名";
+        head.appendChild(nameEl);
 
         const idx = document.createElement("span");
         idx.className = "index-pill";
-        idx.style.fontSize = "12px";
-        idx.style.fontWeight = "700";
-        idx.style.padding = "2px 8px";
-        idx.style.borderRadius = "6px";
-        idx.textContent = "ID " + it.shop_item_id;
+        idx.textContent = `ID ${it.shop_item_id}`;
         head.appendChild(idx);
 
-        const name = document.createElement("span");
-        name.className = "item-name";
-        name.style.fontSize = "16px";
-        name.style.fontWeight = "800";
-        name.textContent = it.name || "未命名";
-        head.appendChild(name);
-
         const kind = document.createElement("span");
-        kind.className = "kind-" + it.kind;
-        kind.style.fontSize = "11px";
-        kind.style.fontWeight = "700";
-        kind.style.padding = "2px 8px";
-        kind.style.borderRadius = "6px";
+        kind.className = `kind-pill kind-${it.kind === "command" ? "command" : "item"}`;
         kind.textContent = it.kind === "item" ? "物品" : "指令";
         head.appendChild(kind);
+
         mid.appendChild(head);
 
-        if (it.description) {
+        const itemDesc = String(it?.description || "").trim();
+        if (itemDesc) {
           const desc = document.createElement("div");
           desc.className = "item-desc";
-          desc.style.fontSize = "13px";
-          desc.textContent = it.description;
+          desc.textContent = itemDesc;
           mid.appendChild(desc);
         }
 
         const meta = document.createElement("div");
         meta.className = "item-meta";
-        meta.style.fontSize = "12px";
-        meta.style.display = "flex";
-        meta.style.alignItems = "center";
-        meta.style.flexWrap = "wrap";
-        meta.style.gap = "10px";
+
         if (it.kind === "item") {
           const parts = [];
           if (it.is_mystery) {
             parts.push("? ? ?");
           } else {
-            const itemName = itemNameMap.get(Number(it.item_id)) || ("ID:" + it.item_id);
+            const itemName = itemNameMap.get(Number(it.item_id)) || `ID:${it.item_id}`;
             const prefixId = Number(it.prefix_id || 0);
-            const prefixName = prefixId > 0 ? (prefixNameMap.get(prefixId) || ("前缀 ID:" + prefixId)) : "";
-            if (prefixName) parts.push(prefixName + " " + itemName);
-            else parts.push(itemName);
+            const prefixName = prefixId > 0 ? (prefixNameMap.get(prefixId) || `前缀 ID:${prefixId}`) : "";
+            parts.push(prefixName ? `${prefixName} ${itemName}` : itemName);
           }
-          parts.push("数量 ×" + it.quantity);
+          parts.push(`数量 ×${it.quantity}`);
           const span = document.createElement("span");
           span.textContent = parts.join("  ·  ");
           meta.appendChild(span);
           if (it.min_tier_zh) {
+            const sep = document.createElement("span");
+            sep.className = "item-meta-divider";
+            sep.textContent = "·";
+            meta.appendChild(sep);
             const chip = document.createElement("span");
             const rank = Number(it.min_tier_rank);
-            chip.className = "tier-chip" + (rank >= 0 ? " tier-" + rank : " tier-none");
-            chip.textContent = "进度：" + it.min_tier_zh;
+            chip.className = "tier-chip" + (rank >= 0 ? ` tier-${rank}` : " tier-none");
+            chip.textContent = `进度：${it.min_tier_zh}`;
             meta.appendChild(chip);
           }
         } else {
           const target = document.createElement("span");
-          target.textContent = "目标：" + (it.target_server_label || "全部服务器");
+          target.textContent = `目标：${it.target_server_label || "全部服务器"}`;
           meta.appendChild(target);
         }
         mid.appendChild(meta);
@@ -315,43 +481,32 @@
         if (it.kind === "command" && it.command_template) {
           const cmd = document.createElement("div");
           cmd.className = "cmd-block";
-          cmd.style.fontFamily = "ui-monospace, SFMono-Regular, Menlo, monospace";
-          cmd.style.fontSize = "12px";
-          cmd.style.padding = "6px 10px";
-          cmd.style.borderRadius = "6px";
-          cmd.style.whiteSpace = "pre-wrap";
-          cmd.style.wordBreak = "break-all";
           cmd.textContent = it.command_template;
           mid.appendChild(cmd);
         }
 
         row.appendChild(mid);
 
+        // ── Right: price + buy hint ──
         const right = document.createElement("div");
-        right.style.flex = "0 0 auto";
-        right.style.display = "flex";
-        right.style.flexDirection = "column";
-        right.style.alignItems = "flex-end";
-        right.style.justifyContent = "center";
-        right.style.gap = "6px";
+        right.className = "item-right";
 
         const price = document.createElement("div");
-        price.className = "price-pill";
-        price.style.fontSize = "14px";
-        price.style.fontWeight = "800";
-        price.style.padding = "4px 10px";
-        price.style.borderRadius = "8px";
-        price.textContent = "💰 " + it.price;
+        price.className = "price";
+        price.textContent = String(it.price);
+        const priceUnit = document.createElement("span");
+        priceUnit.className = "price-unit";
+        priceUnit.textContent = "金币";
+        price.appendChild(priceUnit);
         right.appendChild(price);
 
         const buyHint = document.createElement("div");
-        buyHint.className = "item-meta";
-        buyHint.style.fontSize = "11px";
-        buyHint.textContent = "购买商品 " + (data.shop_id || "-") + " " + it.shop_item_id;
+        buyHint.className = "buy-hint";
+        buyHint.textContent = `购买商品 ${data.shop_id ?? "-"} ${it.shop_item_id}`;
         right.appendChild(buyHint);
 
         row.appendChild(right);
-        return row;
+        listEl.appendChild(row);
       }
     })();
   </script>

@@ -49,12 +49,14 @@ SHOP_VIEW_SCREENSHOT_OPTIONS = ScreenshotOptions(
     viewport_width=1200,
     viewport_height=600,
     full_page=True,
+    fit_content_height=True,
 )
 
 SHOP_LIST_SCREENSHOT_OPTIONS = ScreenshotOptions(
-    viewport_width=900,
+    viewport_width=920,
     viewport_height=600,
     full_page=True,
+    fit_content_height=True,
 )
 
 

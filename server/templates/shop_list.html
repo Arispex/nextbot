@@ -1,170 +1,234 @@
 <!doctype html>
-<html lang="zh-CN" data-theme="light">
+<html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <script src="https://cdn.tailwindcss.com"></script>
+  <title>NextBot 商店列表</title>
+  <link rel="stylesheet" href="/assets/css/render-fonts.css" />
+  <link rel="stylesheet" href="/assets/css/render-tokens.css" />
   <style>
-    [data-theme="dark"] body {
-      background: linear-gradient(160deg, #140a0a 0%, #1a0d09 50%, #0f0605 100%);
-    }
-    [data-theme="dark"] .page-header {
-      background: linear-gradient(90deg, rgba(220,38,38,0.0) 0%, rgba(234,179,8,0.10) 50%, rgba(220,38,38,0.0) 100%);
-      border-color: rgba(234,179,8,0.20);
-    }
-    [data-theme="dark"] .header-title { color: #fbbf24; text-shadow: 0 2px 20px rgba(234,179,8,0.30); }
-    [data-theme="dark"] .header-subtitle { color: #cbd5e1; }
-    [data-theme="dark"] .header-rule { background: linear-gradient(90deg, #dc2626, #eab308, transparent); }
-    [data-theme="dark"] .header-time { color: #64748b; }
-    [data-theme="dark"] .shop-card {
-      background: rgba(255,255,255,0.03);
-      border: 1px solid rgba(234,179,8,0.15);
-    }
-    [data-theme="dark"] .shop-name { color: #fde68a; }
-    [data-theme="dark"] .shop-desc { color: #cbd5e1; }
-    [data-theme="dark"] .index-pill { background: rgba(148,163,184,0.18); color: #cbd5e1; }
-    [data-theme="dark"] .id-pill { background: rgba(234,179,8,0.15); color: #fde68a; border: 1px solid rgba(234,179,8,0.40); }
-    [data-theme="dark"] .count-pill { background: rgba(59,130,246,0.18); color: #bfdbfe; border: 1px solid rgba(59,130,246,0.35); }
-    [data-theme="dark"] .pagination { color: #cbd5e1; }
-    [data-theme="dark"] .hint-line { color: #94a3b8; }
-    [data-theme="dark"] .empty-state { color: #64748b; }
-    [data-theme="dark"] .page-footer { color: #1f2937; }
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
 
-    [data-theme="light"] body {
-      background: linear-gradient(135deg, #fef5ed 0%, #fff8f1 40%, #fef5ed 100%);
+    body {
+      background-color: var(--color-canvas);
+      color: var(--color-ink);
+      font-family: var(--font-body);
+      font-size: var(--type-body-md-size);
+      line-height: 1.55;
+      padding: var(--space-xxl) var(--space-xxl);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
     }
-    [data-theme="light"] .page-header {
-      background: linear-gradient(90deg, rgba(220,38,38,0.0) 0%, rgba(234,179,8,0.08) 50%, rgba(220,38,38,0.0) 100%);
-      border-color: rgba(234,179,8,0.25);
+
+    .page {
+      max-width: 920px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-xl);
     }
-    [data-theme="light"] .header-title { color: #b45309; }
-    [data-theme="light"] .header-subtitle { color: #78350f; }
-    [data-theme="light"] .header-rule { background: linear-gradient(90deg, #dc2626, #eab308, transparent); }
-    [data-theme="light"] .header-time { color: #a8a29e; }
-    [data-theme="light"] .shop-card {
-      background: #ffffff;
-      border: 1px solid #fef3c7;
-      box-shadow: 0 2px 12px rgba(234,179,8,0.06);
+
+    .header-rule {
+      width: 64px;
+      height: 4px;
+      background-color: var(--color-primary);
+      border-radius: var(--radius-pill);
+      margin-bottom: var(--space-md);
     }
-    [data-theme="light"] .shop-name { color: #1e293b; }
-    [data-theme="light"] .shop-desc { color: #475569; }
-    [data-theme="light"] .index-pill { background: #f1f5f9; color: #475569; }
-    [data-theme="light"] .id-pill { background: #fffbeb; color: #b45309; border: 1px solid #fde68a; }
-    [data-theme="light"] .count-pill { background: #dbeafe; color: #1e40af; border: 1px solid #93c5fd; }
-    [data-theme="light"] .pagination { color: #475569; }
-    [data-theme="light"] .hint-line { color: #78716c; }
-    [data-theme="light"] .empty-state { color: #94a3b8; }
-    [data-theme="light"] .page-footer { color: #e7e5e4; }
+
+    .header-eyebrow {
+      color: var(--color-muted);
+      margin-bottom: var(--space-xs);
+    }
+
+    .header-title {
+      color: var(--color-ink);
+      margin: 0 0 var(--space-md) 0;
+    }
+
+    .header-meta {
+      color: var(--color-muted-soft);
+      display: flex;
+      gap: var(--space-md);
+      align-items: baseline;
+      flex-wrap: wrap;
+    }
+
+    .header-meta-divider {
+      color: var(--color-hairline);
+    }
+
+    /* ── Empty state ───────────────────────────────────────── */
+    .empty-state {
+      border: 1px dashed var(--color-hairline);
+      background-color: var(--color-surface-soft);
+      border-radius: var(--radius-lg);
+      padding: var(--space-xxl);
+      text-align: center;
+      color: var(--color-muted);
+    }
+
+    /* ── Shop entry list (each on canvas, no outer wrapper) ─ */
+    .list {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-md);
+    }
+
+    .entry {
+      background-color: var(--color-surface-card);
+      border: 1px solid var(--color-hairline);
+      border-radius: var(--radius-lg);
+      padding: var(--space-lg);
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-sm);
+    }
+
+    .entry-top {
+      display: flex;
+      /* center, not baseline: small-font pills baseline-align below the
+       * name's visual midline because of the size difference. center keeps
+       * pills optically beside the name. */
+      align-items: center;
+      gap: var(--space-sm);
+      flex-wrap: wrap;
+    }
+
+    .entry-name {
+      color: var(--color-ink);
+      margin: 0;
+      overflow-wrap: break-word;
+      word-break: break-word;
+    }
+
+    /* ── Pills ─────────────────────────────────────────────── */
+    .id-pill,
+    .count-pill {
+      border-radius: var(--radius-pill);
+      padding: 2px var(--space-xs);
+      font-size: 11px;
+      font-weight: 500;
+      line-height: 1.3;
+      border: 1px solid transparent;
+      font-feature-settings: "tnum";
+    }
+
+    .id-pill {
+      background-color: var(--color-canvas);
+      color: var(--color-accent-amber);
+      border-color: var(--color-accent-amber);
+    }
+
+    .count-pill {
+      background-color: var(--color-canvas);
+      color: var(--color-accent-teal);
+      border-color: var(--color-accent-teal);
+    }
+
+    .entry-desc {
+      color: var(--color-muted);
+      font-size: var(--type-body-sm-size);
+      line-height: 1.55;
+    }
+
+    .hint-line {
+      color: var(--color-muted);
+      font-size: var(--type-body-sm-size);
+    }
+
+    .footer {
+      text-align: right;
+      color: var(--color-muted-soft);
+      margin-top: var(--space-md);
+    }
   </style>
 </head>
-<body class="px-8 py-6">
+<body>
+  <main class="page">
 
-  <div class="page-header mx-auto max-w-[820px] rounded-2xl px-8 py-4 mb-4 border">
-    <div class="flex items-end justify-between gap-6">
-      <div>
-        <div class="header-rule h-1 w-16 rounded-full mb-3"></div>
-        <h1 class="header-title text-4xl font-black tracking-tight" style="letter-spacing:-0.02em;">商店列表</h1>
-        <div id="shop-summary" class="header-subtitle text-sm font-medium mt-1"></div>
+    <header>
+      <div class="header-rule"></div>
+      <div id="header-eyebrow" class="header-eyebrow type-caption-uppercase"></div>
+      <h1 id="header-title" class="header-title type-display-lg"></h1>
+      <div class="header-meta type-body-sm">
+        <span id="header-count"></span>
+        <span class="header-meta-divider">·</span>
+        <span id="header-page"></span>
+        <span class="header-meta-divider">·</span>
+        <span id="header-generated-at"></span>
       </div>
-      <div class="text-right">
-        <div class="header-time text-xs" id="generated-at"></div>
-      </div>
-    </div>
-  </div>
+    </header>
 
-  <div class="mx-auto max-w-[820px]" id="shop-list" style="display:flex; flex-direction:column; gap:10px;"></div>
-  <div id="empty-state" class="mx-auto max-w-[820px] empty-state" style="display:none; padding:48px 0; text-align:center; font-size:13px;">暂无可用商店</div>
+    <div id="empty-state" class="empty-state type-body-md" hidden>暂无可用商店</div>
 
-  <div class="mx-auto max-w-[820px] mt-4 flex flex-col items-center gap-1">
-    <div id="hint-line" class="hint-line text-xs" style="display:none;"></div>
-    <div id="shop-pagination" class="pagination text-sm font-semibold" style="display:none;"></div>
-    <div class="page-footer text-xs font-medium tracking-widest mt-1">Powered by NextBot</div>
-  </div>
+    <section id="list" class="list"></section>
+
+    <div id="hint-line" class="hint-line" hidden></div>
+
+    <footer class="footer type-caption">Powered by NextBot</footer>
+  </main>
 
   <script id="shop-list-data" type="application/json">__SHOP_LIST_DATA_JSON__</script>
   <script>
-    (function () {
-      const data = JSON.parse(document.getElementById("shop-list-data").textContent);
-      const entries = Array.isArray(data.entries) ? data.entries : [];
-      const theme = String(data.theme || "light");
-      document.documentElement.setAttribute("data-theme", theme);
+    const data = JSON.parse(document.getElementById("shop-list-data").textContent);
+    const entries = Array.isArray(data.entries) ? data.entries : [];
+    const total = Number(data.total || entries.length || 0);
+    const totalPages = Number(data.total_pages || 1);
+    const page = Number(data.page || 1);
 
-      const total = Number(data.total || entries.length || 0);
-      const totalPages = Number(data.total_pages || 1);
-      const page = Number(data.page || 1);
+    document.getElementById("header-eyebrow").textContent = "商店系统";
+    document.getElementById("header-title").textContent = "商店列表";
+    document.getElementById("header-count").textContent = `共 ${total} 个上架商店`;
+    document.getElementById("header-page").textContent = `第 ${page} / ${totalPages} 页`;
+    document.getElementById("header-generated-at").textContent = data.generated_at || "";
 
-      document.getElementById("shop-summary").textContent = "共 " + total + " 个上架商店";
-      document.getElementById("generated-at").textContent = data.generated_at || "";
+    const listEl = document.getElementById("list");
 
-      const list = document.getElementById("shop-list");
-      const empty = document.getElementById("empty-state");
-      if (entries.length === 0) {
-        empty.style.display = "block";
-      } else {
-        entries.forEach(function (e) { list.appendChild(renderCard(e)); });
+    if (!entries.length) {
+      document.getElementById("empty-state").hidden = false;
+      listEl.hidden = true;
+    }
+
+    for (const entry of entries) {
+      const card = document.createElement("article");
+      card.className = "entry";
+
+      const top = document.createElement("div");
+      top.className = "entry-top";
+
+      const nameEl = document.createElement("h2");
+      nameEl.className = "entry-name type-title-md";
+      nameEl.textContent = String(entry?.name || "").trim() || "未命名商店";
+      top.appendChild(nameEl);
+
+      const idBadge = document.createElement("span");
+      idBadge.className = "id-pill";
+      idBadge.textContent = `ID ${entry?.shop_id ?? "-"}`;
+      top.appendChild(idBadge);
+
+      const countBadge = document.createElement("span");
+      countBadge.className = "count-pill";
+      countBadge.textContent = `${Number(entry?.item_count || 0)} 件商品`;
+      top.appendChild(countBadge);
+
+      card.appendChild(top);
+
+      const descText = String(entry?.description || "").trim();
+      if (descText) {
+        const desc = document.createElement("div");
+        desc.className = "entry-desc";
+        desc.textContent = descText;
+        card.appendChild(desc);
       }
 
-      const hintLine = document.getElementById("hint-line");
-      hintLine.textContent = "查看商店：「查看商店 <商店 ID/商店名称> [页数]」 / 购买商品：「购买商品 <商店 ID> <商品序号> [数量]」";
-      hintLine.style.display = "block";
+      listEl.appendChild(card);
+    }
 
-      const pagination = document.getElementById("shop-pagination");
-      if (totalPages > 1) {
-        pagination.textContent = "第 " + page + " 页 / 共 " + totalPages + " 页";
-        pagination.style.display = "block";
-      }
-
-      function renderCard(entry) {
-        const card = document.createElement("div");
-        card.className = "shop-card rounded-xl";
-        card.style.padding = "12px 16px";
-        card.style.display = "flex";
-        card.style.flexDirection = "column";
-        card.style.gap = "6px";
-
-        const head = document.createElement("div");
-        head.style.display = "flex";
-        head.style.alignItems = "center";
-        head.style.gap = "10px";
-        head.style.flexWrap = "wrap";
-
-        const name = document.createElement("span");
-        name.className = "shop-name";
-        name.style.fontSize = "16px";
-        name.style.fontWeight = "800";
-        name.textContent = entry.name || "未命名商店";
-        head.appendChild(name);
-
-        const idBadge = document.createElement("span");
-        idBadge.className = "id-pill";
-        idBadge.style.fontSize = "11px";
-        idBadge.style.fontWeight = "700";
-        idBadge.style.padding = "2px 8px";
-        idBadge.style.borderRadius = "6px";
-        idBadge.textContent = "ID " + entry.shop_id;
-        head.appendChild(idBadge);
-
-        const countBadge = document.createElement("span");
-        countBadge.className = "count-pill";
-        countBadge.style.fontSize = "11px";
-        countBadge.style.fontWeight = "700";
-        countBadge.style.padding = "2px 8px";
-        countBadge.style.borderRadius = "6px";
-        countBadge.textContent = entry.item_count + " 件商品";
-        head.appendChild(countBadge);
-        card.appendChild(head);
-
-        if (entry.description) {
-          const desc = document.createElement("div");
-          desc.className = "shop-desc";
-          desc.style.fontSize = "13px";
-          desc.style.lineHeight = "1.5";
-          desc.textContent = entry.description;
-          card.appendChild(desc);
-        }
-        return card;
-      }
-    })();
+    const hintLine = document.getElementById("hint-line");
+    hintLine.textContent = "查看商店：「查看商店 <商店 ID/商店名称> [页数]」 · 购买商品：「购买商品 <商店 ID> <商品序号> [数量]」";
+    hintLine.hidden = false;
   </script>
 </body>
 </html>
