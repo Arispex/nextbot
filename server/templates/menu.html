@@ -86,6 +86,10 @@
       display: grid;
       gap: var(--space-lg);
       grid-template-columns: repeat(3, 1fr);
+      /* Let each card size to its own content. Without this, grid stretches
+       * all cards in a row to the tallest one, which creates an empty gap
+       * for alias-less cards when a row contains an aliased card. */
+      align-items: start;
     }
 
     /* When there are only 1–2 cards, let them grow but stay aligned left.
@@ -137,12 +141,34 @@
       font-style: italic;
     }
 
+    /* ── Alias row (caption + pill chips) ──────────────────── */
+    .alias-row {
+      display: flex;
+      align-items: baseline;
+      flex-wrap: wrap;
+      gap: var(--space-xs) var(--space-sm);
+    }
+
+    .alias-label {
+      color: var(--color-muted);
+      flex-shrink: 0;
+    }
+
+    .alias-badge {
+      background-color: var(--color-surface-soft);
+      color: var(--color-ink);
+      border: 1px solid var(--color-hairline);
+      border-radius: var(--radius-pill);
+      padding: var(--space-xxs) var(--space-sm);
+      overflow-wrap: break-word;
+      word-break: break-all;
+    }
+
     /* ── Permission row (caption + pill badge) ─────────────── */
     .perm-row {
       display: flex;
       align-items: center;
       gap: var(--space-sm);
-      margin-top: auto;
       padding-top: var(--space-xs);
     }
 
@@ -220,6 +246,9 @@
       const desc       = String(item?.description  || "").trim() || "暂无介绍";
       const usage      = String(item?.usage        || "").trim();
       const permission = String(item?.permission   || "").trim();
+      const aliases    = Array.isArray(item?.aliases)
+        ? item.aliases.map((a) => String(a || "").trim()).filter(Boolean)
+        : [];
 
       const card = document.createElement("article");
       card.className = "card";
@@ -236,6 +265,29 @@
       usageEl.className = "usage-block type-code" + (usage ? "" : " is-empty");
       usageEl.textContent = usage || "暂无用法";
 
+      card.appendChild(nameEl);
+      card.appendChild(descEl);
+      card.appendChild(usageEl);
+
+      if (aliases.length) {
+        const aliasRow = document.createElement("div");
+        aliasRow.className = "alias-row";
+
+        const aliasLabel = document.createElement("span");
+        aliasLabel.className = "alias-label type-caption-uppercase";
+        aliasLabel.textContent = "别名";
+        aliasRow.appendChild(aliasLabel);
+
+        for (const alias of aliases) {
+          const aliasBadge = document.createElement("span");
+          aliasBadge.className = "alias-badge type-caption";
+          aliasBadge.textContent = alias;
+          aliasRow.appendChild(aliasBadge);
+        }
+
+        card.appendChild(aliasRow);
+      }
+
       const permRow = document.createElement("div");
       permRow.className = "perm-row";
 
@@ -250,9 +302,6 @@
       permRow.appendChild(permLabel);
       permRow.appendChild(permBadge);
 
-      card.appendChild(nameEl);
-      card.appendChild(descEl);
-      card.appendChild(usageEl);
       card.appendChild(permRow);
       grid.appendChild(card);
     }

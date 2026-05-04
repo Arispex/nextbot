@@ -204,6 +204,11 @@ async def handle_menu(bot: Bot, event: Event, arg: Message = CommandArg()) -> No
             "description": str(item.get("description", "")).strip(),
             "usage": str(item.get("usage", "")).strip(),
             "permission": str(item.get("permission", "")).strip(),
+            "aliases": [
+                str(alias).strip()
+                for alias in (item.get("aliases") or [])
+                if str(alias).strip()
+            ],
         }
         for item in by_cat[target_cat]
     ]

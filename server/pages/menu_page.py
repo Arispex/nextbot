@@ -10,17 +10,30 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 TEMPLATE_PATH = BASE_DIR / "server" / "templates" / "menu.html"
 
 
-def build_payload(*, title: str, commands: list[dict[str, str]], theme: str = "light") -> dict[str, Any]:
-    normalized_commands: list[dict[str, str]] = []
+def build_payload(*, title: str, commands: list[dict[str, Any]], theme: str = "light") -> dict[str, Any]:
+    normalized_commands: list[dict[str, Any]] = []
     for item in commands:
         if not isinstance(item, dict):
             continue
+
+        raw_aliases = item.get("aliases") or []
+        seen: set[str] = set()
+        aliases: list[str] = []
+        if isinstance(raw_aliases, list):
+            for raw in raw_aliases:
+                alias = str(raw).strip()
+                if not alias or alias in seen:
+                    continue
+                seen.add(alias)
+                aliases.append(alias)
+
         normalized_commands.append(
             {
                 "display_name": str(item.get("display_name", "")).strip(),
                 "description": str(item.get("description", "")).strip(),
                 "usage": str(item.get("usage", "")).strip(),
                 "permission": str(item.get("permission", "")).strip(),
+                "aliases": aliases,
             }
         )
 
