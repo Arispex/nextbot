@@ -3,193 +3,248 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>NextBot WebUI - 登录</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <title>NextBot WebUI · 登录</title>
+  <link rel="stylesheet" href="/assets/css/render-fonts.css" />
+  <script src="/webui/static/js/theme-init.js"></script>
   <script src="__WEBUI_API_SCRIPT_URL__"></script>
   <style>
+    /* ── Tokens (mirror /webui/static/css/app-shell.css) ──── */
     :root {
-      --bg: #f5f5f5;
-      --card: #ffffff;
-      --text: #1f1f1f;
-      --text-muted: #595959;
-      --border: #d9d9d9;
-      --primary: #1677ff;
-      --primary-hover: #4096ff;
-      --shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
-      --error-bg: #fff2f0;
-      --error-border: #ffccc7;
-      --error-text: #cf1322;
+      --bg-layout: #faf9f5;
+      --surface: #efe9de;
+      --surface-soft: #f5f0e8;
+      --text: #141413;
+      --text-muted: #6c6a64;
+      --text-muted-soft: #8e8b82;
+      --line: #e6dfd8;
+      --line-strong: #d6cfc5;
+      --primary: #cc785c;
+      --primary-active: #a9583e;
+      --primary-soft: #f5e7df;
+      --on-primary: #ffffff;
+      --accent-teal: #5db8a6;
+
+      --font-body: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      --font-display: "Cormorant Garamond", "Tiempos Headline", "Garamond", "Songti SC", serif;
+      --font-code: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+
+      --space-xs: 8px;
+      --space-sm: 12px;
+      --space-md: 16px;
+      --space-lg: 24px;
+      --space-xl: 32px;
+      --space-xxl: 48px;
+      --radius-md: 8px;
+      --radius-lg: 12px;
+      --radius-pill: 9999px;
     }
 
     html.dark {
-      --bg: #0f1115;
-      --card: #171a21;
-      --text: #f0f0f0;
-      --text-muted: #a6a6a6;
-      --border: #30333a;
-      --primary: #4096ff;
-      --primary-hover: #69b1ff;
-      --shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
-      --error-bg: #2a1215;
-      --error-border: #58181c;
-      --error-text: #ff7875;
+      color-scheme: dark;
+      --bg-layout: #181715;
+      --surface: #22201d;
+      --surface-soft: #1f1d1b;
+      --text: #f5f4f0;
+      --text-muted: #a39d92;
+      --text-muted-soft: #7a7268;
+      --line: #33312d;
+      --line-strong: #44413c;
+      --primary: #cc785c;
+      --primary-active: #d68a72;
+      --primary-soft: rgba(204, 120, 92, 0.18);
+      --on-primary: #ffffff;
+      --accent-teal: #6fc7b6;
     }
 
-    * {
-      box-sizing: border-box;
-    }
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
 
     body {
-      margin: 0;
       min-height: 100vh;
-      font-family: "Noto Sans SC", sans-serif;
-      background: var(--bg);
+      font-family: var(--font-body);
+      background-color: var(--bg-layout);
       color: var(--text);
+      font-size: 14px;
+      line-height: 1.55;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
     }
 
+    /* ── Theme toggle (top-right) ────────────────────────── */
     .theme-toggle {
       position: fixed;
-      top: 16px;
-      right: 16px;
-      width: 40px;
-      height: 40px;
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      background: var(--card);
+      top: var(--space-lg);
+      right: var(--space-lg);
+      width: 36px;
+      height: 36px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      background-color: var(--surface);
       color: var(--text-muted);
       display: inline-flex;
       align-items: center;
       justify-content: center;
       cursor: pointer;
-      transition: all 0.2s ease;
+      transition: color 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
     }
 
     .theme-toggle:hover {
-      color: var(--text);
+      color: var(--primary);
       border-color: var(--primary);
+      background-color: var(--surface-soft);
     }
 
-    .theme-toggle svg {
-      width: 18px;
-      height: 18px;
-    }
+    .theme-toggle svg { width: 16px; height: 16px; }
 
-    .theme-toggle .icon-sun {
-      display: none;
-    }
+    .theme-toggle .icon-sun { display: none; }
+    html.dark .theme-toggle .icon-sun { display: block; }
+    html.dark .theme-toggle .icon-moon { display: none; }
 
-    html.dark .theme-toggle .icon-sun {
-      display: block;
-    }
-
-    html.dark .theme-toggle .icon-moon {
-      display: none;
-    }
-
+    /* ── Centered viewport + card ────────────────────────── */
     .viewport {
       min-height: 100vh;
       display: grid;
       place-items: center;
-      padding: 24px;
+      padding: var(--space-xl);
     }
 
     .card {
       width: 100%;
       max-width: 420px;
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      box-shadow: var(--shadow);
-      padding: 36px 28px 28px;
+      background-color: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      padding: var(--space-xxl) var(--space-xl) var(--space-xl);
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-lg);
     }
 
-    .title {
+    /* ── Header (text-hero, mirrors render templates) ────── */
+    .card-rule {
+      width: 64px;
+      height: 4px;
+      background-color: var(--primary);
+      border-radius: var(--radius-pill);
+    }
+
+    .card-eyebrow {
+      color: var(--text-muted);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      margin-top: 2px;
+    }
+
+    .card-title {
       margin: 0;
-      text-align: center;
-      font-size: 40px;
+      font-family: var(--font-display);
+      font-weight: 600;
+      font-size: 36px;
+      letter-spacing: -0.01em;
       line-height: 1.1;
-      font-weight: 700;
-      letter-spacing: -0.02em;
+      color: var(--text);
     }
 
-    .title-accent {
-      color: var(--primary);
+    .card-lede {
+      margin: 0;
+      color: var(--text-muted);
+      font-size: 13px;
+      line-height: 1.6;
     }
 
-    .form-wrap {
-      margin-top: 36px;
+    /* ── Form ─────────────────────────────────────────────── */
+    .form {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-md);
     }
 
     .field {
-      margin-bottom: 28px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
     }
 
     .field-label {
-      display: block;
-      margin-bottom: 8px;
-      font-size: 14px;
-      line-height: 1;
       color: var(--text-muted);
-      font-weight: 500;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
     }
 
     .token-input {
       width: 100%;
-      height: 42px;
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      background: var(--card);
+      height: 40px;
+      border: 1px solid var(--line-strong);
+      border-radius: var(--radius-md);
+      background-color: var(--bg-layout);
       color: var(--text);
-      font-size: 15px;
-      padding: 0 12px;
+      font-family: var(--font-code);
+      font-size: 14px;
+      padding: 0 var(--space-sm);
       outline: none;
-      transition: all 0.2s ease;
+      transition: border-color 0.15s ease, background-color 0.15s ease;
     }
 
     .token-input:focus {
       border-color: var(--primary);
-      box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 18%, transparent);
+      background-color: var(--surface-soft);
     }
 
     .token-input::placeholder {
-      color: color-mix(in srgb, var(--text-muted) 88%, transparent);
+      color: var(--text-muted-soft);
+      font-family: var(--font-body);
       opacity: 1;
     }
 
     .login-btn {
       width: 100%;
-      height: 42px;
-      border: 0;
-      border-radius: 8px;
-      background: var(--primary);
-      color: #fff;
-      font-size: 15px;
+      height: 40px;
+      border: 1px solid var(--primary);
+      border-radius: var(--radius-md);
+      background-color: var(--primary);
+      color: var(--on-primary);
+      font-family: var(--font-body);
+      font-size: 14px;
       font-weight: 600;
       cursor: pointer;
-      transition: background 0.2s ease;
+      transition: background-color 0.15s ease, border-color 0.15s ease;
+      margin-top: 4px;
     }
 
     .login-btn:hover {
-      background: var(--primary-hover);
+      background-color: var(--primary-active);
+      border-color: var(--primary-active);
     }
 
+    .login-btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    /* ── Inline error (coral) ─────────────────────────────── */
     .login-error {
-      margin-bottom: 20px;
-      border: 1px solid var(--error-border);
-      border-radius: 8px;
-      background: var(--error-bg);
-      color: var(--error-text);
-      padding: 9px 11px;
-      font-size: 14px;
-      line-height: 1.4;
+      border: 1px solid var(--primary);
+      border-radius: var(--radius-md);
+      background-color: var(--bg-layout);
+      color: var(--primary);
+      padding: var(--space-xs) var(--space-sm);
+      font-size: 13px;
+      line-height: 1.5;
     }
 
-    .hidden {
-      display: none;
+    .footer {
+      text-align: center;
+      color: var(--text-muted-soft);
+      font-size: 11px;
+      letter-spacing: 0.04em;
+      margin-top: var(--space-xs);
     }
 
+    .hidden { display: none !important; }
   </style>
 </head>
 <body>
@@ -205,34 +260,37 @@
 
   <main class="viewport">
     <section class="card">
-      <h1 class="title">
-        Web <span class="title-accent">Login</span>
-      </h1>
+      <header>
+        <div class="card-rule"></div>
+        <div class="card-eyebrow">NextBot WebUI</div>
+        <h1 class="card-title">登录</h1>
+        <p class="card-lede">输入访问 Token 进入管理后台。</p>
+      </header>
 
-      <div class="form-wrap">
-        <div id="login-error" class="login-error hidden"></div>
-        <form id="login-form">
-          <input type="hidden" id="next-path" name="next" value="__NEXT_PATH__" />
+      <div id="login-error" class="login-error hidden" role="alert" aria-live="polite"></div>
 
-          <div class="field">
-            <label for="token" class="field-label">Token</label>
-            <input
-              id="token"
-              name="token"
-              type="password"
-              autocomplete="off"
-              placeholder="请输入 Token"
-              class="token-input"
-            />
-          </div>
+      <form id="login-form" class="form" novalidate>
+        <input type="hidden" id="next-path" name="next" value="__NEXT_PATH__" />
 
-          <button type="submit" class="login-btn">登录</button>
-        </form>
-      </div>
+        <div class="field">
+          <label for="token" class="field-label">Token</label>
+          <input
+            id="token"
+            name="token"
+            type="password"
+            autocomplete="off"
+            placeholder="请输入访问 Token"
+            class="token-input"
+          />
+        </div>
+
+        <button type="submit" class="login-btn">登录</button>
+      </form>
+
+      <div class="footer">Powered by NextBot</div>
     </section>
   </main>
 
-  <script src="/webui/static/js/theme-init.js"></script>
   <script>
     (() => {
       const root = document.documentElement;
@@ -267,7 +325,7 @@
 
       const setSubmitting = (submitting) => {
         submitButton.disabled = submitting;
-        submitButton.textContent = submitting ? "登录中..." : "登录";
+        submitButton.textContent = submitting ? "登录中…" : "登录";
       };
 
       form.addEventListener("submit", async (event) => {

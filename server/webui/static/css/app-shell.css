@@ -58,6 +58,7 @@
 }
 
 html.dark {
+  color-scheme: dark;
   /* Dark canvas: deep warm ink, kept low-saturation. */
   --bg-layout: #181715;
   --surface: #22201d;
