@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 79
+- **Total Sessions**: 80
 - **Last Active**: 2026-05-04
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~1477 | Active |
+| `journal-2.md` | ~1510 | Active |
 | `journal-1.md` | ~1999 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 80 | 2026-05-04 | WebUI 侧边栏 命令配置 / 抽奖管理 图标优化 | `a11d985` | `main` |
 | 79 | 2026-05-04 | WebUI native confirm() 替换为 dialog + 删除文案统一使用「」 | `55b6322` | `main` |
 | 78 | 2026-05-04 | WebUI 整体按 DESIGN.md 重构（Phase 1–5 + 后续 polish） | `58381ee`, `e7bdce1`, `1fd3e0d`, `c5d7589`, `6df0341`, `39e94d4`, `4d9978d` | `main` |
 | 77 | 2026-05-04 | 完成 关于 / 教程 重构 + 删除 RENDER_THEME 设置项 | `8e76a7c` | `main` |
