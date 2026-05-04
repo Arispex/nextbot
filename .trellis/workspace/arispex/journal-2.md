@@ -1336,3 +1336,37 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 76: 封禁列表 / 管理员列表 重构 + render eyebrow 修正
+
+**Date**: 2026-05-04
+**Task**: 封禁列表 / 管理员列表 重构 + render eyebrow 修正
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `b2ab6e1` | (see git log) |
+| `5e81f0b` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

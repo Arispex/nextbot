@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 75
+- **Total Sessions**: 76
 - **Last Active**: 2026-05-04
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~1338 | Active |
+| `journal-2.md` | ~1372 | Active |
 | `journal-1.md` | ~1999 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 76 | 2026-05-04 | 封禁列表 / 管理员列表 重构 + render eyebrow 修正 | `b2ab6e1`, `5e81f0b` | `main` |
 | 75 | 2026-05-04 | 我的背包 / 用户背包 / 进度 页面按 DESIGN.md 重构 | `b61c87f` | `main` |
 | 74 | 2026-05-04 | 排行榜 页面按 DESIGN.md 重构 | `7b4d7ca` | `main` |
 | 73 | 2026-05-04 | 奖池列表 / 查看奖池 / 抽奖结果 页面按 DESIGN.md 重构 | `5cebee7` | `main` |
