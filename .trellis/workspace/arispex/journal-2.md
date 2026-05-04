@@ -1541,3 +1541,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 82: 菜单图片显示命令别名
+
+**Date**: 2026-05-04
+**Task**: 菜单图片显示命令别名
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8211186` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 81
+- **Total Sessions**: 82
 - **Last Active**: 2026-05-04
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~1543 | Active |
+| `journal-2.md` | ~1576 | Active |
 | `journal-1.md` | ~1999 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 82 | 2026-05-04 | 菜单图片显示命令别名 | `8211186` | `main` |
 | 81 | 2026-05-04 | WebUI 侧边栏 身份组管理 图标优化 | `ac77fcf` | `main` |
 | 80 | 2026-05-04 | WebUI 侧边栏 命令配置 / 抽奖管理 图标优化 | `a11d985` | `main` |
 | 79 | 2026-05-04 | WebUI native confirm() 替换为 dialog + 删除文案统一使用「」 | `55b6322` | `main` |
