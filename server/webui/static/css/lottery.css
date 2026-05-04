@@ -1,35 +1,27 @@
-:root {
-  --success: #52c41a;
-  --warning: #faad14;
-}
+/* ── Lottery (warm-canvas, master-detail) ─────────────── */
 
-html.dark {
-  --success: #95de64;
-  --warning: #ffd666;
-}
+html, body { overflow-x: hidden; }
 
 .app-content {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+  max-width: none;
+  overflow-x: hidden;
 }
-
-/* ---------- Layout ---------- */
 
 .lottery-layout {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--space-lg);
   height: 100%;
   min-height: 0;
 }
 
+/* ── Toolbar ─────────────────────────────────────────── */
 .lottery-toolbar {
   width: 100%;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--space-sm);
   flex-wrap: nowrap;
 }
 
@@ -41,81 +33,70 @@ html.dark {
 .panel-head-actions {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-xs);
   flex-shrink: 0;
 }
 
-/* ---------- Common: alert / empty / hidden ---------- */
-
+/* ── Status / empty ──────────────────────────────────── */
 .alert {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 10px;
-  border: 1px solid var(--line-strong);
-  border-radius: 12px;
-  background: var(--surface-soft);
+  align-items: flex-start;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background-color: var(--surface-soft);
   color: var(--text-muted);
 }
 
-.alert.success {
-  border-color: color-mix(in srgb, var(--success) 38%, var(--line-strong));
-  background: color-mix(in srgb, var(--success) 12%, var(--surface-soft));
-  color: color-mix(in srgb, var(--success) 78%, var(--text));
-}
-
-.alert.error {
-  border-color: color-mix(in srgb, var(--danger) 36%, var(--line-strong));
-  background: color-mix(in srgb, var(--danger) 12%, var(--surface-soft));
-  color: color-mix(in srgb, var(--danger) 80%, var(--text));
-}
+.alert.info,
+.alert.success { border-color: var(--accent-teal); color: var(--accent-teal); }
+.alert.error { border-color: var(--primary); color: var(--primary); }
+.alert.warning { border-color: var(--accent-amber); color: var(--accent-amber); }
 
 .alert-message {
   font-size: 13px;
-  line-height: 1.4;
+  line-height: 1.5;
   white-space: pre-line;
 }
 
 .empty {
-  border: 1px dashed var(--line-strong);
-  border-radius: 12px;
-  padding: 36px 24px;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-lg);
+  padding: var(--space-xxl);
   text-align: center;
   color: var(--text-muted);
-  background: var(--surface);
-  font-size: 13px;
+  background-color: var(--surface-soft);
 }
 
-.hidden {
-  display: none !important;
-}
+.hidden { display: none !important; }
 
-/* ---------- Common: input / button-danger ---------- */
-
+/* ── Inputs ──────────────────────────────────────────── */
 .input,
 .select,
 .textarea {
   width: 100%;
   height: 34px;
   border: 1px solid var(--line-strong);
-  border-radius: 12px;
-  background: var(--surface);
+  border-radius: var(--radius-md);
+  background-color: var(--bg-layout);
   color: var(--text);
-  padding: 0 10px;
+  padding: 0 var(--space-sm);
   font-size: 13px;
-  font-family: inherit;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
 }
 
 .textarea {
   height: auto;
-  min-height: 84px;
-  padding: 8px 10px;
-  line-height: 1.5;
+  padding: var(--space-xs) var(--space-sm);
+  line-height: 1.55;
   resize: vertical;
+  min-height: 80px;
 }
 
 .textarea-mono {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-family: var(--font-code);
+  font-size: 12px;
 }
 
 .input:focus,
@@ -123,114 +104,130 @@ html.dark {
 .textarea:focus {
   outline: none;
   border-color: var(--primary);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 20%, transparent);
+  background-color: var(--surface-soft);
 }
 
 .btn-danger {
-  background: var(--danger);
-  border-color: var(--danger);
-  color: #ffffff;
+  background-color: var(--primary);
+  border-color: var(--primary);
+  color: var(--on-primary);
 }
 
 .btn-danger:hover {
-  color: #ffffff;
-  background: var(--danger-hover);
-  border-color: var(--danger-hover);
+  background-color: var(--primary-active);
+  border-color: var(--primary-active);
+  color: var(--on-primary);
 }
 
-/* ---------- Master / Detail layout ---------- */
-
+/* ── Master / detail layout ──────────────────────────── */
 .lottery-master-detail {
   display: grid;
-  grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
-  gap: 16px;
+  grid-template-columns: 320px minmax(0, 1fr);
+  gap: var(--space-lg);
   align-items: stretch;
-  flex: 1 1 auto;
   min-height: 0;
 }
 
-/* Left: shop list */
-
+/* ── Left: pool list panel (cream-card) ──────────────── */
 .lottery-list-panel {
+  background-color: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 14px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--surface);
-  height: 100%;
-  min-height: 0;
 }
 
 .lottery-list-panel-head {
-  flex-shrink: 0;
-  font-size: 13px;
+  padding: var(--space-md) var(--space-lg);
+  border-bottom: 1px solid var(--line);
+  font-size: 11px;
   font-weight: 600;
-  color: var(--text-muted);
-  letter-spacing: 0.04em;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
+  color: var(--text-muted);
 }
 
 .lottery-list {
-  flex: 1 1 auto;
-  min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  overflow-y: auto;
-  margin: 0 -4px;
-  padding: 0 4px;
+  padding: var(--space-xs);
+  gap: 2px;
+  overflow: auto;
 }
 
-.lottery-list:empty {
-  display: none;
-}
+.lottery-list:empty { display: none; }
 
 .lottery-card {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--surface);
+  border-radius: var(--radius-md);
   cursor: pointer;
-  transition: border-color 0.15s ease, background-color 0.15s ease, transform 0.05s ease;
+  /* Row layout: text on the left, status + edit on the right.
+   * Stack to column on narrow viewports below. */
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  transition: background-color 0.15s ease;
+  position: relative;
 }
 
 .lottery-card:hover {
-  border-color: color-mix(in srgb, var(--primary) 40%, var(--line-strong));
-  background: color-mix(in srgb, var(--surface-soft) 60%, transparent);
+  background-color: var(--bg-layout);
 }
 
 .lottery-card.is-active {
-  border-color: var(--primary);
-  background: var(--primary-soft);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 12%, transparent);
+  background-color: var(--bg-layout);
+}
+
+.lottery-card.is-active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  border-radius: var(--radius-pill);
+  background-color: var(--primary);
 }
 
 .lottery-card-body {
-  flex: 1 1 auto;
   min-width: 0;
+  flex: 1 1 auto;
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
 
 .lottery-card-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  /* Title contains the name + a status badge inline; lay them
+   * out as a row with proper gap so the badge doesn't crowd
+   * the name. The name span itself handles ellipsis. */
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--text);
+  gap: var(--space-xs);
+  min-width: 0;
+}
+
+.lottery-card-title > span:first-child {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.lottery-card.is-active .lottery-card-title {
+  color: var(--primary);
 }
 
 .lottery-card-desc {
+  margin: 0;
   font-size: 12px;
   color: var(--text-muted);
   overflow: hidden;
@@ -240,209 +237,151 @@ html.dark {
 
 .lottery-card-meta {
   font-size: 11px;
-  color: var(--text-muted);
-  margin-top: 2px;
+  color: var(--text-muted-soft);
+  font-feature-settings: "tnum";
 }
 
 .lottery-card-actions {
-  flex-shrink: 0;
   display: inline-flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: flex-end;
   gap: 4px;
+  flex-shrink: 0;
 }
 
 .lottery-card-edit-btn {
-  height: 26px;
-  min-width: 50px;
-  padding: 0 10px;
-  border-radius: 8px;
-  font-size: 12px;
+  height: 22px;
+  min-width: 44px;
+  padding: 0 6px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  line-height: 1;
 }
 
-/* Right: detail panel */
-
+/* ── Right: detail panel ─────────────────────────────── */
 .lottery-detail-panel {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 14px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--surface);
-  height: 100%;
-  min-height: 0;
+  gap: var(--space-md);
+  min-width: 0;
 }
 
 .lottery-detail-head {
-  flex-shrink: 0;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-  padding-bottom: 12px;
+  gap: var(--space-md);
+  padding: var(--space-md) 0 var(--space-md);
   border-bottom: 1px solid var(--line);
-}
-
-#lottery-detail-placeholder,
-#lottery-prize-empty,
-#lottery-prize-table-wrap {
-  flex: 1 1 auto;
-  min-height: 0;
-}
-
-#lottery-detail-placeholder,
-#lottery-prize-empty {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-#lottery-list-empty {
-  flex: 1 1 auto;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
 .lottery-detail-title {
   margin: 0;
-  font-size: 18px;
-  font-weight: 700;
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
   color: var(--text);
+  line-height: 1.2;
+  /* Title contains name + status badge; lay them out as a row
+   * with breathing room so the badge doesn't crowd the name. */
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-sm);
+  min-width: 0;
 }
 
 .lottery-detail-subtitle {
   margin-top: 4px;
-  font-size: 12px;
   color: var(--text-muted);
+  font-size: 12px;
+  font-feature-settings: "tnum";
 }
 
 .lottery-detail-desc {
   margin-top: 6px;
+  color: var(--text-muted);
   font-size: 13px;
-  color: color-mix(in srgb, var(--text-muted) 60%, var(--text));
-  max-width: 640px;
+  line-height: 1.55;
 }
 
-/* ---------- Status / kind / flag chips ---------- */
-
-.status-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  height: 22px;
-  padding: 0 8px;
-  border-radius: 11px;
-  font-size: 11px;
-  font-weight: 600;
-  border: 1px solid var(--line-strong);
-  background: var(--surface-soft);
-  color: var(--text-muted);
-}
-
-.status-badge.is-on {
-  border-color: color-mix(in srgb, var(--success) 38%, var(--line-strong));
-  background: color-mix(in srgb, var(--success) 14%, var(--surface-soft));
-  color: color-mix(in srgb, var(--success) 78%, var(--text));
-}
-
-.status-badge.is-off {
-  border-color: color-mix(in srgb, var(--text-muted) 30%, var(--line-strong));
-  color: var(--text-muted);
-}
-
-.kind-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  height: 24px;
-  padding: 0 10px;
-  border-radius: 12px;
-  font-size: 12px;
-  font-weight: 600;
-  border: 1px solid transparent;
-}
-
-.kind-badge.kind-item {
-  background: color-mix(in srgb, #2563eb 12%, var(--surface-soft));
-  color: color-mix(in srgb, #2563eb 80%, var(--text));
-  border-color: color-mix(in srgb, #2563eb 30%, var(--line-strong));
-}
-
-.kind-badge.kind-command {
-  background: color-mix(in srgb, #7c3aed 12%, var(--surface-soft));
-  color: color-mix(in srgb, #7c3aed 80%, var(--text));
-  border-color: color-mix(in srgb, #7c3aed 30%, var(--line-strong));
-}
-
-.kind-badge.kind-coin-pos {
-  background: color-mix(in srgb, var(--success) 14%, var(--surface-soft));
-  color: color-mix(in srgb, var(--success) 80%, var(--text));
-  border-color: color-mix(in srgb, var(--success) 35%, var(--line-strong));
-}
-
-.kind-badge.kind-coin-neg {
-  background: color-mix(in srgb, var(--danger) 14%, var(--surface-soft));
-  color: color-mix(in srgb, var(--danger) 80%, var(--text));
-  border-color: color-mix(in srgb, var(--danger) 35%, var(--line-strong));
-}
-
-.weight-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  height: 20px;
-  padding: 0 8px;
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--primary) 10%, var(--surface-soft));
-  color: color-mix(in srgb, var(--primary) 85%, var(--text));
-  border: 1px solid color-mix(in srgb, var(--primary) 35%, var(--line-strong));
-  font-size: 11px;
-  font-weight: 700;
-}
-
-.weight-chip.is-default {
-  background: var(--surface-soft);
-  color: var(--text-muted);
-  border-color: var(--line-strong);
-}
-
+/* ── Inline badges (status / kind / weight / flag) ──── */
+.status-badge,
+.kind-badge,
+.weight-chip,
 .flag-chip {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
-  height: 20px;
-  padding: 0 8px;
-  border-radius: 10px;
-  background: var(--surface-soft);
+  min-height: 22px;
+  padding: 0 var(--space-sm);
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--line);
+  background-color: var(--bg-layout);
   color: var(--text-muted);
   font-size: 11px;
-  border: 1px solid var(--line-strong);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.status-badge.is-on {
+  color: var(--accent-teal);
+  border-color: var(--accent-teal);
+}
+
+.status-badge.is-off {
+  color: var(--text-muted-soft);
+  border-style: dashed;
+}
+
+.kind-badge.kind-item {
+  color: var(--accent-teal);
+  border-color: var(--accent-teal);
+}
+
+.kind-badge.kind-command {
+  color: var(--accent-amber);
+  border-color: var(--accent-amber);
+}
+
+.kind-badge.kind-coin-pos {
+  color: var(--accent-teal);
+  border-color: var(--accent-teal);
+}
+
+.kind-badge.kind-coin-neg {
+  color: var(--primary);
+  border-color: var(--primary);
+}
+
+.weight-chip {
+  font-family: var(--font-code);
+  font-feature-settings: "tnum";
+  color: var(--text);
+}
+
+.weight-chip.is-default {
+  color: var(--text-muted-soft);
+  font-family: var(--font-body);
+  border-style: dashed;
 }
 
 .flag-chip.flag-on {
-  border-color: color-mix(in srgb, var(--primary) 35%, var(--line-strong));
-  color: color-mix(in srgb, var(--primary) 85%, var(--text));
-  background: color-mix(in srgb, var(--primary) 8%, var(--surface-soft));
+  color: var(--accent-amber);
+  border-color: var(--accent-amber);
 }
 
-/* ---------- Item table ---------- */
-
+/* ── Prize table ─────────────────────────────────────── */
 .table-wrap {
   overflow: auto;
   border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--surface);
+  border-radius: var(--radius-lg);
+  background-color: var(--surface);
 }
 
 .lottery-prize-table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 920px;
+  min-width: 880px;
   background: transparent;
 }
 
@@ -451,121 +390,65 @@ html.dark {
   top: 0;
   z-index: 1;
   text-align: left;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
   color: var(--text-muted);
-  background: var(--surface-soft);
-  padding: 10px 12px;
+  background-color: var(--surface-cream-strong);
+  padding: var(--space-sm) var(--space-md);
   border-bottom: 1px solid var(--line);
   white-space: nowrap;
+  vertical-align: middle;
 }
 
 .lottery-prize-table tbody td {
-  padding: 10px 12px;
+  padding: var(--space-sm) var(--space-md);
   border-bottom: 1px solid var(--line);
   vertical-align: middle;
   font-size: 13px;
   color: var(--text);
 }
 
-.lottery-prize-table tbody tr:last-child td {
-  border-bottom: none;
-}
+.lottery-prize-table tbody tr:last-child td { border-bottom: none; }
 
-.lottery-prize-table tbody tr:hover {
-  background: color-mix(in srgb, var(--surface-soft) 85%, transparent);
-}
+.lottery-prize-table tbody tr:hover { background-color: var(--bg-layout); }
 
-.lottery-prize-table .col-index {
-  width: 48px;
-  color: var(--text-muted);
-  font-variant-numeric: tabular-nums;
-}
+.lottery-prize-table .col-index { width: 56px; color: var(--text-muted-soft); font-family: var(--font-code); font-feature-settings: "tnum"; }
+.lottery-prize-table .col-kind { width: 100px; }
+.lottery-prize-table .col-price { width: 100px; font-family: var(--font-code); font-feature-settings: "tnum"; }
+.lottery-prize-table .col-status { width: 80px; }
+.lottery-prize-table .col-actions { width: 200px; }
 
-.lottery-prize-table .col-kind {
-  width: 90px;
-}
-
-.lottery-prize-table .col-price {
-  width: 110px;
-  font-variant-numeric: tabular-nums;
-  color: color-mix(in srgb, var(--warning) 80%, var(--text));
-  font-weight: 600;
-}
-
-.lottery-prize-table .col-status {
-  width: 90px;
-}
-
-.lottery-prize-table .col-actions {
-  width: 110px;
-}
-
-.item-name-cell .item-name {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text);
-  margin: 0;
-}
-
-.item-name-cell .item-desc {
-  margin-top: 2px;
-  font-size: 12px;
-  color: var(--text-muted);
-  max-width: 280px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.item-detail-cell {
-  max-width: 380px;
-}
-
-.item-detail-cell > * + * {
-  margin-top: 4px;
-}
-
-.item-detail-line {
-  font-size: 12px;
-  color: var(--text-muted);
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-}
-
-.command-preview {
-  display: inline-block;
-  max-width: 280px;
-  padding: 2px 8px;
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--text-muted) 10%, var(--surface-soft));
-  color: var(--text);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 11.5px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  vertical-align: middle;
-}
-
+/* ── Row actions (match servers/users/groups look) ──── */
 .row-actions {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
+  flex-wrap: wrap;
 }
 
 .action-btn {
-  height: 26px;
+  height: 24px;
   min-width: 50px;
-  padding: 0 10px;
-  border-radius: 8px;
+  padding: 0 var(--space-xs);
+  border-radius: var(--radius-sm);
   font-size: 12px;
+  line-height: 1;
 }
 
-/* ---------- Modal ---------- */
+.action-btn-danger {
+  color: var(--primary);
+  border-color: var(--primary);
+}
 
+.action-btn-danger:hover {
+  background-color: var(--primary);
+  border-color: var(--primary);
+  color: var(--on-primary);
+}
+
+/* ── Modal ───────────────────────────────────────────── */
 .modal {
   position: fixed;
   inset: 0;
@@ -575,50 +458,51 @@ html.dark {
 .modal-mask {
   position: absolute;
   inset: 0;
-  background: rgba(0, 0, 0, 0.45);
+  background: rgba(20, 20, 19, 0.45);
 }
 
 .modal-card {
   position: relative;
-  width: min(680px, calc(100% - 24px));
+  width: min(720px, calc(100% - 24px));
   margin: 8vh auto 0;
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   border: 1px solid var(--line);
-  background: var(--surface);
-  box-shadow: var(--shadow);
+  background-color: var(--surface);
+  box-shadow: var(--shadow-elevated);
   max-height: 84vh;
   overflow: hidden;
   display: flex;
   flex-direction: column;
 }
 
-.modal-card-narrow {
-  width: min(520px, calc(100% - 24px));
-}
+.modal-card-narrow { width: min(560px, calc(100% - 24px)); }
+.confirm-modal-card { width: min(440px, calc(100% - 24px)); }
 
 .modal-head {
-  padding: 12px 14px;
+  padding: var(--space-md) var(--space-lg);
   border-bottom: 1px solid var(--line);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: var(--space-sm);
 }
 
 .modal-title {
   margin: 0;
-  font-size: 15px;
+  font-family: var(--font-display);
+  font-size: 20px;
   font-weight: 600;
+  letter-spacing: -0.01em;
   color: var(--text);
 }
 
 .modal-close-btn {
-  width: 30px;
-  height: 30px;
+  width: 28px;
+  height: 28px;
 }
 
 .modal-alert {
-  margin: 10px 14px 0;
+  margin: var(--space-sm) var(--space-lg) 0;
 }
 
 .modal-alert .alert-message {
@@ -626,175 +510,211 @@ html.dark {
 }
 
 .modal-body {
-  padding: 14px;
+  padding: var(--space-md) var(--space-lg);
   overflow: auto;
-  display: grid;
-  gap: 14px;
-}
-
-.modal-foot {
-  padding: 12px 14px;
-  border-top: 1px solid var(--line);
   display: flex;
-  justify-content: flex-end;
-  gap: 8px;
+  flex-direction: column;
+  gap: var(--space-md);
 }
 
-.modal-foot .modal-foot-spacer {
-  flex: 1 1 auto;
-}
-
-.confirm-modal-card {
-  width: min(460px, calc(100% - 24px));
-}
-
-.confirm-modal-body {
-  padding-top: 18px;
-  padding-bottom: 18px;
-}
+.confirm-modal-body { padding-top: var(--space-lg); padding-bottom: var(--space-lg); }
 
 .confirm-modal-text {
   margin: 0;
-  font-size: 13px;
-  line-height: 1.65;
+  font-size: 14px;
+  line-height: 1.6;
   color: var(--text);
 }
 
 .confirm-modal-highlight {
-  color: var(--text);
+  font-family: var(--font-code);
+  color: var(--primary);
   font-weight: 600;
 }
 
-/* ---------- Form ---------- */
+.modal-foot {
+  padding: var(--space-md) var(--space-lg);
+  border-top: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-xs);
+}
 
+.modal-foot-spacer { flex: 1 1 auto; }
+
+/* ── Form inside modal ───────────────────────────────── */
 .form-grid {
   display: grid;
-  gap: 12px;
+  gap: var(--space-md);
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .form-item {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 6px;
-  align-content: start;
+  min-width: 0;
 }
 
-.form-item-full {
-  grid-column: 1 / -1;
-}
-
-.form-item-bool {
-  grid-template-columns: auto 1fr;
-  align-items: center;
-  gap: 8px;
-}
-
-.form-item-bool .form-checkbox {
-  margin: 0;
-}
+.form-item-full { grid-column: span 2; }
 
 .form-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.form-required {
+  color: var(--primary);
+  margin-left: 2px;
+}
+
+.form-help {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.55;
+}
+
+/* ── Name cell (prize / item name + optional description). */
+.item-name-cell {
+  min-width: 160px;
+  max-width: 260px;
+}
+
+.item-name {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.item-desc {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Detail cell: spans + flag-chips on one row with gap. */
+.item-detail-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.item-detail-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-xs);
   font-size: 12px;
   color: var(--text-muted);
   line-height: 1.5;
 }
 
-.form-required {
-  color: var(--danger);
-  margin-left: 2px;
+.command-preview {
+  font-family: var(--font-code);
+  font-size: 11px;
+  color: var(--text);
+  background-color: var(--bg-layout);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 2px 6px;
+  white-space: pre-wrap;
+  word-break: break-all;
 }
 
+/* ── Bool field: row with checkbox left, label right. */
+.form-item-bool,
+.form-checkbox-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-xs);
+  cursor: pointer;
+  min-height: 34px;
+  padding: 6px 0;
+}
+
+.form-item-bool {
+  grid-column: span 2;
+}
+
+.form-item-bool > input[type="checkbox"],
+.form-checkbox-row > input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--primary);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.form-item-bool > span,
+.form-checkbox-row > span {
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.5;
+}
+
+/* ── Sub-section inside a modal (e.g. prize-kind-item-fields). */
 .field-section {
-  display: grid;
-  gap: 10px;
-  padding: 12px;
-  border: 1px dashed var(--line-strong);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--surface-soft) 60%, var(--surface));
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  padding: var(--space-md) 0 0;
+  border-top: 1px solid var(--line);
+  margin-top: var(--space-xs);
+}
+
+.field-section:first-child {
+  padding-top: 0;
+  border-top: none;
+  margin-top: 0;
 }
 
 .field-section-title {
   margin: 0;
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--text-muted);
-  letter-spacing: 0.04em;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
+  color: var(--text-muted);
 }
 
 .field-section-hint {
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--text-muted);
+  line-height: 1.55;
 }
 
-.field-section-hint code {
-  padding: 1px 6px;
-  border-radius: 4px;
-  background: color-mix(in srgb, var(--text-muted) 12%, transparent);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 11px;
-}
-
-.form-checkbox-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  color: var(--text);
-  cursor: pointer;
-}
-
-.form-checkbox-row input[type="checkbox"] {
-  width: 16px;
-  height: 16px;
-  margin: 0;
-  cursor: pointer;
-}
-
-/* ---------- Responsive ---------- */
-
+/* ── Responsive ──────────────────────────────────────── */
 @media (max-width: 1080px) {
-  .lottery-toolbar {
-    flex-wrap: wrap;
-    align-items: stretch;
+  .lottery-master-detail {
+    grid-template-columns: minmax(0, 1fr);
   }
 
-  .lottery-toolbar-spacer {
-    width: 100%;
+  .lottery-list-panel {
+    max-height: 320px;
   }
 
   .panel-head-actions {
-    width: 100%;
+    flex-wrap: wrap;
     justify-content: flex-end;
   }
 
-  .lottery-layout {
-    height: auto;
-  }
-
-  .lottery-master-detail {
-    grid-template-columns: minmax(0, 1fr);
-    flex: 0 0 auto;
-  }
-
-  .lottery-list-panel,
-  .lottery-detail-panel {
-    height: auto;
-    min-height: 280px;
-  }
-
-  .lottery-list {
-    flex: 0 0 auto;
-    max-height: 320px;
-  }
-}
-
-@media (max-width: 760px) {
   .form-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .lottery-prize-table {
-    min-width: 720px;
-  }
+  .form-item-full { grid-column: span 1; }
 }

@@ -136,12 +136,17 @@ html, body { overflow-x: hidden; }
   color: var(--text);
 }
 
-.coins-cell {
+.coins-cell,
+.sign-total-cell,
+.sign-streak-cell {
   font-family: var(--font-code);
   font-feature-settings: "tnum";
+  white-space: nowrap;
 }
 
 .group-cell { min-width: 100px; }
+
+.ban-cell { white-space: nowrap; }
 
 .created-cell {
   color: var(--text-muted);
@@ -207,6 +212,18 @@ html, body { overflow-x: hidden; }
   background-color: var(--primary);
   border-color: var(--primary);
   color: var(--on-primary);
+}
+
+/* Sync button: same outline as action-btn but neutral. */
+.action-btn-sync {
+  color: var(--text);
+  border-color: var(--line-strong);
+}
+
+.action-btn-sync:hover {
+  color: var(--accent-teal);
+  border-color: var(--accent-teal);
+  background-color: var(--surface-soft);
 }
 
 .btn-danger {

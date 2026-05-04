@@ -16,7 +16,7 @@
           <path d="M7 10l5 5 5-5"></path>
           <path d="M5 21h14"></path>
         </svg>
-        导出 JSON
+        导出
       </button>
       <button id="shop-import-btn" type="button" class="btn">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
@@ -24,7 +24,7 @@
           <path d="M7 14l5-5 5 5"></path>
           <path d="M5 3h14"></path>
         </svg>
-        导入 JSON
+        导入
       </button>
       <input id="shop-import-file" type="file" accept=".json,application/json" hidden />
       <button id="shop-create-btn" type="button" class="btn btn-primary">
@@ -32,7 +32,7 @@
           <path d="M12 5v14"></path>
           <path d="M5 12h14"></path>
         </svg>
-        新建商店
+        新建
       </button>
     </div>
   </div>
@@ -47,7 +47,7 @@
       <div class="shop-list-panel-head">商店列表</div>
       <div id="shop-list" class="shop-list"></div>
       <div id="shop-list-empty" class="empty hidden">
-        暂无商店，点击右上角「新建商店」
+        暂无商店，点击右上角「新建」创建
       </div>
     </aside>
 
@@ -63,7 +63,7 @@
             <path d="M12 5v14"></path>
             <path d="M5 12h14"></path>
           </svg>
-          新建商品
+          新建
         </button>
       </div>
 
@@ -84,7 +84,7 @@
         </table>
       </div>
 
-      <div id="shop-item-empty" class="empty hidden">该商店暂无商品，点击右上角「新建商品」</div>
+      <div id="shop-item-empty" class="empty hidden">该商店暂无商品，点击右上角「新建」添加</div>
       <div id="shop-detail-placeholder" class="empty">请在左侧选择一个商店查看商品</div>
     </section>
 
@@ -123,7 +123,7 @@
       </div>
     </form>
     <div class="modal-foot">
-      <button id="shop-modal-delete" type="button" class="btn btn-danger hidden">删除商店</button>
+      <button id="shop-modal-delete" type="button" class="btn btn-danger hidden">删除</button>
       <div class="modal-foot-spacer"></div>
       <button type="button" class="btn" data-modal-close="shop-modal">取消</button>
       <button id="shop-modal-save" type="submit" form="shop-modal-form" class="btn btn-primary">保存</button>
@@ -230,7 +230,7 @@
 
     </form>
     <div class="modal-foot">
-      <button id="item-modal-delete" type="button" class="btn btn-danger hidden">删除商品</button>
+      <button id="item-modal-delete" type="button" class="btn btn-danger hidden">删除</button>
       <div class="modal-foot-spacer"></div>
       <button type="button" class="btn" data-modal-close="item-modal">取消</button>
       <button id="item-modal-save" type="submit" form="item-modal-form" class="btn btn-primary">保存</button>
@@ -257,7 +257,7 @@
     </div>
     <div class="modal-foot">
       <button type="button" class="btn" data-modal-close="shop-delete-modal">取消</button>
-      <button id="shop-delete-confirm" type="button" class="btn btn-danger">确认删除</button>
+      <button id="shop-delete-confirm" type="button" class="btn btn-danger">删除</button>
     </div>
   </div>
 </div>
@@ -280,7 +280,7 @@
     </div>
     <div class="modal-foot">
       <button type="button" class="btn" data-modal-close="item-delete-modal">取消</button>
-      <button id="item-delete-confirm" type="button" class="btn btn-danger">确认删除</button>
+      <button id="item-delete-confirm" type="button" class="btn btn-danger">删除</button>
     </div>
   </div>
 </div>
@@ -290,7 +290,7 @@
   <div class="modal-mask" data-modal-close="shop-import-modal"></div>
   <div class="modal-card modal-card-narrow">
     <div class="modal-head">
-      <h3 id="shop-import-title" class="modal-title">导入 JSON</h3>
+      <h3 id="shop-import-title" class="modal-title">导入</h3>
       <button type="button" class="btn btn-icon modal-close-btn" data-modal-close="shop-import-modal" aria-label="关闭">✕</button>
     </div>
     <div id="shop-import-alert" class="alert hidden modal-alert" role="status" aria-live="polite">
@@ -310,14 +310,14 @@
           <span><strong>全量替换</strong>（先删除现有所有商店和商品，再按 JSON 重建）</span>
         </label>
         <div id="shop-import-replace-warn" class="field-section-hint hidden" style="color:var(--danger);">
-          ⚠️ 全量替换会清空现有所有商店、所有商品，此操作不可撤销。建议先「导出 JSON」备份。
+          ⚠️ 全量替换会清空现有所有商店、所有商品，此操作不可撤销。建议先「导出」备份。
         </div>
       </div>
     </div>
     <div class="modal-foot">
       <div class="modal-foot-spacer"></div>
       <button type="button" class="btn" data-modal-close="shop-import-modal">取消</button>
-      <button id="shop-import-confirm" type="button" class="btn btn-primary">确认导入</button>
+      <button id="shop-import-confirm" type="button" class="btn btn-primary">导入</button>
     </div>
   </div>
 </div>
