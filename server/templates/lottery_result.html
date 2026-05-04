@@ -1,130 +1,123 @@
 <!doctype html>
-<html lang="zh-CN" data-theme="light">
+<html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <script src="https://cdn.tailwindcss.com"></script>
+  <title>NextBot 抽奖结果</title>
+  <link rel="stylesheet" href="/assets/css/render-fonts.css" />
+  <link rel="stylesheet" href="/assets/css/render-tokens.css" />
   <style>
-    /* ---------- Theme tokens ---------- */
-    [data-theme="light"] {
-      --surface: #ffffff;
-      --surface-soft: #fdf4ff;
-      --text: #0f172a;
-      --text-muted: #64748b;
-      --line: #fae8ff;
-      --line-strong: #f5d0fe;
-    }
-    [data-theme="dark"] {
-      --surface: #1a1428;
-      --surface-soft: #14101e;
-      --text: #f5d0fe;
-      --text-muted: #c4b5fd;
-      --line: rgba(236,72,153,0.18);
-      --line-strong: rgba(236,72,153,0.40);
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+
+    body {
+      background-color: var(--color-canvas);
+      color: var(--color-ink);
+      font-family: var(--font-body);
+      font-size: var(--type-body-md-size);
+      line-height: 1.55;
+      padding: var(--space-xxl) var(--space-xxl);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
     }
 
-    [data-theme="light"] body { background: linear-gradient(135deg, #fdf4ff 0%, #fef3f8 40%, #fdf4ff 100%); }
-    [data-theme="dark"] body  { background: linear-gradient(160deg, #0f0a14 0%, #15101e 50%, #0a050d 100%); }
+    .page {
+      max-width: 920px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-xl);
+    }
 
-    /* ---------- Header (compact, single row) ---------- */
-    .page-header {
-      border-radius: 16px;
-      padding: 14px 22px;
-      border: 1px solid var(--line-strong);
-      display: flex; align-items: center; gap: 18px;
-    }
-    [data-theme="light"] .page-header {
-      background: linear-gradient(90deg, rgba(168,85,247,0.0) 0%, rgba(236,72,153,0.08) 50%, rgba(168,85,247,0.0) 100%);
-    }
-    [data-theme="dark"] .page-header {
-      background: linear-gradient(90deg, rgba(168,85,247,0.0) 0%, rgba(236,72,153,0.10) 50%, rgba(168,85,247,0.0) 100%);
-    }
-    .header-title-block { flex: 0 0 auto; min-width: 0; }
+    /* ── Header (text-hero — coral rule + eyebrow + serif "抽奖结果").
+     * The pool / user pills sit on the byline row so the page reads as
+     * "you opened pack X" rather than burying meta in a separate card. */
     .header-rule {
-      height: 4px; width: 56px; border-radius: 2px;
-      background: linear-gradient(90deg, #a855f7, #ec4899, transparent);
-      margin-bottom: 8px;
+      width: 64px;
+      height: 4px;
+      background-color: var(--color-primary);
+      border-radius: var(--radius-pill);
+      margin-bottom: var(--space-md);
     }
-    .header-title { font-size: 24px; font-weight: 800; letter-spacing: -0.01em; line-height: 1.1; }
-    [data-theme="light"] .header-title { color: #a21caf; }
-    [data-theme="dark"]  .header-title { color: #f0abfc; text-shadow: 0 2px 20px rgba(236,72,153,0.30); }
 
-    .header-meta { flex: 1 1 auto; min-width: 0; display: flex; flex-wrap: wrap; gap: 6px; }
-    .header-time { flex: 0 0 auto; color: var(--text-muted); opacity: 0.7; font-size: 11px; align-self: flex-start; }
-
-    /* ---------- Meta pills ---------- */
-    .meta-pill {
-      display: inline-flex; align-items: center; gap: 5px;
-      font-size: 12px; font-weight: 700;
-      padding: 4px 10px;
-      border-radius: 999px;
-      line-height: 1.4;
-      border: 1px solid transparent;
+    .header-eyebrow {
+      color: var(--color-muted);
+      margin-bottom: var(--space-xs);
     }
-    .meta-pill .meta-key {
-      font-size: 10px; font-weight: 600; letter-spacing: 0.04em;
-      opacity: 0.7;
-    }
-    [data-theme="light"] .meta-pill.pool { background: #fdf4ff; color: #a21caf; border-color: #f5d0fe; }
-    [data-theme="dark"]  .meta-pill.pool { background: rgba(236,72,153,0.18); color: #fbcfe8; border-color: rgba(236,72,153,0.40); }
-    [data-theme="light"] .meta-pill.draws { background: #ede9fe; color: #6d28d9; border-color: #ddd6fe; }
-    [data-theme="dark"]  .meta-pill.draws { background: rgba(168,85,247,0.18); color: #ddd6fe; border-color: rgba(168,85,247,0.40); }
-    [data-theme="light"] .meta-pill.cost { background: #fffbeb; color: #b45309; border-color: #fde68a; }
-    [data-theme="dark"]  .meta-pill.cost { background: rgba(234,179,8,0.18); color: #fde68a; border-color: rgba(234,179,8,0.40); }
-    [data-theme="light"] .meta-pill.user { background: #f1f5f9; color: #475569; border-color: #e2e8f0; }
-    [data-theme="dark"]  .meta-pill.user { background: rgba(148,163,184,0.18); color: #cbd5e1; border-color: rgba(148,163,184,0.30); }
 
-    /* ---------- Stats tiles (1x5 horizontal strip) ---------- */
+    .header-title {
+      color: var(--color-ink);
+      margin: 0 0 var(--space-md) 0;
+    }
+
+    .header-meta {
+      color: var(--color-muted-soft);
+      display: flex;
+      gap: var(--space-md);
+      align-items: baseline;
+      flex-wrap: wrap;
+    }
+
+    .header-meta-divider {
+      color: var(--color-hairline);
+    }
+
+    .meta-value {
+      color: var(--color-ink);
+      font-feature-settings: "tnum";
+    }
+
+    /* ── Stats tiles (5 across, cream-card not bg-with-accent-bar) ─ */
     .stats-tiles {
       display: grid;
-      gap: 8px;
+      gap: var(--space-sm);
       grid-template-columns: repeat(5, minmax(0, 1fr));
     }
 
     .stat-tile {
-      position: relative;
-      border-radius: 12px;
-      padding: 10px 14px;
-      background: var(--surface);
-      border: 1px solid var(--line);
-      box-shadow: 0 1px 4px rgba(236,72,153,0.04);
-      display: flex; flex-direction: column; gap: 2px;
+      background-color: var(--color-surface-card);
+      border: 1px solid var(--color-hairline);
+      border-radius: var(--radius-md);
+      padding: var(--space-sm) var(--space-md);
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
       min-width: 0;
     }
-    .stat-tile::before {
-      content: ""; position: absolute; left: 0; top: 8px; bottom: 8px;
-      width: 3px; border-radius: 0 2px 2px 0;
-      background: var(--accent, var(--line-strong));
-    }
-    .stat-tile.accent-pink   { --accent: #ec4899; }
-    .stat-tile.accent-purple { --accent: #a855f7; }
-    .stat-tile.accent-amber  { --accent: #f59e0b; }
-    .stat-tile.accent-green  { --accent: #10b981; }
-    .stat-tile.accent-red    { --accent: #ef4444; }
-    .stat-tile.accent-slate  { --accent: #64748b; }
 
     .stat-label {
-      font-size: 10px; color: var(--text-muted);
-      font-weight: 600; letter-spacing: 0.04em;
+      color: var(--color-muted);
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
     }
-    .stat-value {
-      font-size: 18px; font-weight: 800; color: var(--text);
-      letter-spacing: -0.01em;
-      line-height: 1.15;
-      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    }
-    [data-theme="dark"] .stat-value { color: #f8fafc; }
-    .stat-value.gain { color: #059669; }
-    .stat-value.loss { color: #dc2626; }
-    [data-theme="dark"] .stat-value.gain { color: #34d399; }
-    [data-theme="dark"] .stat-value.loss { color: #f87171; }
 
-    /* ---------- Gacha grid + cards ---------- */
+    .stat-value {
+      color: var(--color-ink);
+      font-family: var(--font-body);
+      font-size: 18px;
+      font-weight: 600;
+      line-height: 1.15;
+      letter-spacing: -0.01em;
+      font-feature-settings: "tnum";
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .stat-value.gain { color: var(--color-accent-teal); }
+    .stat-value.loss { color: var(--color-primary); }
+
+    /* ── Gacha grid (this page IS a gacha page — cards are the
+     * design language; we only strip the multi-color tier backgrounds
+     * and lean on the 4-tier semantic palette instead). ───────── */
     .gacha-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-      gap: 10px;
+      gap: var(--space-sm);
     }
+
     .gacha-grid.single-card {
       grid-template-columns: minmax(220px, 280px);
       justify-content: center;
@@ -132,74 +125,80 @@
 
     .gacha-card {
       position: relative;
-      border-radius: 14px;
+      background-color: var(--color-surface-card);
+      border: 1px solid var(--color-hairline);
+      border-radius: var(--radius-lg);
       padding: 14px 10px 10px 10px;
-      display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
       gap: 8px;
       min-height: 200px;
-      background: var(--surface);
-      border: 1px solid var(--line);
-      box-shadow: 0 1px 4px rgba(236,72,153,0.04);
-    }
-    .gacha-card.tier-5 {
-      border: 1.5px solid #f59e0b;
-      background: color-mix(in srgb, #f59e0b 4%, var(--surface));
-      box-shadow: 0 2px 12px rgba(245,158,11,0.14);
-    }
-    .gacha-card.tier-4 {
-      border: 1.5px solid #a855f7;
-      background: color-mix(in srgb, #a855f7 3%, var(--surface));
-      box-shadow: 0 2px 10px rgba(168,85,247,0.12);
-    }
-    .gacha-card.tier-3 { border-color: #3b82f6; background: color-mix(in srgb, #3b82f6 2%, var(--surface)); }
-    .gacha-card.tier-2 { border-color: #10b981; background: color-mix(in srgb, #10b981 2%, var(--surface)); }
-    .gacha-card.tier-1 { border-color: var(--line-strong); }
-    .gacha-card.tier-0 {
-      border: 1px dashed var(--line-strong);
-      background: var(--surface-soft);
-      opacity: 0.85;
     }
 
-    .gacha-card.coin-pos .gacha-icon-wrap { color: #059669; }
-    .gacha-card.coin-neg .gacha-icon-wrap { color: #dc2626; }
+    /* 4-tier semantic mapping: tier 0 = miss (cream + dashed),
+     * tier 1-2 = neutral (cream solid), tier 3 = teal, tier 4 = amber,
+     * tier 5 = primary coral. */
+    .gacha-card.tier-0 {
+      background-color: var(--color-surface-soft);
+      border: 1px dashed var(--color-hairline);
+    }
+    .gacha-card.tier-3 { border-color: var(--color-accent-teal); }
+    .gacha-card.tier-4 { border-color: var(--color-accent-amber); }
+    .gacha-card.tier-5 {
+      border: 2px solid var(--color-primary);
+      background-color: var(--color-canvas);
+    }
 
     .gacha-stars {
-      font-size: 13px; letter-spacing: 2px;
-      color: var(--line-strong);
-      font-weight: 700;
+      font-size: 13px;
+      letter-spacing: 2px;
+      color: var(--color-hairline);
+      font-weight: 600;
+      font-feature-settings: "tnum";
     }
-    .gacha-card.tier-5 .gacha-stars .filled { color: #d97706; }
-    .gacha-card.tier-4 .gacha-stars .filled { color: #7c3aed; }
-    .gacha-card.tier-3 .gacha-stars .filled { color: #2563eb; }
-    .gacha-card.tier-2 .gacha-stars .filled { color: #059669; }
-    .gacha-card.tier-1 .gacha-stars .filled { color: var(--text-muted); }
-    .gacha-card.tier-0 .gacha-stars-miss { color: var(--text-muted); font-size: 12px; font-weight: 600; letter-spacing: 0.04em; }
+    .gacha-card.tier-1 .gacha-stars .filled,
+    .gacha-card.tier-2 .gacha-stars .filled { color: var(--color-muted); }
+    .gacha-card.tier-3 .gacha-stars .filled { color: var(--color-accent-teal); }
+    .gacha-card.tier-4 .gacha-stars .filled { color: var(--color-accent-amber); }
+    .gacha-card.tier-5 .gacha-stars .filled { color: var(--color-primary); }
+
+    .gacha-stars-miss {
+      color: var(--color-muted);
+      font-size: 12px;
+      font-weight: 500;
+      letter-spacing: 0.04em;
+    }
 
     .gacha-icon-wrap {
-      width: 60px; height: 60px;
-      border-radius: 12px;
-      display: flex; align-items: center; justify-content: center;
-      background: color-mix(in srgb, currentColor 7%, var(--surface));
-      border: 1px solid color-mix(in srgb, currentColor 18%, var(--line));
-      color: var(--text-muted);
+      width: 60px;
+      height: 60px;
+      border-radius: var(--radius-md);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background-color: var(--color-canvas);
+      border: 1px solid var(--color-hairline);
+      color: var(--color-muted);
     }
-    .gacha-card.tier-5 .gacha-icon-wrap { color: #d97706; }
-    .gacha-card.tier-4 .gacha-icon-wrap { color: #7c3aed; }
-    .gacha-card.tier-3 .gacha-icon-wrap { color: #2563eb; }
-    .gacha-card.tier-2 .gacha-icon-wrap { color: #059669; }
-    .gacha-card.tier-1 .gacha-icon-wrap { color: var(--text-muted); }
+    .gacha-card.tier-3 .gacha-icon-wrap { color: var(--color-accent-teal); border-color: var(--color-accent-teal); }
+    .gacha-card.tier-4 .gacha-icon-wrap { color: var(--color-accent-amber); border-color: var(--color-accent-amber); }
+    .gacha-card.tier-5 .gacha-icon-wrap { color: var(--color-primary); border-color: var(--color-primary); }
     .gacha-card.tier-0 .gacha-icon-wrap {
-      background: var(--surface);
-      border: 1px dashed var(--line-strong);
-      color: var(--text-muted);
+      border: 1px dashed var(--color-hairline);
+      color: var(--color-muted);
     }
+    .gacha-card.coin-pos .gacha-icon-wrap { color: var(--color-accent-teal); border-color: var(--color-accent-teal); }
+    .gacha-card.coin-neg .gacha-icon-wrap { color: var(--color-primary); border-color: var(--color-primary); }
 
     .gacha-icon-wrap img { width: 44px; height: 44px; object-fit: contain; image-rendering: pixelated; }
-    .gacha-icon-emoji { font-size: 30px; line-height: 1; }
+    .gacha-icon-emoji { font-size: 30px; line-height: 1; font-family: var(--font-display); font-weight: 600; }
 
     .gacha-name {
-      color: var(--text);
-      font-size: 12px; font-weight: 700;
+      color: var(--color-ink);
+      font-size: 12px;
+      font-weight: 600;
       max-width: 100%;
       text-align: center;
       line-height: 1.3;
@@ -207,175 +206,199 @@
       display: -webkit-box;
       -webkit-line-clamp: 2;
       -webkit-box-orient: vertical;
+      font-feature-settings: "tnum";
     }
-    [data-theme="dark"] .gacha-name { color: #f8fafc; }
-    .gacha-card.tier-0 .gacha-name { color: var(--text-muted); font-weight: 600; }
+    .gacha-card.tier-0 .gacha-name { color: var(--color-muted); font-weight: 500; }
 
     .gacha-bottom {
       width: 100%;
-      display: flex; align-items: center; justify-content: center; gap: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
       margin-top: auto;
     }
+
     .gacha-kind-chip {
-      font-size: 10px; font-weight: 600;
-      padding: 3px 8px;
-      border-radius: 10px;
-      background: var(--surface-soft);
-      color: var(--text-muted);
-      border: 1px solid var(--line);
+      font-size: 10px;
+      font-weight: 500;
+      padding: 2px 8px;
+      border-radius: var(--radius-pill);
+      background-color: var(--color-canvas);
+      color: var(--color-muted);
+      border: 1px solid var(--color-hairline);
+      font-feature-settings: "tnum";
     }
-    .gacha-card.tier-5 .gacha-kind-chip { background: color-mix(in srgb, #f59e0b 8%, var(--surface)); color: #b45309; border-color: color-mix(in srgb, #f59e0b 25%, var(--line)); }
-    .gacha-card.tier-4 .gacha-kind-chip { background: color-mix(in srgb, #a855f7 8%, var(--surface)); color: #7c3aed; border-color: color-mix(in srgb, #a855f7 25%, var(--line)); }
-    .gacha-card.tier-3 .gacha-kind-chip { background: color-mix(in srgb, #2563eb 8%, var(--surface)); color: #2563eb; border-color: color-mix(in srgb, #2563eb 25%, var(--line)); }
-    .gacha-card.tier-2 .gacha-kind-chip { background: color-mix(in srgb, #10b981 8%, var(--surface)); color: #059669; border-color: color-mix(in srgb, #10b981 25%, var(--line)); }
-    .gacha-card.coin-pos .gacha-kind-chip { background: color-mix(in srgb, #10b981 8%, var(--surface)); color: #059669; border-color: color-mix(in srgb, #10b981 25%, var(--line)); }
-    .gacha-card.coin-neg .gacha-kind-chip { background: color-mix(in srgb, #dc2626 8%, var(--surface)); color: #dc2626; border-color: color-mix(in srgb, #dc2626 25%, var(--line)); }
+    .gacha-card.tier-3 .gacha-kind-chip { color: var(--color-accent-teal); border-color: var(--color-accent-teal); }
+    .gacha-card.tier-4 .gacha-kind-chip { color: var(--color-accent-amber); border-color: var(--color-accent-amber); }
+    .gacha-card.tier-5 .gacha-kind-chip { background-color: var(--color-primary); color: var(--color-on-primary); border-color: var(--color-primary); }
+    /* coin-pos/neg must reset background — otherwise tier-5+coin-pos
+     * gives coral bg with teal text (zero contrast). The semantic
+     * "coin direction" colour wins over rarity tier on the chip. */
+    .gacha-card.coin-pos .gacha-kind-chip {
+      background-color: var(--color-canvas);
+      color: var(--color-accent-teal);
+      border-color: var(--color-accent-teal);
+    }
+    .gacha-card.coin-neg .gacha-kind-chip {
+      background-color: var(--color-canvas);
+      color: var(--color-primary);
+      border-color: var(--color-primary);
+    }
 
     .gacha-count-badge {
       position: absolute;
-      top: 8px; right: 8px;
-      min-width: 26px; height: 20px;
+      top: 8px;
+      right: 8px;
+      min-width: 26px;
+      height: 20px;
       padding: 0 7px;
-      border-radius: 10px;
-      background: linear-gradient(90deg, #a855f7, #ec4899);
-      color: #ffffff;
+      border-radius: var(--radius-pill);
+      background-color: var(--color-primary);
+      color: var(--color-on-primary);
       font-size: 10px;
-      font-weight: 700;
-      display: inline-flex; align-items: center; justify-content: center;
-      box-shadow: 0 2px 6px rgba(236,72,153,0.30);
+      font-weight: 600;
+      font-feature-settings: "tnum";
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
     }
 
-    /* ---------- Command results ---------- */
+    /* ── Command results card ──────────────────────────────── */
     .cmd-card {
-      border-radius: 14px;
-      padding: 12px 18px;
-      background: var(--surface);
-      border: 1px solid var(--line);
-      box-shadow: 0 2px 12px rgba(236,72,153,0.06);
+      background-color: var(--color-surface-card);
+      border: 1px solid var(--color-hairline);
+      border-radius: var(--radius-md);
+      padding: var(--space-md) var(--space-lg);
     }
-    .cmd-card-title { font-size: 11px; font-weight: 700; margin-bottom: 6px; color: var(--text-muted); letter-spacing: 0.10em; text-transform: uppercase; }
-    .cmd-result-ok { color: #059669; }
-    .cmd-result-fail { color: #dc2626; }
-    [data-theme="dark"] .cmd-result-ok { color: #34d399; }
-    [data-theme="dark"] .cmd-result-fail { color: #f87171; }
 
-    .page-footer { font-size: 11px; font-weight: 600; letter-spacing: 0.20em; color: var(--text-muted); opacity: 0.45; }
+    .cmd-card-title {
+      color: var(--color-muted);
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+
+    .cmd-line {
+      font-family: var(--font-code);
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    .cmd-line.ok { color: var(--color-accent-teal); }
+    .cmd-line.fail { color: var(--color-primary); }
+
+    .footer {
+      text-align: right;
+      color: var(--color-muted-soft);
+      margin-top: var(--space-md);
+    }
   </style>
 </head>
-<body class="px-6 py-6">
+<body>
+  <main class="page">
 
-  <!-- Header: title + meta pills + timestamp on a single row -->
-  <div class="page-header mx-auto max-w-[920px]">
-    <div class="header-title-block">
+    <header>
       <div class="header-rule"></div>
-      <h1 class="header-title">抽奖结果</h1>
-    </div>
-    <div id="meta-strip" class="header-meta"></div>
-    <div class="header-time" id="generated-at"></div>
-  </div>
+      <div class="header-eyebrow type-caption-uppercase">奖池系统</div>
+      <h1 class="header-title type-display-lg">抽奖结果</h1>
+      <div class="header-meta type-body-sm">
+        <span>奖池 <span class="meta-value" id="meta-pool-name"></span></span>
+        <span class="header-meta-divider">·</span>
+        <span>ID <span class="meta-value" id="meta-pool-id"></span></span>
+        <span class="header-meta-divider">·</span>
+        <span>玩家 <span class="meta-value" id="meta-user-name"></span></span>
+        <span class="header-meta-divider">·</span>
+        <span>QQ <span class="meta-value" id="meta-user-id"></span></span>
+        <span class="header-meta-divider">·</span>
+        <span id="generated-at"></span>
+      </div>
+    </header>
 
-  <!-- Stats tiles -->
-  <div class="mx-auto max-w-[920px] mt-3">
-    <div id="stats-tiles" class="stats-tiles">
-      <div class="stat-tile accent-purple">
+    <section class="stats-tiles">
+      <div class="stat-tile">
         <span class="stat-label">抽奖次数</span>
         <span class="stat-value" id="sum-draw-count"></span>
       </div>
-      <div class="stat-tile accent-red">
+      <div class="stat-tile">
         <span class="stat-label">花费</span>
         <span class="stat-value loss" id="sum-cost"></span>
       </div>
-      <div class="stat-tile accent-green">
+      <div class="stat-tile">
         <span class="stat-label">奖品估值</span>
         <span class="stat-value" id="sum-coin-delta"></span>
       </div>
-      <div class="stat-tile accent-pink">
+      <div class="stat-tile">
         <span class="stat-label">入库</span>
         <span class="stat-value" id="sum-slots"></span>
       </div>
-      <div class="stat-tile accent-amber">
+      <div class="stat-tile">
         <span class="stat-label">当前金币</span>
         <span class="stat-value" id="sum-coins-after"></span>
       </div>
+    </section>
+
+    <section id="gacha-grid" class="gacha-grid"></section>
+
+    <div id="cmd-card" class="cmd-card" hidden>
+      <div class="cmd-card-title">指令执行明细</div>
+      <div id="cmd-list"></div>
     </div>
-  </div>
 
-  <!-- Outcomes section -->
-  <div class="mx-auto max-w-[920px] mt-3">
-    <div id="gacha-grid" class="gacha-grid"></div>
-  </div>
-
-  <!-- Command results (optional) -->
-  <div id="cmd-card" class="cmd-card mx-auto max-w-[920px] mt-3" style="display:none;">
-    <div class="cmd-card-title">指令执行明细</div>
-    <div id="cmd-list" style="display:flex; flex-direction:column; gap:4px; font-size:12px;"></div>
-  </div>
-
-  <div class="mx-auto max-w-[920px] mt-4 text-center">
-    <div class="page-footer">Powered by NextBot</div>
-  </div>
+    <footer class="footer type-caption">Powered by NextBot</footer>
+  </main>
 
   <script id="lottery-result-data" type="application/json">__LOTTERY_RESULT_DATA_JSON__</script>
   <script>
-    (async function () {
+    (function () {
       const data = JSON.parse(document.getElementById("lottery-result-data").textContent);
       const outcomes = Array.isArray(data.outcomes) ? data.outcomes : [];
-      document.documentElement.setAttribute("data-theme", String(data.theme || "light"));
 
-      // ---------- Header: meta pills ----------
-      const metaStrip = document.getElementById("meta-strip");
-      metaStrip.appendChild(makeMetaPill("pool", "奖池", (data.pool_name || "未命名") + " · ID " + (data.pool_id || "-")));
-      metaStrip.appendChild(makeMetaPill("user", "玩家", (data.user_user_name || "") + " · " + (data.user_user_id || "-")));
+      // ── Header meta ─────────────────────────────────────────
+      document.getElementById("meta-pool-name").textContent = String(data.pool_name || "未命名");
+      document.getElementById("meta-pool-id").textContent = String(data.pool_id ?? "-");
+      document.getElementById("meta-user-name").textContent = String(data.user_user_name || "未知玩家");
+      document.getElementById("meta-user-id").textContent = String(data.user_user_id || "-");
       document.getElementById("generated-at").textContent = data.generated_at || "";
 
-      // ---------- Stats tiles ----------
-      document.getElementById("sum-draw-count").textContent = (data.draw_count || 1) + " 次";
-      document.getElementById("sum-cost").textContent = "- " + (data.total_cost || 0);
-      // 奖品净收益 = 金币奖品净额 + 物品估价总和
+      // ── Stats tiles ─────────────────────────────────────────
+      document.getElementById("sum-draw-count").textContent = `${data.draw_count || 1} 次`;
+      document.getElementById("sum-cost").textContent = `− ${data.total_cost || 0}`;
       const delta = Number(data.coin_delta || 0) + Number(data.item_value_gained || 0);
       const deltaEl = document.getElementById("sum-coin-delta");
-      deltaEl.textContent = (delta >= 0 ? "+ " : "- ") + Math.abs(delta);
+      deltaEl.textContent = `${delta >= 0 ? "+ " : "− "}${Math.abs(delta)}`;
       deltaEl.classList.remove("gain", "loss");
       if (delta > 0) deltaEl.classList.add("gain");
       else if (delta < 0) deltaEl.classList.add("loss");
-      document.getElementById("sum-slots").textContent = (data.item_slots_used || 0) + " 格";
-      document.getElementById("sum-coins-after").textContent = "💰 " + (data.user_coins_after || 0);
+      document.getElementById("sum-slots").textContent = `${data.item_slots_used || 0} 格`;
+      document.getElementById("sum-coins-after").textContent = String(data.user_coins_after || 0);
 
-      // ---------- Outcomes ----------
+      // ── Outcomes ───────────────────────────────────────────
       const grid = document.getElementById("gacha-grid");
       if (outcomes.length === 1) grid.classList.add("single-card");
       outcomes.forEach((o) => grid.appendChild(renderCard(o)));
 
-      // ---------- Command results ----------
+      // ── Command results ────────────────────────────────────
       const cmds = Array.isArray(data.command_results) ? data.command_results : [];
       if (cmds.length > 0) {
         const card = document.getElementById("cmd-card");
         const lst = document.getElementById("cmd-list");
         cmds.forEach((r) => {
           const line = document.createElement("div");
-          const mark = r.ok ? "✅" : "❌";
-          line.className = r.ok ? "cmd-result-ok" : "cmd-result-fail";
-          line.textContent = "  " + mark + " " + (r.server_label || "") + (r.ok ? "" : (r.reason ? "（" + r.reason + "）" : "（失败）"));
+          line.className = "cmd-line " + (r.ok ? "ok" : "fail");
+          const mark = r.ok ? "✓" : "✗";
+          const reason = !r.ok && r.reason ? `（${r.reason}）` : (r.ok ? "" : "（失败）");
+          line.textContent = `${mark} ${r.server_label || ""}${reason}`;
           lst.appendChild(line);
         });
-        card.style.display = "block";
+        card.hidden = false;
       }
 
-      // ---------- Helpers ----------
-
-      function makeMetaPill(variant, key, value) {
-        const pill = document.createElement("span");
-        pill.className = "meta-pill " + variant;
-        const k = document.createElement("span");
-        k.className = "meta-key";
-        k.textContent = key;
-        pill.appendChild(k);
-        pill.appendChild(document.createTextNode(" " + value));
-        return pill;
-      }
+      // ── Helpers ────────────────────────────────────────────
 
       function appendStars(node, tier) {
-        while (node.firstChild) node.removeChild(node.firstChild);
         for (let i = 0; i < 5; i++) {
           const span = document.createElement("span");
           if (i < tier) span.className = "filled";
@@ -385,39 +408,31 @@
       }
 
       function buildIcon(o, size) {
-        const wrap = document.createElement("div");
-        wrap.style.display = "flex";
-        wrap.style.alignItems = "center";
-        wrap.style.justifyContent = "center";
         if (o.kind === "item" && !o.is_mystery && Number(o.item_id || 0) > 0) {
           const img = document.createElement("img");
-          img.src = "/assets/items/Item_" + o.item_id + ".png";
+          img.src = `/assets/items/Item_${o.item_id}.png`;
           img.alt = String(o.item_id);
-          img.style.width = size + "px";
-          img.style.height = size + "px";
-          img.style.objectFit = "contain";
-          img.style.imageRendering = "pixelated";
-          wrap.appendChild(img);
-        } else {
-          const span = document.createElement("span");
-          span.className = "gacha-icon-emoji";
-          span.style.fontSize = (size * 0.72) + "px";
-          if (o.kind === "miss") span.textContent = "💨";
-          else if (o.kind === "command") span.textContent = "⚙️";
-          else if (o.kind === "coin") {
-            const positive = Number(o.coin_amount || 0) >= 0;
-            span.textContent = positive ? "💰" : "💸";
-          } else if (o.kind === "item" && o.is_mystery) span.textContent = "❓";
-          else span.textContent = "🎁";
-          wrap.appendChild(span);
+          img.style.width = `${size}px`;
+          img.style.height = `${size}px`;
+          return img;
         }
-        return wrap;
+        const span = document.createElement("span");
+        span.className = "gacha-icon-emoji";
+        span.style.fontSize = `${Math.round(size * 0.72)}px`;
+        if (o.kind === "miss") span.textContent = "—";
+        else if (o.kind === "command") span.textContent = "⚙";
+        else if (o.kind === "coin") {
+          const positive = Number(o.coin_amount || 0) >= 0;
+          span.textContent = positive ? "+" : "−";
+        } else if (o.kind === "item" && o.is_mystery) span.textContent = "?";
+        else span.textContent = "•";
+        return span;
       }
 
       function renderCard(o) {
-        const card = document.createElement("div");
+        const card = document.createElement("article");
         const tier = Number(o.rarity_tier || 0);
-        card.className = "gacha-card tier-" + tier;
+        card.className = `gacha-card tier-${tier}`;
         if (o.kind === "coin") {
           card.classList.add(Number(o.coin_amount || 0) >= 0 ? "coin-pos" : "coin-neg");
         }
@@ -425,7 +440,7 @@
         if ((o.count || 1) > 1) {
           const badge = document.createElement("div");
           badge.className = "gacha-count-badge";
-          badge.textContent = "× " + o.count;
+          badge.textContent = `× ${o.count}`;
           card.appendChild(badge);
         }
 
@@ -454,7 +469,7 @@
           name.textContent = o.name || "未知物品";
         } else if (o.kind === "coin") {
           const total = Number(o.total_coin || 0);
-          name.textContent = (o.name || "金币") + "  " + (total >= 0 ? "+" : "") + total;
+          name.textContent = `${o.name || "金币"}  ${total >= 0 ? "+" : ""}${total}`;
         } else {
           name.textContent = o.name || "未命名";
         }
@@ -464,7 +479,7 @@
         bottom.className = "gacha-bottom";
         const chip = document.createElement("span");
         chip.className = "gacha-kind-chip";
-        if (o.kind === "item") chip.textContent = "物品 ×" + (o.total_quantity || o.quantity || 1);
+        if (o.kind === "item") chip.textContent = `物品 ×${o.total_quantity || o.quantity || 1}`;
         else if (o.kind === "command") chip.textContent = "指令";
         else if (o.kind === "coin") chip.textContent = Number(o.coin_amount || 0) >= 0 ? "金币奖励" : "金币扣除";
         else chip.textContent = "未中奖";
