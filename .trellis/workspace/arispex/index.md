@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 68
+- **Total Sessions**: 69
 - **Last Active**: 2026-05-04
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~1107 | Active |
+| `journal-2.md` | ~1140 | Active |
 | `journal-1.md` | ~1999 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 69 | 2026-05-04 | 用户信息页按 DESIGN.md 重构（canvas-first + 数字字体修正） | `36fd875` | `main` |
 | 68 | 2026-05-04 | 菜单截图高度自适应 | `35e70e5` | `main` |
 | 67 | 2026-05-04 | Trellis 0.5 升级 + 菜单页面按 DESIGN.md 重构 | `2c5405c`, `aa72ce0` | `main` |
 | 66 | 2026-05-03 | 仓库赠送 + 访客权限同步 + NoneBot2 T_State 注入修复 | `601b2a6`, `99cd3ba` |

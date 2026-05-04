@@ -1105,3 +1105,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 69: 用户信息页按 DESIGN.md 重构（canvas-first + 数字字体修正）
+
+**Date**: 2026-05-04
+**Task**: 用户信息页按 DESIGN.md 重构（canvas-first + 数字字体修正）
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `36fd875` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
