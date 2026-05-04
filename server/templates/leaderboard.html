@@ -1,329 +1,483 @@
 <!doctype html>
-<html lang="zh-CN" data-theme="dark">
+<html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>NextBot - 排行榜</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <title>NextBot 排行榜</title>
+  <link rel="stylesheet" href="/assets/css/render-fonts.css" />
+  <link rel="stylesheet" href="/assets/css/render-tokens.css" />
   <style>
-    /* ── Dark theme ─────────────────────────────────────────── */
-    [data-theme="dark"] body {
-      background: linear-gradient(160deg, #0f1729 0%, #111827 50%, #0d1420 100%);
-    }
-    [data-theme="dark"] .podium-gold {
-      background: linear-gradient(160deg, #1a1400 0%, #2d2000 60%, #1a1400 100%);
-      border: 1px solid rgba(251,191,36,0.45);
-      box-shadow: 0 0 0 1px rgba(251,191,36,0.1), 0 20px 60px rgba(251,191,36,0.15), inset 0 1px 0 rgba(251,191,36,0.2);
-    }
-    [data-theme="dark"] .podium-silver {
-      background: linear-gradient(160deg, #111820 0%, #1a2333 60%, #111820 100%);
-      border: 1px solid rgba(148,163,184,0.35);
-      box-shadow: 0 0 0 1px rgba(148,163,184,0.08), 0 16px 40px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.08);
-    }
-    [data-theme="dark"] .podium-bronze {
-      background: linear-gradient(160deg, #1a0f00 0%, #2a1a05 60%, #1a0f00 100%);
-      border: 1px solid rgba(217,119,6,0.35);
-      box-shadow: 0 0 0 1px rgba(217,119,6,0.08), 0 16px 40px rgba(0,0,0,0.4), inset 0 1px 0 rgba(217,119,6,0.15);
-    }
-    [data-theme="dark"] .rank-num-gold   { color: #fbbf24; text-shadow: 0 0 30px rgba(251,191,36,0.6), 0 0 60px rgba(251,191,36,0.3); }
-    [data-theme="dark"] .rank-num-silver { color: #94a3b8; text-shadow: 0 0 20px rgba(148,163,184,0.4); }
-    [data-theme="dark"] .rank-num-bronze { color: #d97706; text-shadow: 0 0 20px rgba(217,119,6,0.5); }
-    [data-theme="dark"] .coin-gold   { color: #fcd34d; }
-    [data-theme="dark"] .coin-silver { color: #94a3b8; }
-    [data-theme="dark"] .coin-bronze { color: #d97706; }
-    [data-theme="dark"] .gold-bar    { background: linear-gradient(90deg, transparent, #fbbf24, transparent); }
-    [data-theme="dark"] .silver-bar  { background: linear-gradient(90deg, transparent, #94a3b8, transparent); }
-    [data-theme="dark"] .bronze-bar  { background: linear-gradient(90deg, transparent, #d97706, transparent); }
-    [data-theme="dark"] .list-wrap   { border-color: rgba(255,255,255,0.06); }
-    [data-theme="dark"] .list-row    { background: rgba(255,255,255,0.03); border-color: rgba(255,255,255,0.06); }
-    [data-theme="dark"] .rank-badge  { background: rgba(255,255,255,0.06); color: #64748b; }
-    [data-theme="dark"] .entry-name  { color: #cbd5e1; }
-    [data-theme="dark"] .entry-value { color: #94a3b8; }
-    [data-theme="dark"] .entry-unit  { color: #475569; }
-    [data-theme="dark"] .page-header { background: linear-gradient(90deg, rgba(30,50,120,0.0) 0%, rgba(59,130,246,0.08) 50%, rgba(30,50,120,0.0) 100%); border-color: rgba(59,130,246,0.15); }
-    [data-theme="dark"] .header-title { color: white; text-shadow: 0 2px 20px rgba(59,130,246,0.3); }
-    [data-theme="dark"] .header-rule  { background: linear-gradient(90deg, #60a5fa, #3b82f6, transparent); }
-    [data-theme="dark"] .header-time  { color: #475569; }
-    [data-theme="dark"] .self-wrap    { border-color: rgba(255,255,255,0.08); background: rgba(255,255,255,0.04); }
-    [data-theme="dark"] .self-label   { color: #475569; }
-    [data-theme="dark"] .page-footer  { color: #374151; }
-    [data-theme="dark"] .pagination   { color: #64748b; }
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    /* class selectors with display:flex/grid override the UA [hidden]
+     * default; restore it explicitly so hidden sections truly disappear. */
+    [hidden] { display: none !important; }
 
-    /* ── Light theme ────────────────────────────────────────── */
-    [data-theme="light"] body {
-      background: linear-gradient(135deg, #f0f4ff 0%, #f8fafc 40%, #eef2f7 100%);
+    body {
+      background-color: var(--color-canvas);
+      color: var(--color-ink);
+      font-family: var(--font-body);
+      font-size: var(--type-body-md-size);
+      line-height: 1.55;
+      padding: var(--space-xxl) var(--space-xxl);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
     }
-    [data-theme="light"] .podium-gold {
-      background: linear-gradient(160deg, #fffbeb 0%, #fef3c7 60%, #fffbeb 100%);
-      border: 1px solid rgba(251,191,36,0.5);
-      box-shadow: 0 8px 30px rgba(251,191,36,0.12), inset 0 1px 0 rgba(255,255,255,0.8);
-    }
-    [data-theme="light"] .podium-silver {
-      background: linear-gradient(160deg, #f8fafc 0%, #f1f5f9 60%, #f8fafc 100%);
-      border: 1px solid rgba(148,163,184,0.45);
-      box-shadow: 0 6px 20px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.9);
-    }
-    [data-theme="light"] .podium-bronze {
-      background: linear-gradient(160deg, #fff7ed 0%, #ffedd5 60%, #fff7ed 100%);
-      border: 1px solid rgba(217,119,6,0.4);
-      box-shadow: 0 6px 20px rgba(217,119,6,0.08), inset 0 1px 0 rgba(255,255,255,0.8);
-    }
-    [data-theme="light"] .rank-num-gold   { color: #b45309; }
-    [data-theme="light"] .rank-num-silver { color: #64748b; }
-    [data-theme="light"] .rank-num-bronze { color: #92400e; }
-    [data-theme="light"] .coin-gold   { color: #b45309; }
-    [data-theme="light"] .coin-silver { color: #475569; }
-    [data-theme="light"] .coin-bronze { color: #92400e; }
-    [data-theme="light"] .gold-bar    { background: linear-gradient(90deg, transparent, rgba(251,191,36,0.4), transparent); }
-    [data-theme="light"] .silver-bar  { background: linear-gradient(90deg, transparent, rgba(148,163,184,0.4), transparent); }
-    [data-theme="light"] .bronze-bar  { background: linear-gradient(90deg, transparent, rgba(217,119,6,0.3), transparent); }
-    [data-theme="light"] .list-wrap   { border-color: #e2e8f0; background: white; box-shadow: 0 2px 12px rgba(30,50,120,0.06); }
-    [data-theme="light"] .list-row    { background: white; border-color: #f1f5f9; }
-    [data-theme="light"] .list-row:not(:last-child) { border-bottom-color: #f1f5f9; }
-    [data-theme="light"] .rank-badge  { background: #f1f5f9; color: #94a3b8; border: 1px solid #e2e8f0; }
-    [data-theme="light"] .entry-name  { color: #334155; }
-    [data-theme="light"] .entry-value { color: #1e293b; font-weight: 700; }
-    [data-theme="light"] .entry-unit  { color: #94a3b8; }
-    [data-theme="light"] .page-header { background: linear-gradient(90deg, rgba(30,50,120,0.0) 0%, rgba(59,130,246,0.05) 50%, rgba(30,50,120,0.0) 100%); border-color: rgba(59,130,246,0.1); }
-    [data-theme="light"] .header-title { color: #0f172a; }
-    [data-theme="light"] .header-rule  { background: linear-gradient(90deg, #3b82f6, #6366f1, transparent); }
-    [data-theme="light"] .header-time  { color: #94a3b8; }
-    [data-theme="light"] .self-wrap    { border-color: #e2e8f0; background: #f8fafc; }
-    [data-theme="light"] .self-label   { color: #94a3b8; }
-    [data-theme="light"] .page-footer  { color: #cbd5e1; }
-    [data-theme="light"] .pagination   { color: #64748b; }
 
-    /* ── Shared ─────────────────────────────────────────────── */
-    .rank-gold   { background: linear-gradient(135deg, #f59e0b, #fbbf24); box-shadow: 0 2px 8px rgba(245,158,11,0.4); }
-    .rank-silver { background: linear-gradient(135deg, #94a3b8, #cbd5e1); box-shadow: 0 2px 6px rgba(148,163,184,0.3); }
-    .rank-bronze { background: linear-gradient(135deg, #b45309, #d97706); box-shadow: 0 2px 6px rgba(180,83,9,0.3); }
-    .list-row { transition: background 0.1s; }
+    .page {
+      max-width: 920px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-xl);
+    }
+
+    /* ── Header (text-hero) ────────────────────────────────── */
+    .header-rule {
+      width: 64px;
+      height: 4px;
+      background-color: var(--color-primary);
+      border-radius: var(--radius-pill);
+      margin-bottom: var(--space-md);
+    }
+
+    .header-eyebrow {
+      color: var(--color-muted);
+      margin-bottom: var(--space-xs);
+    }
+
+    .header-title {
+      color: var(--color-ink);
+      margin: 0 0 var(--space-md) 0;
+    }
+
+    .header-meta {
+      color: var(--color-muted-soft);
+      display: flex;
+      gap: var(--space-md);
+      align-items: baseline;
+      flex-wrap: wrap;
+    }
+
+    .header-meta-divider {
+      color: var(--color-hairline);
+    }
+
+    .empty-state {
+      border: 1px dashed var(--color-hairline);
+      background-color: var(--color-surface-soft);
+      border-radius: var(--radius-lg);
+      padding: var(--space-xxl);
+      text-align: center;
+      color: var(--color-muted);
+    }
+
+    /* ── Podium (top 3, semantic 4-tier replaces metal gradients) ─
+     * #1 primary coral solid border, 2nd / 3rd outline, 1st sits center
+     * and is taller — visual hierarchy via size + border weight, not
+     * gradient. Order: 2nd | 1st | 3rd (classic podium). */
+    .podium {
+      display: grid;
+      grid-template-columns: 1fr 1.2fr 1fr;
+      align-items: end;
+      gap: var(--space-md);
+    }
+
+    .podium-card {
+      background-color: var(--color-surface-card);
+      border: 1px solid var(--color-hairline);
+      border-radius: var(--radius-lg);
+      padding: var(--space-lg) var(--space-md);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: var(--space-sm);
+      text-align: center;
+      min-width: 0;
+    }
+
+    .podium-card.rank-1 {
+      border: 2px solid var(--color-primary);
+      padding-top: var(--space-xl);
+      padding-bottom: var(--space-xl);
+    }
+
+    .podium-card.rank-2 { border-color: var(--color-accent-amber); }
+    .podium-card.rank-3 { border-color: var(--color-accent-teal); }
+
+    .podium-rank {
+      font-family: var(--font-display);
+      font-weight: 600;
+      font-size: 48px;
+      line-height: 1;
+      letter-spacing: -0.02em;
+      font-feature-settings: "tnum";
+      color: var(--color-muted);
+    }
+    .podium-card.rank-1 .podium-rank { color: var(--color-primary); font-size: 64px; }
+    .podium-card.rank-2 .podium-rank { color: var(--color-accent-amber); }
+    .podium-card.rank-3 .podium-rank { color: var(--color-accent-teal); }
+
+    .podium-name {
+      color: var(--color-ink);
+      font-family: var(--font-body);
+      font-weight: 600;
+      font-size: 16px;
+      line-height: 1.3;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .podium-card.rank-1 .podium-name { font-size: 18px; }
+
+    .podium-id {
+      color: var(--color-muted-soft);
+      font-family: var(--font-code);
+      font-size: 11px;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .podium-divider {
+      width: 32px;
+      height: 1px;
+      background-color: var(--color-hairline);
+    }
+
+    .podium-value {
+      display: flex;
+      align-items: baseline;
+      gap: 4px;
+      font-feature-settings: "tnum";
+    }
+
+    .podium-value .v {
+      color: var(--color-ink);
+      font-family: var(--font-body);
+      font-weight: 600;
+      font-size: 22px;
+      line-height: 1.1;
+      letter-spacing: -0.01em;
+    }
+    .podium-card.rank-1 .podium-value .v { font-size: 28px; color: var(--color-primary); }
+    .podium-card.rank-2 .podium-value .v { color: var(--color-accent-amber); }
+    .podium-card.rank-3 .podium-value .v { color: var(--color-accent-teal); }
+
+    .podium-value .u {
+      color: var(--color-muted);
+      font-size: 11px;
+      font-weight: 500;
+    }
+
+    /* ── List rows (each row is its own cream-card) ────────── */
+    .list {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-xs);
+    }
+
+    .row {
+      background-color: var(--color-surface-card);
+      border: 1px solid var(--color-hairline);
+      border-radius: var(--radius-md);
+      padding: var(--space-sm) var(--space-lg);
+      display: grid;
+      grid-template-columns: 56px 1fr auto;
+      align-items: center;
+      gap: var(--space-md);
+    }
+
+    .rank-badge {
+      color: var(--color-muted);
+      font-family: var(--font-body);
+      font-weight: 600;
+      font-size: 14px;
+      font-feature-settings: "tnum";
+      text-align: left;
+    }
+
+    .row-name {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .row-name-text {
+      color: var(--color-ink);
+      font-weight: 500;
+      font-size: 14px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .row-name-id {
+      color: var(--color-muted-soft);
+      font-family: var(--font-code);
+      font-size: 11px;
+    }
+
+    .row-value {
+      display: flex;
+      align-items: baseline;
+      gap: 4px;
+      font-feature-settings: "tnum";
+    }
+
+    .row-value .v {
+      color: var(--color-ink);
+      font-weight: 600;
+      font-size: 14px;
+    }
+
+    .row-value .u {
+      color: var(--color-muted-soft);
+      font-size: 11px;
+      font-weight: 500;
+    }
+
+    /* ── Self entry (your-rank highlight card) ─────────────── */
+    .self-card {
+      background-color: var(--color-surface-soft);
+      border: 1px solid var(--color-hairline);
+      border-radius: var(--radius-lg);
+      padding: var(--space-md) var(--space-lg);
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-xs);
+    }
+
+    .self-label {
+      color: var(--color-muted);
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .self-row {
+      display: grid;
+      grid-template-columns: 56px 1fr auto;
+      align-items: center;
+      gap: var(--space-md);
+    }
+
+    .footer {
+      text-align: right;
+      color: var(--color-muted-soft);
+      margin-top: var(--space-md);
+    }
   </style>
 </head>
-<body class="min-h-screen px-8 py-10">
+<body>
+  <main class="page">
 
-  <div class="page-header mx-auto max-w-[820px] rounded-2xl px-8 py-6 mb-6 border">
-    <div class="flex items-end justify-between">
-      <div>
-        <div class="header-rule h-1 w-16 rounded-full mb-4"></div>
-        <h1 id="lb-title" class="header-title text-4xl font-black tracking-tight" style="letter-spacing:-0.02em;"></h1>
+    <header>
+      <div class="header-rule"></div>
+      <div class="header-eyebrow type-caption-uppercase">排行榜系统</div>
+      <h1 id="lb-title" class="header-title type-display-lg"></h1>
+      <div class="header-meta type-body-sm">
+        <span id="lb-page"></span>
+        <span class="header-meta-divider">·</span>
+        <span id="lb-generated-at"></span>
       </div>
-      <div class="text-right">
-        <div class="header-time text-xs" id="lb-generated-at"></div>
-      </div>
-    </div>
-  </div>
+    </header>
 
-  <div class="mx-auto max-w-[820px]" id="lb-content"></div>
+    <div id="empty-state" class="empty-state type-body-md" hidden>暂无数据</div>
 
-  <div id="lb-self" class="self-wrap mx-auto max-w-[820px] mt-4 hidden overflow-hidden rounded-2xl border">
-    <div class="border-b border-inherit px-5 py-2">
-      <span class="self-label text-[10px] font-bold uppercase tracking-widest">我的排名</span>
-    </div>
-    <div id="lb-self-row" class="list-row grid grid-cols-[52px_1fr_auto] items-center px-5 py-3.5"></div>
-  </div>
+    <section id="podium-section" class="podium" hidden></section>
 
-  <div class="mx-auto max-w-[820px] mt-4 flex flex-col items-center gap-1">
-    <div id="lb-pagination" class="pagination text-sm font-semibold"></div>
-    <div class="page-footer text-xs font-medium tracking-widest">Powered by NextBot</div>
-  </div>
+    <section id="list" class="list"></section>
+
+    <section id="self-card" class="self-card" hidden>
+      <div class="self-label">我的排名</div>
+      <div id="self-row" class="self-row"></div>
+    </section>
+
+    <footer class="footer type-caption">Powered by NextBot</footer>
+  </main>
 
   <script id="leaderboard-data" type="application/json">__LEADERBOARD_DATA_JSON__</script>
   <script>
-    const data = JSON.parse(document.getElementById("leaderboard-data").textContent);
-    const entries = Array.isArray(data.entries) ? data.entries : [];
-    const valueLabel = String(data.value_label || "");
-    const formatValue = (v) => typeof v === "string" ? v : Number(v).toLocaleString();
-    const page = Number(data.page || 1);
-    const totalPages = Number(data.total_pages || 1);
-    const selfEntry = data.self_entry || null;
-    const theme = String(data.theme || "dark");
+    (function () {
+      const data = JSON.parse(document.getElementById("leaderboard-data").textContent);
+      const entries = Array.isArray(data.entries) ? data.entries : [];
+      const valueLabel = String(data.value_label || "");
+      const formatValue = (v) => typeof v === "string" ? v : Number(v).toLocaleString();
+      const page = Number(data.page || 1);
+      const totalPages = Number(data.total_pages || 1);
+      const selfEntry = data.self_entry || null;
 
-    // Apply theme
-    document.documentElement.setAttribute("data-theme", theme);
+      document.getElementById("lb-title").textContent = String(data.title || "排行榜").trim() || "排行榜";
+      document.getElementById("lb-page").textContent = `第 ${page} / ${totalPages} 页`;
+      document.getElementById("lb-generated-at").textContent = data.generated_at || "";
 
-    document.getElementById("lb-title").textContent = data.title || "排行榜";
-    document.getElementById("lb-generated-at").textContent = data.generated_at || "";
-    document.getElementById("lb-pagination").textContent = `第 ${page} 页 / 共 ${totalPages} 页`;
+      if (!entries.length) {
+        document.getElementById("empty-state").hidden = false;
+      } else {
+        renderEntries(entries, page === 1);
+      }
 
-    const content = document.getElementById("lb-content");
+      if (selfEntry) renderSelf(selfEntry);
 
-    if (!entries.length) {
-      const empty = document.createElement("div");
-      empty.className = "pagination py-16 text-center text-sm";
-      empty.textContent = "暂无数据";
-      content.appendChild(empty);
-    } else {
+      // ── helpers ──
 
-    const isFirstPage = page === 1;
-    const top3 = isFirstPage ? entries.filter(e => Number(e?.rank) <= 3) : [];
-    const rest = isFirstPage ? entries.filter(e => Number(e?.rank) > 3) : entries;
+      function renderEntries(items, isFirstPage) {
+        const top3 = isFirstPage ? items.filter((e) => Number(e?.rank) <= 3) : [];
+        const rest = isFirstPage ? items.filter((e) => Number(e?.rank) > 3) : items;
 
-    const medals = {
-      1: { podiumClass: "podium-gold",   rankNumClass: "rank-num-gold",   barClass: "gold-bar",   coinClass: "coin-gold",   rankClass: "rank-gold",   label: "🥇",
-           nameColor: theme === "dark" ? "#fef08a" : "#78350f", subColor: theme === "dark" ? "#ca8a04" : "#92400e" },
-      2: { podiumClass: "podium-silver", rankNumClass: "rank-num-silver", barClass: "silver-bar", coinClass: "coin-silver", rankClass: "rank-silver", label: "🥈",
-           nameColor: theme === "dark" ? "#e2e8f0" : "#334155", subColor: theme === "dark" ? "#64748b" : "#64748b" },
-      3: { podiumClass: "podium-bronze", rankNumClass: "rank-num-bronze", barClass: "bronze-bar", coinClass: "coin-bronze", rankClass: "rank-bronze", label: "🥉",
-           nameColor: theme === "dark" ? "#fde68a" : "#7c2d12", subColor: theme === "dark" ? "#b45309" : "#b45309" },
-    };
+        if (top3.length) {
+          const podium = document.getElementById("podium-section");
+          podium.hidden = false;
+          // Display order: 2 → 1 → 3 (classic podium center stage).
+          const byRank = {};
+          top3.forEach((it) => { byRank[Number(it?.rank)] = it; });
+          [byRank[2], byRank[1], byRank[3]].forEach((it) => {
+            if (!it) {
+              // Empty slot to keep grid alignment.
+              const blank = document.createElement("div");
+              podium.appendChild(blank);
+              return;
+            }
+            podium.appendChild(renderPodiumCard(it));
+          });
+        }
 
-    // Podium
-    if (top3.length) {
-      const podiumSection = document.createElement("div");
-      podiumSection.className = "flex items-end gap-4 mb-5";
+        if (rest.length) {
+          const listEl = document.getElementById("list");
+          rest.forEach((it) => listEl.appendChild(renderRow(it)));
+        }
+      }
 
-      const byRank = {};
-      top3.forEach(item => { byRank[Number(item?.rank)] = item; });
-      const podiumOrder = [byRank[2], byRank[1], byRank[3]].filter(Boolean);
+      function renderPodiumCard(item) {
+        const rank = Number(item?.rank);
+        const card = document.createElement("article");
+        card.className = `podium-card rank-${rank}`;
 
-      podiumOrder.forEach((item) => {
-        const rank   = Number(item?.rank);
-        const name   = String(item?.name || "").trim() || "—";
-        const userId = String(item?.user_id || "").trim();
-        const coins  = item?.value ?? 0;
-        const m      = medals[rank] || medals[3];
-        const isFirst = rank === 1;
-
-        const card = document.createElement("div");
-        card.className = `${m.podiumClass} rounded-2xl px-5 flex flex-col items-center gap-3 relative overflow-hidden`;
-        card.style.flex = isFirst ? "1.2" : "1";
-        card.style.paddingTop = isFirst ? "2rem" : "1.5rem";
-        card.style.paddingBottom = isFirst ? "2rem" : "1.5rem";
-
-        const bgNum = document.createElement("div");
-        bgNum.className = `${m.rankNumClass} absolute -right-2 -bottom-4 text-[9rem] font-black opacity-[0.07] select-none pointer-events-none leading-none`;
-        bgNum.textContent = String(rank);
-        card.appendChild(bgNum);
-
-        const medal = document.createElement("div");
-        medal.className = `${isFirst ? "text-5xl" : "text-4xl"} leading-none relative`;
-        medal.textContent = m.label;
-        card.appendChild(medal);
+        const rankEl = document.createElement("div");
+        rankEl.className = "podium-rank";
+        rankEl.textContent = String(rank);
+        card.appendChild(rankEl);
 
         const nameEl = document.createElement("div");
-        nameEl.className = "text-center relative";
-        const nameText = document.createElement("div");
-        nameText.className = `${isFirst ? "text-xl" : "text-lg"} font-bold leading-tight`;
-        nameText.style.color = m.nameColor;
-        nameText.textContent = name;
-        nameEl.appendChild(nameText);
-        if (userId) {
-          const idText = document.createElement("div");
-          idText.className = "text-xs mt-0.5 opacity-50";
-          idText.style.color = m.subColor;
-          idText.textContent = `（${userId}）`;
-          nameEl.appendChild(idText);
-        }
+        nameEl.className = "podium-name";
+        nameEl.textContent = String(item?.name || "").trim() || "—";
         card.appendChild(nameEl);
 
-        const bar = document.createElement("div");
-        bar.className = `${m.barClass} h-px w-full opacity-40 relative`;
-        card.appendChild(bar);
-
-        const coinsWrap = document.createElement("div");
-        coinsWrap.className = "flex items-center gap-1.5 relative";
-        const coinsVal = document.createElement("span");
-        coinsVal.className = `${m.coinClass} ${isFirst ? "text-3xl" : "text-2xl"} font-black tabular-nums`;
-        coinsVal.style.letterSpacing = "-0.02em";
-        coinsVal.textContent = formatValue(coins);
-        const coinsUnit = document.createElement("span");
-        coinsUnit.className = `${m.coinClass} text-sm font-medium opacity-60 ml-1`;
-        coinsUnit.textContent = valueLabel;
-        coinsWrap.appendChild(coinsVal);
-        coinsWrap.appendChild(coinsUnit);
-        card.appendChild(coinsWrap);
-
-        podiumSection.appendChild(card);
-      });
-
-      content.appendChild(podiumSection);
-    }
-
-    // List rows
-    if (rest.length) {
-      const listWrap = document.createElement("div");
-      listWrap.className = "list-wrap rounded-2xl overflow-hidden border divide-y divide-inherit";
-
-      rest.forEach((item) => {
-        const rank   = Number(item?.rank);
-        const name   = String(item?.name || "").trim() || "—";
         const userId = String(item?.user_id || "").trim();
-        const coins  = item?.value ?? 0;
-
-        const row = document.createElement("div");
-        row.className = "list-row grid grid-cols-[52px_1fr_auto] items-center px-5 py-3.5";
-
-        const rankWrap = document.createElement("div");
-        const rankBadge = document.createElement("div");
-        rankBadge.className = "rank-badge inline-flex h-7 w-7 items-center justify-center rounded-lg text-xs font-bold";
-        rankBadge.textContent = String(rank);
-        rankWrap.appendChild(rankBadge);
-
-        const nameEl = document.createElement("div");
-        nameEl.className = "pl-1";
-        const nameText = document.createElement("div");
-        nameText.className = "entry-name text-sm font-semibold";
-        nameText.textContent = name;
-        nameEl.appendChild(nameText);
         if (userId) {
-          const idText = document.createElement("div");
-          idText.className = "entry-unit text-[11px] mt-0.5";
-          idText.textContent = `（${userId}）`;
-          nameEl.appendChild(idText);
+          const idEl = document.createElement("div");
+          idEl.className = "podium-id";
+          idEl.textContent = userId;
+          card.appendChild(idEl);
         }
 
-        const coinsWrap = document.createElement("div");
-        coinsWrap.className = "flex items-center gap-1";
-        const val = document.createElement("span");
-        val.className = "entry-value text-sm tabular-nums";
-        val.textContent = formatValue(coins);
-        const unit = document.createElement("span");
-        unit.className = "entry-unit text-xs ml-1";
-        unit.textContent = valueLabel;
-        coinsWrap.appendChild(val);
-        coinsWrap.appendChild(unit);
+        const divider = document.createElement("div");
+        divider.className = "podium-divider";
+        card.appendChild(divider);
 
-        row.appendChild(rankWrap);
-        row.appendChild(nameEl);
-        row.appendChild(coinsWrap);
-        listWrap.appendChild(row);
-      });
+        const valueWrap = document.createElement("div");
+        valueWrap.className = "podium-value";
+        const v = document.createElement("span");
+        v.className = "v";
+        v.textContent = formatValue(item?.value ?? 0);
+        valueWrap.appendChild(v);
+        if (valueLabel) {
+          const u = document.createElement("span");
+          u.className = "u";
+          u.textContent = valueLabel;
+          valueWrap.appendChild(u);
+        }
+        card.appendChild(valueWrap);
 
-      content.appendChild(listWrap);
-    }
-    } // end else
+        return card;
+      }
 
-    // Self entry
-    if (selfEntry) {
-      document.getElementById("lb-self").classList.remove("hidden");
-      const selfRow = document.getElementById("lb-self-row");
+      function renderRow(item) {
+        const row = document.createElement("article");
+        row.className = "row";
 
-      const rankWrap = document.createElement("div");
-      const rankBadge = document.createElement("div");
-      rankBadge.className = "rank-badge inline-flex h-7 w-7 items-center justify-center rounded-lg text-xs font-bold";
-      rankBadge.textContent = String(selfEntry.rank);
-      rankWrap.appendChild(rankBadge);
+        const badge = document.createElement("div");
+        badge.className = "rank-badge";
+        badge.textContent = `#${item?.rank ?? "-"}`;
+        row.appendChild(badge);
 
-      const nameEl = document.createElement("div");
-      nameEl.className = "entry-name text-sm font-semibold pl-1";
-      nameEl.textContent = String(selfEntry.name || "");
+        const nameWrap = document.createElement("div");
+        nameWrap.className = "row-name";
+        const nameText = document.createElement("div");
+        nameText.className = "row-name-text";
+        nameText.textContent = String(item?.name || "").trim() || "—";
+        nameWrap.appendChild(nameText);
+        const userId = String(item?.user_id || "").trim();
+        if (userId) {
+          const idText = document.createElement("div");
+          idText.className = "row-name-id";
+          idText.textContent = userId;
+          nameWrap.appendChild(idText);
+        }
+        row.appendChild(nameWrap);
 
-      const coinsWrap = document.createElement("div");
-      coinsWrap.className = "flex items-center gap-1";
-      const val = document.createElement("span");
-      val.className = "entry-value text-sm tabular-nums";
-      val.textContent = formatValue(selfEntry.value);
-      const unit = document.createElement("span");
-      unit.className = "entry-unit text-xs ml-1";
-      unit.textContent = valueLabel;
-      coinsWrap.appendChild(val);
-      coinsWrap.appendChild(unit);
+        const valueWrap = document.createElement("div");
+        valueWrap.className = "row-value";
+        const v = document.createElement("span");
+        v.className = "v";
+        v.textContent = formatValue(item?.value ?? 0);
+        valueWrap.appendChild(v);
+        if (valueLabel) {
+          const u = document.createElement("span");
+          u.className = "u";
+          u.textContent = valueLabel;
+          valueWrap.appendChild(u);
+        }
+        row.appendChild(valueWrap);
 
-      selfRow.appendChild(rankWrap);
-      selfRow.appendChild(nameEl);
-      selfRow.appendChild(coinsWrap);
-    }
+        return row;
+      }
+
+      function renderSelf(item) {
+        const card = document.getElementById("self-card");
+        const row = document.getElementById("self-row");
+        card.hidden = false;
+
+        const badge = document.createElement("div");
+        badge.className = "rank-badge";
+        badge.textContent = `#${item?.rank ?? "-"}`;
+        row.appendChild(badge);
+
+        const nameWrap = document.createElement("div");
+        nameWrap.className = "row-name";
+        const nameText = document.createElement("div");
+        nameText.className = "row-name-text";
+        nameText.textContent = String(item?.name || "").trim() || "—";
+        nameWrap.appendChild(nameText);
+        const userId = String(item?.user_id || "").trim();
+        if (userId) {
+          const idText = document.createElement("div");
+          idText.className = "row-name-id";
+          idText.textContent = userId;
+          nameWrap.appendChild(idText);
+        }
+        row.appendChild(nameWrap);
+
+        const valueWrap = document.createElement("div");
+        valueWrap.className = "row-value";
+        const v = document.createElement("span");
+        v.className = "v";
+        v.textContent = formatValue(item?.value ?? 0);
+        valueWrap.appendChild(v);
+        if (valueLabel) {
+          const u = document.createElement("span");
+          u.className = "u";
+          u.textContent = valueLabel;
+          valueWrap.appendChild(u);
+        }
+        row.appendChild(valueWrap);
+      }
+    })();
   </script>
 </body>
 </html>
