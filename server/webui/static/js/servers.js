@@ -281,13 +281,13 @@
 
     if (result.status === "loading") {
       badge.classList.add("warning");
-      badge.textContent = "正在测试";
+      badge.textContent = "测试中…";
       return badge;
     }
 
     if (result.status === "success") {
       badge.classList.add("success");
-      badge.textContent = "连通成功";
+      badge.textContent = "成功";
       if (result.reason) {
         badge.title = result.reason;
       }
@@ -295,7 +295,7 @@
     }
 
     badge.classList.add("danger");
-    badge.textContent = "连通失败";
+    badge.textContent = "失败";
     if (result.reason) {
       badge.title = result.reason;
     }
@@ -394,7 +394,7 @@
       const resultState = testResultMap.get(server.id);
       if (resultState?.status === "loading") {
         testButton.disabled = true;
-        testButton.textContent = "正在测试";
+        testButton.textContent = "测试中…";
       }
       testButton.addEventListener("click", () => {
         void testServerConnectivity(server.id);
@@ -403,7 +403,7 @@
       const pluginConfigButton = document.createElement("button");
       pluginConfigButton.type = "button";
       pluginConfigButton.className = "btn action-btn";
-      pluginConfigButton.textContent = "插件配置";
+      pluginConfigButton.textContent = "配置";
       pluginConfigButton.addEventListener("click", () => {
         void openPluginConfigModal(server);
       });
@@ -506,7 +506,7 @@
 
     if (mode === "edit" && server) {
       modalTitleNode.textContent = "编辑服务器";
-      modalSaveButton.textContent = "保存修改";
+      modalSaveButton.textContent = "保存";
       nameInput.value = server.name;
       ipInput.value = server.ip;
       gamePortInput.value = server.game_port;
@@ -514,7 +514,7 @@
       tokenInput.value = server.token;
     } else {
       modalTitleNode.textContent = "创建服务器";
-      modalSaveButton.textContent = "创建服务器";
+      modalSaveButton.textContent = "创建";
       nameInput.value = "";
       ipInput.value = "";
       gamePortInput.value = "";

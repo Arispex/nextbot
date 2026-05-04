@@ -394,14 +394,14 @@
 
     if (mode === "edit" && group) {
       modalTitleNode.textContent = "编辑身份组";
-      modalSaveButton.textContent = "保存修改";
+      modalSaveButton.textContent = "保存";
       fieldName.value = group.name;
       fieldName.readOnly = true;
       fieldPermissions.value = group.permissions || "";
       fieldInherits.value = group.inherits || "";
     } else {
       modalTitleNode.textContent = "创建身份组";
-      modalSaveButton.textContent = "创建身份组";
+      modalSaveButton.textContent = "创建";
       fieldName.value = "";
       fieldName.readOnly = false;
       fieldPermissions.value = "";

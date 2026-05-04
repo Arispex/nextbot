@@ -400,11 +400,11 @@
       const syncButton = document.createElement("button");
       syncButton.type = "button";
       syncButton.className = "btn action-btn action-btn-sync";
-      syncButton.textContent = "同步白名单";
+      syncButton.textContent = "同步";
       const syncState = syncResultMap.get(user.id);
       if (syncState?.status === "loading") {
         syncButton.disabled = true;
-        syncButton.textContent = "正在同步";
+        syncButton.textContent = "同步中…";
       }
       syncButton.addEventListener("click", () => {
         void syncWhitelist(user);
@@ -608,7 +608,7 @@
 
     if (mode === "edit" && user) {
       modalTitleNode.textContent = "编辑用户";
-      modalSaveButton.textContent = "保存修改";
+      modalSaveButton.textContent = "保存";
       fieldUserId.value = user.user_id;
       fieldName.value = user.name;
       fieldCoins.value = String(user.coins);
@@ -618,7 +618,7 @@
       fieldPermissions.value = user.permissions || "";
     } else {
       modalTitleNode.textContent = "创建用户";
-      modalSaveButton.textContent = "创建用户";
+      modalSaveButton.textContent = "创建";
       fieldUserId.value = "";
       fieldName.value = "";
       fieldCoins.value = "0";
