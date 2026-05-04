@@ -117,6 +117,7 @@ class User(Base):
     rob_total_loss: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     rob_total_penalty: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     last_rob_time: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, default=None)
+    rob_protected: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     guess_total_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     guess_win_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     guess_total_gain: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
@@ -627,6 +628,11 @@ def ensure_user_rob_schema() -> None:
         if "last_rob_time" not in columns:
             conn.execute(
                 'ALTER TABLE "user" ADD COLUMN "last_rob_time" DATETIME'
+            )
+            changed = True
+        if "rob_protected" not in columns:
+            conn.execute(
+                'ALTER TABLE "user" ADD COLUMN "rob_protected" INTEGER NOT NULL DEFAULT 0'
             )
             changed = True
         if changed:

@@ -215,6 +215,14 @@ async def handle_rob(bot: Bot, event: Event, arg: Message = CommandArg()) -> Non
             await bot.send(event, at + " " + reply_failure("抢劫", f"对方金币不足 {min_coins_to_rob}"))
             return
 
+        # 抢劫保护检查
+        if bool(robber.rob_protected):
+            await bot.send(event, at + " " + reply_failure("抢劫", "你处于保护状态，先关闭抢劫保护才能抢劫"))
+            return
+        if bool(victim.rob_protected):
+            await bot.send(event, at + " " + reply_failure("抢劫", "对方处于保护状态，无法抢劫"))
+            return
+
         # 抽签决定结果
         roll = random.randint(1, 100)
         # 区间: [1, success_rate] 成功, (success_rate, success_rate+counter_rate] 反被抢,
