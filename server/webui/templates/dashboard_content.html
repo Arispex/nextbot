@@ -1,7 +1,8 @@
 <section class="dashboard-layout">
+
   <div class="dashboard-toolbar">
     <div class="dashboard-toolbar-meta">
-      <span class="meta-tag">更新时间：<span id="dashboard-updated-at">--</span></span>
+      <span class="meta-tag">最近更新 <span id="dashboard-updated-at">—</span></span>
     </div>
     <div class="panel-head-actions">
       <button id="reload-btn" type="button" class="btn">
@@ -9,7 +10,7 @@
           <path d="M21 12a9 9 0 1 1-2.64-6.36"></path>
           <path d="M21 3v6h-6"></path>
         </svg>
-        <span data-label>刷新</span>
+        <span data-label>刷新数据</span>
       </button>
     </div>
   </div>
@@ -18,59 +19,70 @@
     <span id="status-message" class="alert-message"></span>
   </div>
 
-  <div id="loading" class="empty">加载中...</div>
+  <div id="loading" class="empty">正在拉取仪表盘数据…</div>
 
   <section id="stats-grid" class="dashboard-section dashboard-metrics hidden" aria-label="关键指标">
+    <div class="dashboard-section-head">
+      <h2 class="dashboard-section-title">关键指标</h2>
+    </div>
     <div class="stats-grid-list">
       <article class="stat-card">
-        <p class="stat-label">服务器数量</p>
-        <p id="server_count" class="stat-value">--</p>
+        <p class="stat-label">服务器</p>
+        <p id="server_count" class="stat-value">—</p>
       </article>
       <article class="stat-card">
-        <p class="stat-label">用户数量</p>
-        <p id="user_count" class="stat-value">--</p>
+        <p class="stat-label">注册用户</p>
+        <p id="user_count" class="stat-value">—</p>
       </article>
       <article class="stat-card">
-        <p class="stat-label">身份组数量</p>
-        <p id="group_count" class="stat-value">--</p>
+        <p class="stat-label">身份组</p>
+        <p id="group_count" class="stat-value">—</p>
       </article>
       <article class="stat-card">
         <p class="stat-label">命令总数</p>
-        <p id="command_total" class="stat-value">--</p>
+        <p id="command_total" class="stat-value">—</p>
       </article>
       <article class="stat-card">
         <p class="stat-label">已启用命令</p>
-        <p id="command_enabled_count" class="stat-value">--</p>
+        <p id="command_enabled_count" class="stat-value">—</p>
       </article>
       <article class="stat-card">
-        <p class="stat-label">累计命令执行次数</p>
-        <p id="command_execute_count" class="stat-value">--</p>
+        <p class="stat-label">累计执行</p>
+        <p id="command_execute_count" class="stat-value">—</p>
       </article>
     </div>
   </section>
 
   <section id="dashboard-panels" class="dashboard-section dashboard-panels hidden" aria-label="详细信息">
+    <div class="dashboard-section-head">
+      <h2 class="dashboard-section-title">运行状态</h2>
+    </div>
     <div class="dashboard-panels-grid">
       <section class="detail-card">
         <div class="detail-card-head">
           <div>
             <h3 class="detail-card-title">Bot 连接概览</h3>
-            <p id="running_status" class="detail-card-desc">--</p>
+            <p id="running_status" class="detail-card-desc">—</p>
           </div>
         </div>
         <div class="detail-content-block">
-          <div class="detail-section-label">Bot ID 列表</div>
-          <div id="connected_bot_ids" class="tag-list">无</div>
+          <div class="detail-section-label">已连接的 Bot ID</div>
+          <div id="connected_bot_ids" class="tag-list">
+            <span class="tag-badge none">暂未连接</span>
+          </div>
         </div>
       </section>
     </div>
   </section>
 
   <section class="dashboard-section dashboard-section-muted" aria-label="推广信息">
+    <div class="dashboard-section-head">
+      <h2 class="dashboard-section-title">合作推广</h2>
+    </div>
     <article class="ad-card" aria-label="广告位">
       <div class="ad-banner">
         <div class="ad-main">
-          <p class="ad-kicker">合作推广</p>
+          <p class="ad-kicker">Sponsored</p>
           <h3 class="ad-title">
             喵云 MiaoVPS
             <span class="ad-title-sub">高性价比云服务器</span>
