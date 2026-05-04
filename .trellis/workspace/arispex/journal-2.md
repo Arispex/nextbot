@@ -1038,3 +1038,37 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 67: Trellis 0.5 升级 + 菜单页面按 DESIGN.md 重构
+
+**Date**: 2026-05-04
+**Task**: Trellis 0.5 升级 + 菜单页面按 DESIGN.md 重构
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `2c5405c` | (see git log) |
+| `aa72ce0` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
