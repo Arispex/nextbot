@@ -1,174 +1,294 @@
 <!doctype html>
-<html lang="zh-CN" data-theme="dark">
+<html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>NextBot - 世界进度</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <title>NextBot 世界进度</title>
+  <link rel="stylesheet" href="/assets/css/render-fonts.css" />
+  <link rel="stylesheet" href="/assets/css/render-tokens.css" />
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    [hidden] { display: none !important; }
 
-    /* ── Light ──────────────────────────────────────────────── */
-    [data-theme="light"] body { background: #e4e5ea; }
-    [data-theme="light"] .card-root { background: #f4f4f7; box-shadow: 0 8px 40px rgba(0,0,0,0.12); }
-    [data-theme="light"] .hero {
-      background:
-        url("data:image/svg+xml,%3Csvg width='40' height='40' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 0h40v40H0z' fill='none'/%3E%3Cpath d='M0 20h40M20 0v40' stroke='%23000000' stroke-width='0.5' opacity='0.03'/%3E%3C/svg%3E"),
-        linear-gradient(160deg, #e0e7f1 0%, #dce4f0 40%, #d4dfef 100%);
-      position: relative; overflow: hidden;
+    body {
+      background-color: var(--color-canvas);
+      color: var(--color-ink);
+      font-family: var(--font-body);
+      font-size: var(--type-body-md-size);
+      line-height: 1.55;
+      padding: var(--space-xxl) var(--space-xxl);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
     }
-    [data-theme="light"] .hero::before {
-      content: ''; position: absolute; inset: 0; pointer-events: none;
-      background:
-        radial-gradient(ellipse at 75% 10%, rgba(99,102,241,0.08) 0%, transparent 55%),
-        radial-gradient(ellipse at 25% 90%, rgba(139,92,246,0.06) 0%, transparent 50%);
-    }
-    [data-theme="light"] .header-rule { background: linear-gradient(90deg, #6366f1, #818cf8, transparent); }
-    [data-theme="light"] .hero-page-title { color: #475569; }
-    [data-theme="light"] .hero-name { color: #1e293b; }
-    [data-theme="light"] .hero-tag { background: rgba(0,0,0,0.05); border: 1px solid rgba(0,0,0,0.06); color: #8893a7; }
-    [data-theme="light"] .hero-divider { background: linear-gradient(90deg, transparent, rgba(0,0,0,0.08), transparent); }
-    [data-theme="light"] .defeated-val { color: #1e293b; }
-    [data-theme="light"] .defeated-slash { color: #cbd5e1; }
-    [data-theme="light"] .defeated-total { color: #94a3b8; }
-    [data-theme="light"] .defeated-lbl { color: #94a3b8; }
-    [data-theme="light"] .progress-track { background: rgba(0,0,0,0.06); }
-    [data-theme="light"] .progress-fill { background: linear-gradient(90deg, #6366f1, #818cf8); }
-    [data-theme="light"] .progress-pct { color: #64748b; }
-    [data-theme="light"] .summary-strip { background: rgba(0,0,0,0.04); }
-    [data-theme="light"] .summary-text { color: #94a3b8; }
-    [data-theme="light"] .summary-text b { color: #475569; }
-    [data-theme="light"] .body-area { background: #f4f4f7; }
-    [data-theme="light"] .card-defeated { background: #fff; border: 1px solid #e0e0e6; }
-    [data-theme="light"] .card-defeated:hover { border-color: #6366f1; }
-    [data-theme="light"] .card-undefeated { background: #ededf2; border: 1px solid #e0e0e6; }
-    [data-theme="light"] .boss-stripe-on { background: #6366f1; box-shadow: 0 0 8px rgba(99,102,241,0.3); }
-    [data-theme="light"] .boss-stripe-off { background: #d1d5db; }
-    [data-theme="light"] .name-defeated { color: #1e293b; }
-    [data-theme="light"] .name-undefeated { color: #9ca3af; }
-    [data-theme="light"] .badge-defeated { background: linear-gradient(90deg, #6366f1, #818cf8); color: #fff; }
-    [data-theme="light"] .badge-undefeated { background: #f3f4f6; color: #9ca3af; border: 1px solid #e5e7eb; }
-    [data-theme="light"] .img-defeated { filter: none; }
-    [data-theme="light"] .img-undefeated { filter: grayscale(60%) brightness(0.75) opacity(0.6); }
-    [data-theme="light"] .placeholder-defeated { background: #eef2ff; color: #6366f1; }
-    [data-theme="light"] .placeholder-undefeated { background: #f3f4f6; color: #d1d5db; }
-    [data-theme="light"] .footer-text { color: #c5c5cc; }
 
-    /* ── Dark ───────────────────────────────────────────────── */
-    [data-theme="dark"] body { background: #07070a; }
-    [data-theme="dark"] .card-root { background: #0e0e12; box-shadow: 0 0 60px rgba(0,0,0,0.6); }
-    [data-theme="dark"] .hero {
-      background:
-        url("data:image/svg+xml,%3Csvg width='40' height='40' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 0h40v40H0z' fill='none'/%3E%3Cpath d='M0 20h40M20 0v40' stroke='%23ffffff' stroke-width='0.5' opacity='0.015'/%3E%3C/svg%3E"),
-        linear-gradient(160deg, #060610 0%, #0a0c18 40%, #06101e 100%);
-      position: relative; overflow: hidden;
+    .page {
+      max-width: 1200px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-xl);
     }
-    [data-theme="dark"] .hero::before {
-      content: ''; position: absolute; inset: 0; pointer-events: none;
-      background:
-        radial-gradient(ellipse at 75% 10%, rgba(212,160,23,0.06) 0%, transparent 55%),
-        radial-gradient(ellipse at 25% 90%, rgba(139,92,246,0.04) 0%, transparent 50%);
-    }
-    [data-theme="dark"] .header-rule { background: linear-gradient(90deg, #d4a017, #f0c030, transparent); }
-    [data-theme="dark"] .hero-page-title { color: #e2e8f0; }
-    [data-theme="dark"] .hero-name { color: #f1f5f9; text-shadow: 0 0 30px rgba(212,160,23,0.15); }
-    [data-theme="dark"] .hero-tag { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); color: rgba(255,255,255,0.2); }
-    [data-theme="dark"] .hero-divider { background: linear-gradient(90deg, transparent, rgba(255,255,255,0.05), transparent); }
-    [data-theme="dark"] .defeated-val { color: #fde68a; text-shadow: 0 0 20px rgba(212,160,23,0.4); }
-    [data-theme="dark"] .defeated-slash { color: rgba(255,255,255,0.12); }
-    [data-theme="dark"] .defeated-total { color: rgba(255,255,255,0.25); }
-    [data-theme="dark"] .defeated-lbl { color: rgba(255,255,255,0.2); }
-    [data-theme="dark"] .progress-track { background: rgba(255,255,255,0.04); }
-    [data-theme="dark"] .progress-fill { background: linear-gradient(90deg, #b8860b, #d4a017, #f0c030); box-shadow: 0 0 10px rgba(212,160,23,0.4); }
-    [data-theme="dark"] .progress-pct { color: rgba(255,255,255,0.2); }
-    [data-theme="dark"] .summary-strip { background: rgba(0,0,0,0.3); }
-    [data-theme="dark"] .summary-text { color: rgba(255,255,255,0.2); }
-    [data-theme="dark"] .summary-text b { color: rgba(255,255,255,0.4); }
-    [data-theme="dark"] .body-area { background: #0e0e12; }
-    [data-theme="dark"] .card-defeated { background: linear-gradient(135deg, #1a1510, #1e1812); border: 1px solid rgba(212,160,40,0.25); }
-    [data-theme="dark"] .card-defeated:hover { border-color: rgba(212,160,40,0.5); }
-    [data-theme="dark"] .card-undefeated { background: #131316; border: 1px solid rgba(255,255,255,0.04); }
-    [data-theme="dark"] .boss-stripe-on { background: #d4a017; box-shadow: 0 0 8px rgba(212,160,23,0.4); }
-    [data-theme="dark"] .boss-stripe-off { background: rgba(255,255,255,0.06); }
-    [data-theme="dark"] .name-defeated { color: #fde68a; }
-    [data-theme="dark"] .name-undefeated { color: #3f3f4a; }
-    [data-theme="dark"] .badge-defeated { background: linear-gradient(90deg, #b8860b, #d4a017); color: #fff8e1; text-shadow: 0 1px 2px rgba(0,0,0,0.5); box-shadow: 0 0 8px rgba(212,160,23,0.3); }
-    [data-theme="dark"] .badge-undefeated { background: rgba(255,255,255,0.03); color: #3f3f4a; border: 1px solid rgba(255,255,255,0.05); }
-    [data-theme="dark"] .img-defeated { filter: drop-shadow(0 0 8px rgba(212,160,23,0.4)); }
-    [data-theme="dark"] .img-undefeated { filter: grayscale(85%) brightness(0.35); }
-    [data-theme="dark"] .placeholder-defeated { background: rgba(120,69,0,0.2); color: #d97706; }
-    [data-theme="dark"] .placeholder-undefeated { background: rgba(255,255,255,0.02); color: #2a2a32; }
-    [data-theme="dark"] .footer-text { color: #1a1a20; }
 
-    /* ── Shared ─────────────────────────────────────────────── */
-    .hero-tag {
-      display: inline-block; padding: 2px 10px; border-radius: 20px;
-      font-size: 11px; font-weight: 500; letter-spacing: 0.05em;
+    /* ── Header (text-hero) ────────────────────────────────── */
+    .header-rule {
+      width: 64px;
+      height: 4px;
+      background-color: var(--color-primary);
+      border-radius: var(--radius-pill);
+      margin-bottom: var(--space-md);
     }
-    .boss-stripe { width: 3px; flex-shrink: 0; }
-    .progress-fill { transition: width 0.6s ease; }
+
+    .header-eyebrow {
+      color: var(--color-muted);
+      margin-bottom: var(--space-xs);
+    }
+
+    .header-title {
+      color: var(--color-ink);
+      margin: 0 0 var(--space-md) 0;
+    }
+
+    .header-meta {
+      color: var(--color-muted-soft);
+      display: flex;
+      gap: var(--space-md);
+      align-items: baseline;
+      flex-wrap: wrap;
+    }
+
+    .header-meta-divider {
+      color: var(--color-hairline);
+    }
+
+    .meta-value {
+      color: var(--color-ink);
+      font-feature-settings: "tnum";
+    }
+
+    /* ── Defeated count + progress bar ─────────────────────── */
+    .summary {
+      background-color: var(--color-surface-card);
+      border: 1px solid var(--color-hairline);
+      border-radius: var(--radius-lg);
+      padding: var(--space-lg) var(--space-xl);
+      display: flex;
+      align-items: center;
+      gap: var(--space-xl);
+    }
+
+    .summary-count {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: baseline;
+      gap: 4px;
+      font-feature-settings: "tnum";
+    }
+
+    .summary-defeated {
+      color: var(--color-primary);
+      font-family: var(--font-body);
+      font-weight: 600;
+      font-size: 36px;
+      line-height: 1;
+      letter-spacing: -0.02em;
+    }
+
+    .summary-slash {
+      color: var(--color-hairline);
+      font-size: 24px;
+      font-weight: 500;
+    }
+
+    .summary-total {
+      color: var(--color-muted);
+      font-size: 24px;
+      font-weight: 500;
+    }
+
+    .summary-label {
+      color: var(--color-muted);
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      margin-left: var(--space-xs);
+      align-self: center;
+    }
+
+    .summary-bar {
+      flex: 1 1 auto;
+      display: flex;
+      align-items: center;
+      gap: var(--space-md);
+      min-width: 0;
+    }
+
+    .progress-track {
+      flex: 1 1 auto;
+      height: 6px;
+      background-color: var(--color-hairline);
+      border-radius: var(--radius-pill);
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background-color: var(--color-primary);
+      border-radius: var(--radius-pill);
+    }
+
+    .progress-pct {
+      color: var(--color-ink);
+      font-family: var(--font-body);
+      font-weight: 600;
+      font-size: 14px;
+      font-feature-settings: "tnum";
+      white-space: nowrap;
+    }
+
+    /* ── Boss grid ─────────────────────────────────────────── */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: var(--space-md);
+    }
+
+    .boss {
+      background-color: var(--color-surface-card);
+      border: 1px solid var(--color-hairline);
+      border-radius: var(--radius-lg);
+      padding: var(--space-md);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: var(--space-sm);
+      min-height: 180px;
+    }
+
+    .boss.defeated {
+      border: 2px solid var(--color-primary);
+    }
+
+    .boss.undefeated {
+      background-color: var(--color-surface-soft);
+      border: 1px dashed var(--color-hairline);
+    }
+
+    .boss-img {
+      flex: 1 1 auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      min-height: 80px;
+    }
+
+    .boss-img img {
+      max-height: 80px;
+      max-width: 140px;
+      object-fit: contain;
+    }
+
+    .boss.undefeated .boss-img img {
+      filter: grayscale(80%) opacity(0.55);
+    }
+
+    .boss-img .placeholder {
+      width: 56px;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: var(--radius-pill);
+      background-color: var(--color-canvas);
+      border: 1px dashed var(--color-hairline);
+      color: var(--color-muted);
+      font-family: var(--font-display);
+      font-size: 24px;
+      font-weight: 600;
+    }
+
+    .boss.defeated .boss-img .placeholder {
+      border-color: var(--color-primary);
+      color: var(--color-primary);
+    }
+
+    .boss-name {
+      color: var(--color-ink);
+      font-weight: 500;
+      font-size: 14px;
+      text-align: center;
+      line-height: 1.3;
+    }
+
+    .boss.undefeated .boss-name {
+      color: var(--color-muted);
+      font-weight: 400;
+    }
+
+    .boss-badge {
+      font-size: 11px;
+      font-weight: 500;
+      padding: 2px var(--space-xs);
+      border-radius: var(--radius-pill);
+      border: 1px solid transparent;
+      letter-spacing: 0.02em;
+    }
+
+    .boss.defeated .boss-badge {
+      background-color: var(--color-primary);
+      color: var(--color-on-primary);
+      border-color: var(--color-primary);
+    }
+
+    .boss.undefeated .boss-badge {
+      background-color: var(--color-canvas);
+      color: var(--color-muted);
+      border-color: var(--color-hairline);
+    }
+
+    .footer {
+      text-align: right;
+      color: var(--color-muted-soft);
+      margin-top: var(--space-md);
+    }
   </style>
 </head>
-<body class="min-h-screen flex items-start justify-center p-4">
-  <main class="card-root mx-auto max-w-[1700px] w-full overflow-hidden rounded-2xl">
+<body>
+  <main class="page">
 
-    <!-- ═══ Hero Area ═══ -->
-    <div class="hero relative">
-      <div class="relative z-10 flex flex-col items-center pt-10 pb-6 px-8">
-
-        <!-- Page Title -->
-        <div class="absolute left-7 top-6">
-          <div class="header-rule h-1 w-24 rounded-full mb-3"></div>
-          <div class="hero-page-title text-4xl font-black" style="letter-spacing: -0.03em;">世界进度</div>
-        </div>
-
-        <!-- Server Name -->
-        <h1 class="hero-name text-[42px] font-black tracking-tight leading-none mt-2" id="meta-server-name"></h1>
-        <div class="mt-2 flex items-center gap-2">
-          <span class="hero-tag" id="meta-server-id-tag"></span>
-          <span class="hero-tag" id="meta-time-tag"></span>
-        </div>
-
-        <!-- Divider -->
-        <div class="hero-divider my-6 h-px w-full max-w-md"></div>
-
-        <!-- Defeated Count -->
-        <div class="flex flex-col items-center">
-          <div class="flex items-baseline gap-1">
-            <span class="defeated-val text-5xl font-black leading-none" id="meta-defeated-count">0</span>
-            <span class="defeated-slash text-3xl font-bold">/</span>
-            <span class="defeated-total text-3xl font-bold" id="meta-total-count">0</span>
-          </div>
-          <div class="defeated-lbl text-[10px] font-semibold uppercase tracking-[0.25em] mt-2">已击败</div>
-        </div>
-
-        <!-- Progress Bar -->
-        <div class="mt-5 w-full max-w-sm flex items-center gap-3">
-          <div class="progress-track flex-1 h-2 overflow-hidden rounded-full">
-            <div id="progress-bar" class="progress-fill h-2 rounded-full" style="width:0%"></div>
-          </div>
-          <span class="progress-pct text-xs font-bold" id="progress-pct">0%</span>
-        </div>
+    <header>
+      <div class="header-rule"></div>
+      <div class="header-eyebrow type-caption-uppercase">进度系统</div>
+      <h1 class="header-title type-display-lg">世界进度</h1>
+      <div class="header-meta type-body-sm">
+        <span>服务器 <span class="meta-value" id="meta-server-name"></span></span>
+        <span class="header-meta-divider" id="server-id-divider" hidden>·</span>
+        <span id="server-id-wrap" hidden>ID <span class="meta-value" id="meta-server-id"></span></span>
+        <span class="header-meta-divider">·</span>
+        <span id="meta-time"></span>
       </div>
+    </header>
 
-      <!-- Summary Strip -->
-      <div class="summary-strip relative z-10 flex items-center justify-center gap-4 py-2">
-        <span class="summary-text text-xs tracking-wide">已击败 <b id="summary-defeated">0</b></span>
-        <span class="summary-text text-xs">·</span>
-        <span class="summary-text text-xs tracking-wide">未击败 <b id="summary-remaining">0</b></span>
+    <section class="summary">
+      <div class="summary-count">
+        <span class="summary-defeated" id="summary-defeated">0</span>
+        <span class="summary-slash">/</span>
+        <span class="summary-total" id="summary-total">0</span>
+        <span class="summary-label">已击败</span>
       </div>
-    </div>
-
-    <!-- ═══ Boss Grid ═══ -->
-    <div class="body-area px-5 pt-5 pb-5">
-      <div id="progress-grid" class="grid gap-3"
-           style="grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));"></div>
-
-      <div class="footer-text mt-4 text-right text-[11px] font-medium tracking-widest pr-2">
-        Powered by NextBot
+      <div class="summary-bar">
+        <div class="progress-track">
+          <div class="progress-fill" id="progress-fill" style="width:0%"></div>
+        </div>
+        <span class="progress-pct" id="progress-pct">0%</span>
       </div>
-    </div>
+    </section>
 
+    <section id="grid" class="grid"></section>
+
+    <footer class="footer type-caption">Powered by NextBot</footer>
   </main>
 
   <script id="progress-data" type="application/json">__PROGRESS_DATA_JSON__</script>
@@ -199,78 +319,57 @@
 
     const data = JSON.parse(document.getElementById("progress-data").textContent);
     const progress = Array.isArray(data.progress) ? data.progress : [];
-    const theme = String(data.theme || "dark");
 
-    document.documentElement.setAttribute("data-theme", theme);
-
-    document.getElementById("meta-server-name").textContent = data.server_name || "";
-    const idTag = document.getElementById("meta-server-id-tag");
-    const timeTag = document.getElementById("meta-time-tag");
-    if (data.server_id) { idTag.textContent = "#" + data.server_id; } else { idTag.style.display = "none"; }
-    if (data.generated_at) { timeTag.textContent = data.generated_at; } else { timeTag.style.display = "none"; }
+    document.getElementById("meta-server-name").textContent = String(data.server_name || "未知服务器");
+    if (data.server_id) {
+      document.getElementById("server-id-divider").hidden = false;
+      document.getElementById("server-id-wrap").hidden = false;
+      document.getElementById("meta-server-id").textContent = String(data.server_id);
+    }
+    document.getElementById("meta-time").textContent = data.generated_at || "";
 
     const total = Number(data.total_count || 0);
     const defeated = Number(data.defeated_count || 0);
-    const remaining = Math.max(0, total - defeated);
     const pct = total > 0 ? Math.round(defeated / total * 100) : 0;
-
-    document.getElementById("meta-defeated-count").textContent = defeated;
-    document.getElementById("meta-total-count").textContent = total;
-    document.getElementById("progress-bar").style.width = `${pct}%`;
+    document.getElementById("summary-defeated").textContent = String(defeated);
+    document.getElementById("summary-total").textContent = String(total);
+    document.getElementById("progress-fill").style.width = `${pct}%`;
     document.getElementById("progress-pct").textContent = `${pct}%`;
-    document.getElementById("summary-defeated").textContent = defeated;
-    document.getElementById("summary-remaining").textContent = remaining;
 
-    const grid = document.getElementById("progress-grid");
+    const grid = document.getElementById("grid");
     progress.forEach((item) => {
       const isDefeated = Boolean(item?.defeated);
       const name = String(item?.name || "未知");
       const imgInfo = BOSS_IMG_MAP[name];
 
       const card = document.createElement("article");
-      card.className = "flex overflow-hidden rounded-xl transition-all duration-150 "
-        + (isDefeated ? "card-defeated" : "card-undefeated");
-
-      /* Left color stripe */
-      const stripe = document.createElement("div");
-      stripe.className = "boss-stripe " + (isDefeated ? "boss-stripe-on" : "boss-stripe-off");
-      card.appendChild(stripe);
-
-      const inner = document.createElement("div");
-      inner.className = "flex-1 flex flex-col items-center gap-2 p-3";
+      card.className = "boss " + (isDefeated ? "defeated" : "undefeated");
 
       const imgWrap = document.createElement("div");
-      imgWrap.className = "relative flex h-20 w-full items-center justify-center";
-
+      imgWrap.className = "boss-img";
       if (imgInfo) {
         const img = document.createElement("img");
         img.src = `/assets/imgs/boss/${imgInfo.key}.${imgInfo.ext}`;
         img.alt = name;
-        img.className = "max-h-20 max-w-[140px] object-contain "
-          + (isDefeated ? "img-defeated" : "img-undefeated");
         imgWrap.appendChild(img);
       } else {
         const placeholder = document.createElement("div");
-        placeholder.className = "flex h-16 w-16 items-center justify-center rounded-full text-2xl "
-          + (isDefeated ? "placeholder-defeated" : "placeholder-undefeated");
+        placeholder.className = "placeholder";
         placeholder.textContent = "?";
         imgWrap.appendChild(placeholder);
       }
+      card.appendChild(imgWrap);
 
       const nameEl = document.createElement("div");
-      nameEl.className = "text-center text-sm font-semibold leading-tight "
-        + (isDefeated ? "name-defeated" : "name-undefeated");
+      nameEl.className = "boss-name";
       nameEl.textContent = name;
+      card.appendChild(nameEl);
 
       const badge = document.createElement("span");
-      badge.className = "rounded-full px-2.5 py-0.5 text-[11px] font-bold tracking-wide "
-        + (isDefeated ? "badge-defeated" : "badge-undefeated");
-      badge.textContent = isDefeated ? "✓ 已击败" : "未击败";
+      badge.className = "boss-badge";
+      badge.textContent = isDefeated ? "已击败" : "未击败";
+      card.appendChild(badge);
 
-      inner.appendChild(imgWrap);
-      inner.appendChild(nameEl);
-      inner.appendChild(badge);
-      card.appendChild(inner);
       grid.appendChild(card);
     });
   </script>

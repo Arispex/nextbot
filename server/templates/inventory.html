@@ -1,501 +1,513 @@
 <!doctype html>
-<html lang="zh-CN" data-theme="light">
+<html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>NextBot - 用户背包</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <title>NextBot 用户背包</title>
+  <link rel="stylesheet" href="/assets/css/render-fonts.css" />
+  <link rel="stylesheet" href="/assets/css/render-tokens.css" />
   <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    [hidden] { display: none !important; }
     :root { --cell: 52px; }
-    * { margin: 0; padding: 0; box-sizing: border-box; }
 
-    /* ── Accent stripe at top ──────────────────────────────── */
-    .top-stripe {
+    body {
+      background-color: var(--color-canvas);
+      color: var(--color-ink);
+      font-family: var(--font-body);
+      font-size: var(--type-body-md-size);
+      line-height: 1.55;
+      padding: var(--space-xxl) var(--space-xxl);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    .page {
+      max-width: 1900px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-xl);
+    }
+
+    /* ── Header (text-hero) ────────────────────────────────── */
+    .header-rule {
+      width: 64px;
       height: 4px;
-      background: linear-gradient(90deg, #6366f1 0%, #8b5cf6 30%, #ec4899 60%, #f59e0b 100%);
+      background-color: var(--color-primary);
+      border-radius: var(--radius-pill);
+      margin-bottom: var(--space-md);
     }
 
-    /* ── Light ──────────────────────────────────────────────── */
-    [data-theme="light"] body { background: #e4e5ea; }
-    [data-theme="light"] .card-root { background: #f4f4f7; box-shadow: 0 8px 40px rgba(0,0,0,0.12); }
-    [data-theme="light"] .hero {
-      background:
-        url("data:image/svg+xml,%3Csvg width='40' height='40' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 0h40v40H0z' fill='none'/%3E%3Cpath d='M0 20h40M20 0v40' stroke='%23000000' stroke-width='0.5' opacity='0.03'/%3E%3C/svg%3E"),
-        linear-gradient(160deg, #e0e7f1 0%, #dce4f0 40%, #d4dfef 100%);
-      position: relative; overflow: hidden;
+    .header-eyebrow {
+      color: var(--color-muted);
+      margin-bottom: var(--space-xs);
     }
-    [data-theme="light"] .hero::before {
-      content: ''; position: absolute; inset: 0; pointer-events: none;
-      background:
-        radial-gradient(ellipse at 75% 10%, rgba(99,102,241,0.08) 0%, transparent 55%),
-        radial-gradient(ellipse at 25% 90%, rgba(139,92,246,0.06) 0%, transparent 50%),
-        radial-gradient(ellipse at 50% 50%, rgba(59,130,246,0.03) 0%, transparent 70%);
-    }
-    [data-theme="light"] .hero-name { color: #1e293b; text-shadow: 0 1px 8px rgba(99,102,241,0.1); }
-    [data-theme="light"] .hero-server { color: #64748b; }
-    [data-theme="light"] .header-rule { background: linear-gradient(90deg, #6366f1, #818cf8, transparent); }
-    [data-theme="light"] .hero-page-title { color: #475569; }
-    [data-theme="light"] .hero-tag { background: rgba(0,0,0,0.05); border: 1px solid rgba(0,0,0,0.06); color: #8893a7; }
-    [data-theme="light"] .hero-divider { background: linear-gradient(90deg, transparent, rgba(0,0,0,0.08), transparent); }
-    [data-theme="light"] .primary-stat-val { color: #1e293b; }
-    [data-theme="light"] .primary-stat-lbl { color: #94a3b8; }
-    [data-theme="light"] .primary-stat-slash { color: #cbd5e1; }
-    [data-theme="light"] .secondary-stats { border-top: 1px solid rgba(0,0,0,0.06); }
-    [data-theme="light"] .stat-block-val { color: #334155; }
-    [data-theme="light"] .stat-block-lbl { color: #94a3b8; }
-    [data-theme="light"] .stat-accent-life { background: #ef4444; box-shadow: 0 0 12px rgba(239,68,68,0.5); }
-    [data-theme="light"] .stat-accent-mana { background: #3b82f6; box-shadow: 0 0 12px rgba(59,130,246,0.5); }
-    [data-theme="light"] .stat-accent-fish { background: #10b981; box-shadow: 0 0 8px rgba(16,185,129,0.35); }
-    [data-theme="light"] .stat-accent-death { background: #8b5cf6; box-shadow: 0 0 8px rgba(139,92,246,0.35); }
-    [data-theme="light"] .stat-accent-time { background: #f59e0b; box-shadow: 0 0 8px rgba(245,158,11,0.35); }
-    [data-theme="light"] .hero-fade { background: linear-gradient(to bottom, #111827, #f4f4f7); }
-    [data-theme="light"] .summary-strip { background: rgba(0,0,0,0.04); }
-    [data-theme="light"] .summary-text { color: #94a3b8; }
-    [data-theme="light"] .summary-text b { color: #475569; }
-    [data-theme="light"] .inv-body { background: #f4f4f7; }
-    [data-theme="light"] .section-card { background: #fff; border: 1px solid #e0e0e6; }
-    [data-theme="light"] .section-head { border-color: #ebebf0; }
-    [data-theme="light"] .section-title { color: #444; }
-    [data-theme="light"] .section-badge { color: #999; }
-    [data-theme="light"] .section-stripe-blue { background: #6366f1; }
-    [data-theme="light"] .section-stripe-green { background: #10b981; }
-    [data-theme="light"] .section-stripe-purple { background: #8b5cf6; }
-    [data-theme="light"] .section-stripe-amber { background: #f59e0b; }
-    [data-theme="light"] .section-stripe-red { background: #ef4444; }
-    [data-theme="light"] .section-stripe-gray { background: #9ca3af; }
-    [data-theme="light"] .cell-occupied { background: #f5f5f8; border: 1.5px solid #d5d5dd; }
-    [data-theme="light"] .cell-occupied:hover { border-color: #6366f1; box-shadow: 0 0 0 2px rgba(99,102,241,0.18); }
-    [data-theme="light"] .cell-empty { background: #ededf2; border: 1.5px solid #e0e0e6; }
-    [data-theme="light"] .slot-index { color: #b0b0b8; }
-    [data-theme="light"] .stack-tag { background: #222; color: #f5f5f5; }
-    [data-theme="light"] .item-hint { background: #1c1c2e; color: #eee; box-shadow: 0 4px 16px rgba(0,0,0,0.25); }
-    [data-theme="light"] .footer-text { color: #c5c5cc; }
 
-    /* ── Dark ───────────────────────────────────────────────── */
-    [data-theme="dark"] body { background: #07070a; }
-    [data-theme="dark"] .card-root { background: #0e0e12; box-shadow: 0 0 60px rgba(0,0,0,0.6); }
-    [data-theme="dark"] .hero {
-      background:
-        url("data:image/svg+xml,%3Csvg width='40' height='40' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 0h40v40H0z' fill='none'/%3E%3Cpath d='M0 20h40M20 0v40' stroke='%23ffffff' stroke-width='0.5' opacity='0.015'/%3E%3C/svg%3E"),
-        linear-gradient(160deg, #060610 0%, #0a0c18 40%, #06101e 100%);
-      position: relative; overflow: hidden;
+    .header-title {
+      color: var(--color-ink);
+      margin: 0 0 var(--space-md) 0;
     }
-    [data-theme="dark"] .hero::before {
-      content: ''; position: absolute; inset: 0; pointer-events: none;
-      background:
-        radial-gradient(ellipse at 75% 10%, rgba(99,102,241,0.06) 0%, transparent 55%),
-        radial-gradient(ellipse at 25% 90%, rgba(139,92,246,0.04) 0%, transparent 50%);
-    }
-    [data-theme="dark"] .hero-name { color: #e0e0ea; text-shadow: 0 0 30px rgba(99,102,241,0.2), 0 2px 10px rgba(0,0,0,0.5); }
-    [data-theme="dark"] .hero-server { color: rgba(255,255,255,0.25); }
-    [data-theme="dark"] .header-rule { background: linear-gradient(90deg, #6366f1, #818cf8, transparent); }
-    [data-theme="dark"] .hero-page-title { color: #e2e8f0; }
-    [data-theme="dark"] .hero-tag { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); color: rgba(255,255,255,0.2); }
-    [data-theme="dark"] .hero-divider { background: linear-gradient(90deg, transparent, rgba(255,255,255,0.05), transparent); }
-    [data-theme="dark"] .primary-stat-val { color: #ddd; }
-    [data-theme="dark"] .primary-stat-lbl { color: rgba(255,255,255,0.2); }
-    [data-theme="dark"] .primary-stat-slash { color: rgba(255,255,255,0.1); }
-    [data-theme="dark"] .secondary-stats { border-top: 1px solid rgba(255,255,255,0.03); }
-    [data-theme="dark"] .stat-block-val { color: rgba(255,255,255,0.65); }
-    [data-theme="dark"] .stat-block-lbl { color: rgba(255,255,255,0.18); }
-    [data-theme="dark"] .stat-accent-life { background: #ef4444; box-shadow: 0 0 10px rgba(239,68,68,0.3); }
-    [data-theme="dark"] .stat-accent-mana { background: #3b82f6; box-shadow: 0 0 10px rgba(59,130,246,0.3); }
-    [data-theme="dark"] .stat-accent-fish { background: #10b981; box-shadow: 0 0 6px rgba(16,185,129,0.25); }
-    [data-theme="dark"] .stat-accent-death { background: #8b5cf6; box-shadow: 0 0 6px rgba(139,92,246,0.25); }
-    [data-theme="dark"] .stat-accent-time { background: #f59e0b; box-shadow: 0 0 6px rgba(245,158,11,0.25); }
-    [data-theme="dark"] .hero-fade { background: linear-gradient(to bottom, #060610, #0e0e12); }
-    [data-theme="dark"] .summary-strip { background: rgba(0,0,0,0.3); }
-    [data-theme="dark"] .summary-text { color: rgba(255,255,255,0.2); }
-    [data-theme="dark"] .summary-text b { color: rgba(255,255,255,0.4); }
-    [data-theme="dark"] .inv-body { background: #0e0e12; }
-    [data-theme="dark"] .section-card { background: #141418; border: 1px solid rgba(255,255,255,0.04); }
-    [data-theme="dark"] .section-head { border-color: rgba(255,255,255,0.04); }
-    [data-theme="dark"] .section-title { color: #999; }
-    [data-theme="dark"] .section-badge { color: #555; }
-    [data-theme="dark"] .section-stripe-blue { background: #6366f1; }
-    [data-theme="dark"] .section-stripe-green { background: #10b981; }
-    [data-theme="dark"] .section-stripe-purple { background: #8b5cf6; }
-    [data-theme="dark"] .section-stripe-amber { background: #f59e0b; }
-    [data-theme="dark"] .section-stripe-red { background: #ef4444; }
-    [data-theme="dark"] .section-stripe-gray { background: #6b7280; }
-    [data-theme="dark"] .cell-occupied { background: #1a1a20; border: 1.5px solid rgba(255,255,255,0.06); }
-    [data-theme="dark"] .cell-occupied:hover { border-color: rgba(99,102,241,0.5); box-shadow: 0 0 0 2px rgba(99,102,241,0.12); }
-    [data-theme="dark"] .cell-empty { background: #111115; border: 1.5px solid rgba(255,255,255,0.025); }
-    [data-theme="dark"] .slot-index { color: #2a2a32; }
-    [data-theme="dark"] .stack-tag { background: #08080c; border: 1px solid rgba(255,255,255,0.08); color: #ccc; }
-    [data-theme="dark"] .item-hint { background: #18182a; border: 1px solid rgba(99,102,241,0.25); color: #ddd; box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
-    [data-theme="dark"] .footer-text { color: #1a1a20; }
 
-    /* ── Shared ─────────────────────────────────────────────── */
-    .hero-tag {
-      display: inline-block; padding: 2px 10px; border-radius: 20px;
-      font-size: 11px; font-weight: 500; letter-spacing: 0.05em;
+    .owner-bar {
+      display: flex;
+      align-items: center;
+      gap: var(--space-md);
+      color: var(--color-muted-soft);
     }
-    .stat-accent { width: 3px; border-radius: 2px; flex-shrink: 0; }
-    .stat-accent-sm { height: 24px; }
-    .stat-accent-lg { height: 36px; }
-    .section-stripe { width: 3px; border-radius: 0 0 0 0; flex-shrink: 0; }
+
+    .avatar {
+      width: 48px;
+      height: 48px;
+      border-radius: var(--radius-pill);
+      background-color: var(--color-surface-card);
+      border: 1px solid var(--color-hairline);
+      object-fit: cover;
+      flex-shrink: 0;
+    }
+
+    .owner-meta {
+      display: flex;
+      gap: var(--space-md);
+      align-items: baseline;
+      flex-wrap: wrap;
+      min-width: 0;
+    }
+
+    .owner-name {
+      color: var(--color-ink);
+      font-weight: 500;
+    }
+
+    .owner-id {
+      color: var(--color-muted);
+      font-family: var(--font-code);
+    }
+
+    .meta-divider {
+      color: var(--color-hairline);
+    }
+
+    /* ── Stats tiles (5-up cream-card grid) ────────────────── */
+    .stats-tiles {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: var(--space-sm);
+    }
+
+    .stat-tile {
+      background-color: var(--color-surface-card);
+      border: 1px solid var(--color-hairline);
+      border-radius: var(--radius-md);
+      padding: var(--space-sm) var(--space-md);
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
+    }
+
+    .stat-label {
+      color: var(--color-muted);
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .stat-value {
+      color: var(--color-ink);
+      font-family: var(--font-body);
+      font-size: 18px;
+      font-weight: 600;
+      line-height: 1.15;
+      letter-spacing: -0.01em;
+      font-feature-settings: "tnum";
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    /* ── Section rows: each row scrolls horizontally if needed ─ */
+    .section-rows {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-lg);
+    }
+
+    .section-row {
+      display: flex;
+      gap: var(--space-md);
+      align-items: flex-start;
+      flex-wrap: wrap;
+    }
+
+    /* Sub-stack: vertically stack two related sections. */
+    .section-stack {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-md);
+    }
+
+    /* ── Section card (cream-card preserved as visual boundary
+     * between distinct inventory zones; gradient stripe and
+     * box-shadow stripped). ─────────────────────────────────── */
+    .section {
+      background-color: var(--color-surface-card);
+      border: 1px solid var(--color-hairline);
+      border-radius: var(--radius-md);
+      display: flex;
+      flex-direction: column;
+      width: fit-content;
+    }
+
+    /* 4-tier semantic mapping per section family */
+    .section.family-equip { border-color: var(--color-accent-teal); }
+    .section.family-resource { border-color: var(--color-accent-amber); }
+    .section.family-trash {
+      background-color: var(--color-surface-soft);
+      border: 1px dashed var(--color-hairline);
+    }
+
+    .section-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: var(--space-md);
+      padding: var(--space-xs) var(--space-md);
+      border-bottom: 1px solid var(--color-hairline);
+    }
+
+    .section.family-trash .section-head { border-bottom-style: dashed; }
+
+    .section-title {
+      color: var(--color-ink);
+      font-weight: 500;
+      font-size: 13px;
+    }
+
+    .section-count {
+      color: var(--color-muted);
+      font-size: 11px;
+      font-weight: 500;
+      font-feature-settings: "tnum";
+    }
+
+    .section-body {
+      padding: var(--space-sm);
+    }
+
+    .grid {
+      display: grid;
+      gap: 6px;
+    }
+
+    /* ── Cells ─────────────────────────────────────────────── */
+    .cell {
+      position: relative;
+      width: var(--cell);
+      height: var(--cell);
+      border-radius: var(--radius-sm);
+    }
+
+    .cell.occupied {
+      background-color: var(--color-canvas);
+      border: 1px solid var(--color-hairline);
+    }
+
+    .cell.empty {
+      background-color: var(--color-canvas);
+      border: 1px dashed var(--color-hairline);
+    }
+
+    .slot-index {
+      position: absolute;
+      left: 4px;
+      top: 2px;
+      color: var(--color-muted-soft);
+      font-family: var(--font-body);
+      font-size: 9px;
+      font-weight: 500;
+      font-feature-settings: "tnum";
+      z-index: 1;
+    }
+
+    .cell img {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      padding: 6px;
+      image-rendering: pixelated;
+    }
+
+    .stack-tag {
+      position: absolute;
+      bottom: 2px;
+      right: 2px;
+      background-color: var(--color-surface-card);
+      color: var(--color-ink);
+      border: 1px solid var(--color-hairline);
+      border-radius: var(--radius-sm);
+      padding: 0 4px;
+      font-family: var(--font-body);
+      font-size: 10px;
+      font-weight: 600;
+      font-feature-settings: "tnum";
+      line-height: 1.4;
+      z-index: 1;
+    }
+
+    .footer {
+      text-align: right;
+      color: var(--color-muted-soft);
+      margin-top: var(--space-md);
+    }
   </style>
 </head>
-<body class="min-h-screen flex items-start justify-center p-4">
-  <main class="card-root mx-auto max-w-[2100px] w-full overflow-hidden rounded-2xl">
+<body>
+  <main class="page">
 
-    <!-- ═══ Hero Area ═══ -->
-    <div class="hero relative">
-      <div class="relative z-10 flex flex-col items-center pt-10 pb-6 px-8">
-
-        <!-- Page Title -->
-        <div class="absolute left-7 top-6">
-          <div class="header-rule h-1 w-24 rounded-full mb-3"></div>
-          <div class="hero-page-title text-4xl font-black" style="letter-spacing: -0.03em;">用户背包</div>
-        </div>
-
-        <!-- Player Name -->
-        <h1 class="hero-name text-[42px] font-black tracking-tight leading-none" id="meta-user-name"></h1>
-        <div class="hero-server mt-2 text-sm font-medium tracking-widest uppercase" id="hero-server"></div>
-        <div class="mt-2 flex items-center gap-2">
-          <span class="hero-tag" id="meta-user-id-tag"></span>
-          <span class="hero-tag" id="meta-time-tag"></span>
-        </div>
-
-        <!-- Divider -->
-        <div class="hero-divider my-6 h-px w-full max-w-md"></div>
-
-        <!-- Primary Stats: Life & Mana -->
-        <div class="flex items-center justify-center gap-12 mb-5">
-          <div class="flex items-center gap-3">
-            <div class="stat-accent stat-accent-lg stat-accent-life"></div>
-            <div>
-              <div class="primary-stat-val text-3xl font-extrabold leading-none tracking-tight" id="meta-life"></div>
-              <div class="primary-stat-lbl text-[10px] font-semibold uppercase tracking-[0.2em] mt-1">生命值</div>
-            </div>
-          </div>
-          <div class="flex items-center gap-3">
-            <div class="stat-accent stat-accent-lg stat-accent-mana"></div>
-            <div>
-              <div class="primary-stat-val text-3xl font-extrabold leading-none tracking-tight" id="meta-mana"></div>
-              <div class="primary-stat-lbl text-[10px] font-semibold uppercase tracking-[0.2em] mt-1">魔力值</div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Secondary Stats -->
-        <div id="stats-header" class="secondary-stats flex flex-wrap items-center justify-center gap-6 pt-4">
-          <div class="flex items-center gap-2">
-            <div class="stat-accent stat-accent-sm stat-accent-fish"></div>
-            <div>
-              <div class="stat-block-val text-base font-bold leading-tight" id="meta-fishing-tasks"></div>
-              <div class="stat-block-lbl text-[9px] font-semibold uppercase tracking-widest">渔夫任务</div>
-            </div>
-          </div>
-          <div class="flex items-center gap-2">
-            <div class="stat-accent stat-accent-sm stat-accent-death"></div>
-            <div>
-              <div class="stat-block-val text-base font-bold leading-tight" id="meta-pve-deaths"></div>
-              <div class="stat-block-lbl text-[9px] font-semibold uppercase tracking-widest">PVE 死亡</div>
-            </div>
-          </div>
-          <div class="flex items-center gap-2">
-            <div class="stat-accent stat-accent-sm stat-accent-death"></div>
-            <div>
-              <div class="stat-block-val text-base font-bold leading-tight" id="meta-pvp-deaths"></div>
-              <div class="stat-block-lbl text-[9px] font-semibold uppercase tracking-widest">PVP 死亡</div>
-            </div>
-          </div>
-          <div id="stats-online-time" class="flex items-center gap-2">
-            <div class="stat-accent stat-accent-sm stat-accent-time"></div>
-            <div>
-              <div class="stat-block-val text-base font-bold leading-tight" id="meta-online-time"></div>
-              <div class="stat-block-lbl text-[9px] font-semibold uppercase tracking-widest">在线时长</div>
-            </div>
-          </div>
+    <header>
+      <div class="header-rule"></div>
+      <div class="header-eyebrow type-caption-uppercase">背包系统</div>
+      <h1 class="header-title type-display-lg">用户背包</h1>
+      <div class="owner-bar">
+        <img id="wh-avatar" class="avatar" alt="avatar" />
+        <div class="owner-meta type-body-sm">
+          <span class="owner-name" id="meta-user-name"></span>
+          <span class="owner-id" id="meta-user-id"></span>
+          <span class="meta-divider" id="server-divider" hidden>·</span>
+          <span id="meta-server" hidden></span>
+          <span class="meta-divider">·</span>
+          <span id="meta-time"></span>
         </div>
       </div>
+    </header>
 
-      <!-- Summary Strip -->
-      <div id="stats-section" class="summary-strip relative z-10 flex items-center justify-center gap-4 py-2">
-        <span class="summary-text text-xs tracking-wide">总格数 <b id="meta-total">0</b></span>
-        <span class="summary-text text-xs">·</span>
-        <span class="summary-text text-xs tracking-wide">已占用 <b id="meta-used">0</b></span>
-        <span class="summary-text text-xs">·</span>
-        <span class="summary-text text-xs tracking-wide">空闲 <b id="meta-empty">0</b></span>
+    <section id="stats-tiles" class="stats-tiles">
+      <div class="stat-tile">
+        <span class="stat-label">生命值</span>
+        <span class="stat-value" id="meta-life"></span>
       </div>
-    </div>
-
-    <!-- ═══ Inventory Body ═══ -->
-    <div class="inv-body px-5 pt-5 pb-5">
-      <div id="section-rows" class="space-y-4"></div>
-
-      <div class="footer-text mt-4 text-right text-[11px] font-medium tracking-widest pr-2">
-        Powered by NextBot
+      <div class="stat-tile">
+        <span class="stat-label">魔力值</span>
+        <span class="stat-value" id="meta-mana"></span>
       </div>
-    </div>
+      <div class="stat-tile">
+        <span class="stat-label">渔夫任务</span>
+        <span class="stat-value" id="meta-fishing-tasks"></span>
+      </div>
+      <div class="stat-tile">
+        <span class="stat-label">PVE / PVP 死亡</span>
+        <span class="stat-value" id="meta-deaths"></span>
+      </div>
+      <div class="stat-tile" id="tile-online-time">
+        <span class="stat-label">在线时长</span>
+        <span class="stat-value" id="meta-online-time"></span>
+      </div>
+    </section>
 
+    <section id="section-rows" class="section-rows"></section>
+
+    <footer class="footer type-caption">Powered by NextBot</footer>
   </main>
 
   <script id="inventory-data" type="application/json">__INVENTORY_DATA_JSON__</script>
   <script>
-    const data = JSON.parse(document.getElementById("inventory-data").textContent);
-    const theme = String(data.theme || "light");
-    document.documentElement.setAttribute("data-theme", theme);
+    (async function () {
+      const data = JSON.parse(document.getElementById("inventory-data").textContent);
 
-    document.getElementById("meta-user-name").textContent = data.user_name || "";
-    document.getElementById("hero-server").textContent = data.server_name || "";
-    const idTag = document.getElementById("meta-user-id-tag");
-    const timeTag = document.getElementById("meta-time-tag");
-    if (data.user_id) { idTag.textContent = "QQ：" + data.user_id; } else { idTag.style.display = "none"; }
-    if (data.generated_at) { timeTag.textContent = data.generated_at; } else { timeTag.style.display = "none"; }
+      // ── Header / owner bar ─────────────────────────────────
+      const userId = String(data.user_id || "");
+      document.getElementById("wh-avatar").src =
+        `http://q1.qlogo.cn/g?b=qq&nk=${encodeURIComponent(userId)}&s=100`;
+      document.getElementById("meta-user-name").textContent = data.user_name || "未知玩家";
+      document.getElementById("meta-user-id").textContent = userId ? `(${userId})` : "";
+      const serverName = String(data.server_name || "").trim();
+      if (serverName) {
+        document.getElementById("server-divider").hidden = false;
+        const ms = document.getElementById("meta-server");
+        ms.hidden = false;
+        ms.textContent = serverName;
+      }
+      document.getElementById("meta-time").textContent = data.generated_at || "";
 
-    document.getElementById("meta-life").textContent = data.life_text || "";
-    document.getElementById("meta-mana").textContent = data.mana_text || "";
-    document.getElementById("meta-fishing-tasks").textContent = data.fishing_tasks_text || "";
-    document.getElementById("meta-pve-deaths").textContent = data.pve_deaths_text || "";
-    document.getElementById("meta-pvp-deaths").textContent = data.pvp_deaths_text || "";
-    const onlineTimeText = String(data.online_time_text || "").trim();
-    if (onlineTimeText) {
-      document.getElementById("meta-online-time").textContent = onlineTimeText;
-    } else {
-      document.getElementById("stats-online-time").classList.add("hidden");
-    }
+      // ── Stats tiles ────────────────────────────────────────
+      const showStats = Boolean(data.show_stats ?? true);
+      if (!showStats) document.getElementById("stats-tiles").hidden = true;
 
-    const slots = Array.isArray(data.slots) ? data.slots : [];
-    const showStats = Boolean(data.show_stats ?? true);
-    const showIndex = Boolean(data.show_index ?? true);
-    const sectionRows = document.getElementById("section-rows");
-    const statsSection = document.getElementById("stats-section");
-    const itemNameMap = new Map();
-    if (statsSection && !showStats) statsSection.classList.add("hidden");
+      document.getElementById("meta-life").textContent = data.life_text || "—";
+      document.getElementById("meta-mana").textContent = data.mana_text || "—";
+      document.getElementById("meta-fishing-tasks").textContent = data.fishing_tasks_text || "—";
+      // Combine PVE / PVP deaths in one tile so layout stays 5-up; show as
+      // "PVE / PVP" pair to preserve information.
+      const pve = data.pve_deaths_text || "0";
+      const pvp = data.pvp_deaths_text || "0";
+      document.getElementById("meta-deaths").textContent = `${pve} / ${pvp}`;
+      const onlineText = String(data.online_time_text || "").trim();
+      if (onlineText) {
+        document.getElementById("meta-online-time").textContent = onlineText;
+      } else {
+        document.getElementById("tile-online-time").hidden = true;
+      }
 
-    const prefixNameMap = new Map();
-    let activeHintEl = null;
+      // ── Section / cell rendering ───────────────────────────
+      const slots = Array.isArray(data.slots) ? data.slots : [];
+      const showIndex = Boolean(data.show_index ?? true);
 
-    /* ── Section color mapping ── */
-    const sectionColors = {
-      main: "blue", piggy: "green", safe: "green",
-      loadout_1: "purple", loadout_2: "purple", loadout_3: "purple",
-      misc_equip: "purple", misc_dye: "purple",
-      ammo_1: "amber", ammo_2: "amber",
-      forge: "red", void: "red", trash: "gray"
-    };
-
-    async function loadNameDicts() {
+      const itemNameMap = new Map();
+      const prefixNameMap = new Map();
       try {
         const [itemRes, prefixRes] = await Promise.all([
           fetch("/assets/dicts/item.json"),
-          fetch("/assets/dicts/prefix.json")
+          fetch("/assets/dicts/prefix.json"),
         ]);
         if (itemRes.ok) {
-          const itemList = await itemRes.json();
-          if (Array.isArray(itemList)) {
-            itemList.forEach((entry) => {
-              const id = Number(entry?.id);
-              const name = String(entry?.name || "").trim();
-              if (id > 0 && name) itemNameMap.set(id, name);
-            });
-          }
+          const list = await itemRes.json();
+          if (Array.isArray(list)) list.forEach((e) => {
+            const id = Number(e?.id || 0);
+            const name = String(e?.name || "").trim();
+            if (id > 0 && name) itemNameMap.set(id, name);
+          });
         }
         if (prefixRes.ok) {
-          const prefixList = await prefixRes.json();
-          if (Array.isArray(prefixList)) {
-            prefixList.forEach((entry) => {
-              const id = Number(entry?.id);
-              const name = String(entry?.name || "").trim();
-              if (id > 0 && name) prefixNameMap.set(id, name);
-            });
-          }
+          const list = await prefixRes.json();
+          if (Array.isArray(list)) list.forEach((e) => {
+            const id = Number(e?.id || 0);
+            const name = String(e?.name || "").trim();
+            if (id > 0 && name) prefixNameMap.set(id, name);
+          });
         }
-      } catch (_) {}
-    }
+      } catch (e) { /* dict fetch failed → fall back to numeric ids */ }
 
-    function range(start, end) {
-      const out = [];
-      for (let i = start; i <= end; i += 1) out.push(i);
-      return out;
-    }
-
-    const sections = [
-      { id: "main",       title: "主背包",              indices: range(0, 49),    cols: 10 },
-      { id: "ammo_1",     title: "货币",                indices: range(50, 53),   cols: 1  },
-      { id: "ammo_2",     title: "弹药",                indices: range(54, 57),   cols: 1  },
-      { id: "loadout_1",  title: "第一套装备/饰品/染料", indices: range(59, 88),   cols: 3  },
-      { id: "misc_equip", title: "饰品",                indices: range(89, 93),   cols: 1  },
-      { id: "misc_dye",   title: "染料",                indices: range(94, 98),   cols: 1  },
-      { id: "piggy",      title: "猪猪存钱罐",           indices: range(99, 138),  cols: 10 },
-      { id: "safe",       title: "保险箱",              indices: range(139, 178), cols: 10 },
-      { id: "trash",      title: "垃圾桶",              indices: [179],           cols: 1  },
-      { id: "forge",      title: "护卫熔炉",            indices: range(180, 219), cols: 10 },
-      { id: "void",       title: "虚空袋",              indices: range(220, 259), cols: 10 },
-      { id: "loadout_2",  title: "第二套装备/饰品/染料", indices: range(290, 319), cols: 3  },
-      { id: "loadout_3",  title: "第三套装备/饰品/染料", indices: range(320, 349), cols: 3  },
-    ];
-    const sectionById = Object.fromEntries(sections.map(s => [s.id, s]));
-    const sectionRowsConfig = [
-      ["main", "piggy", "safe"],
-      ["loadout_1", "loadout_2", "loadout_3", "misc_equip_stack", "misc_dye", "ammo_1", "ammo_2", "forge_stack"]
-    ];
-
-    function getSlot(index) {
-      const raw = slots[index];
-      const netId    = Number(raw?.net_id || 0);
-      const prefixId = Number(raw?.prefix_id || raw?.prefix || 0);
-      const stack    = Number(raw?.stack || 0);
-      return { index, netId: netId > 0 ? netId : 0, prefixId: prefixId > 0 ? prefixId : 0, stack: stack > 0 ? stack : 0 };
-    }
-
-    function clearActiveHint() {
-      if (activeHintEl) { activeHintEl.remove(); activeHintEl = null; }
-    }
-
-    function buildItemHint(slot) {
-      if (slot.netId <= 0) return "";
-      const itemName   = itemNameMap.get(slot.netId)   || `物品 ID:${slot.netId}`;
-      const prefixName = slot.prefixId > 0 ? (prefixNameMap.get(slot.prefixId) || `前缀 ID:${slot.prefixId}`) : "";
-      return prefixName ? `${prefixName} ${itemName}` : itemName;
-    }
-
-    function createCell(slot) {
-      const occupied = slot.netId > 0;
-      const cell = document.createElement("div");
-      cell.className = "group relative rounded-lg transition-all duration-150 "
-        + (occupied ? "cell-occupied" : "cell-empty");
-      cell.style.width = "var(--cell)";
-      cell.style.height = "var(--cell)";
-
-      if (showIndex) {
-        const idx = document.createElement("span");
-        idx.className = "slot-index absolute left-1 top-0.5 z-10 text-[9px] font-medium";
-        idx.textContent = String(slot.index);
-        cell.appendChild(idx);
+      function range(start, end) {
+        const out = [];
+        for (let i = start; i <= end; i += 1) out.push(i);
+        return out;
       }
 
-      if (occupied) {
-        const img = document.createElement("img");
-        img.className = "h-full w-full object-contain p-1.5 transition-transform duration-150 group-hover:scale-110";
-        img.style.imageRendering = "pixelated";
-        img.src = `/assets/items/Item_${slot.netId}.png`;
-        img.alt = `Item ${slot.netId}`;
-        img.loading = "lazy";
-        cell.appendChild(img);
+      const sections = [
+        { id: "main",       title: "主背包",                indices: range(0, 49),    cols: 10, family: "" },
+        { id: "ammo_1",     title: "货币",                  indices: range(50, 53),   cols: 1,  family: "resource" },
+        { id: "ammo_2",     title: "弹药",                  indices: range(54, 57),   cols: 1,  family: "resource" },
+        { id: "loadout_1",  title: "第一套装备/饰品/染料",  indices: range(59, 88),   cols: 3,  family: "equip" },
+        { id: "misc_equip", title: "饰品",                  indices: range(89, 93),   cols: 1,  family: "equip" },
+        { id: "misc_dye",   title: "染料",                  indices: range(94, 98),   cols: 1,  family: "equip" },
+        { id: "piggy",      title: "猪猪存钱罐",            indices: range(99, 138),  cols: 10, family: "" },
+        { id: "safe",       title: "保险箱",                indices: range(139, 178), cols: 10, family: "" },
+        { id: "trash",      title: "垃圾桶",                indices: [179],           cols: 1,  family: "trash" },
+        { id: "forge",      title: "护卫熔炉",              indices: range(180, 219), cols: 10, family: "" },
+        { id: "void",       title: "虚空袋",                indices: range(220, 259), cols: 10, family: "" },
+        { id: "loadout_2",  title: "第二套装备/饰品/染料",  indices: range(290, 319), cols: 3,  family: "equip" },
+        { id: "loadout_3",  title: "第三套装备/饰品/染料",  indices: range(320, 349), cols: 3,  family: "equip" },
+      ];
+      const sectionById = Object.fromEntries(sections.map((s) => [s.id, s]));
+      const sectionRowsConfig = [
+        ["main", "piggy", "safe"],
+        ["loadout_1", "loadout_2", "loadout_3", "misc_equip_stack", "misc_dye", "ammo_1", "ammo_2", "forge_stack"],
+      ];
+
+      function getSlot(index) {
+        const raw = slots[index];
+        const netId = Number(raw?.net_id || 0);
+        const prefixId = Number(raw?.prefix_id || raw?.prefix || 0);
+        const stack = Number(raw?.stack || 0);
+        return {
+          index,
+          netId: netId > 0 ? netId : 0,
+          prefixId: prefixId > 0 ? prefixId : 0,
+          stack: stack > 0 ? stack : 0,
+        };
       }
 
-      if (slot.stack > 1) {
-        const stackTag = document.createElement("span");
-        stackTag.className = "stack-tag absolute bottom-0.5 right-0.5 rounded px-1 text-[10px] font-bold";
-        stackTag.textContent = String(slot.stack);
-        cell.appendChild(stackTag);
+      function createCell(slot) {
+        const occupied = slot.netId > 0;
+        const cell = document.createElement("div");
+        cell.className = "cell " + (occupied ? "occupied" : "empty");
+        if (showIndex) {
+          const idx = document.createElement("span");
+          idx.className = "slot-index";
+          idx.textContent = String(slot.index);
+          cell.appendChild(idx);
+        }
+        if (occupied) {
+          const img = document.createElement("img");
+          img.src = `/assets/items/Item_${slot.netId}.png`;
+          img.alt = `Item ${slot.netId}`;
+          img.loading = "lazy";
+          cell.appendChild(img);
+        }
+        if (slot.stack > 1) {
+          const tag = document.createElement("span");
+          tag.className = "stack-tag";
+          tag.textContent = String(slot.stack);
+          cell.appendChild(tag);
+        }
+        return cell;
       }
 
-      cell.addEventListener("click", (event) => {
-        event.stopPropagation();
-        clearActiveHint();
-        const hintText = buildItemHint(slot);
-        if (!hintText) return;
-        const hint = document.createElement("span");
-        hint.className = "item-hint pointer-events-none absolute left-1/2 top-0 z-20 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-lg px-2.5 py-1.5 text-[11px] font-semibold";
-        hint.textContent = hintText;
-        cell.appendChild(hint);
-        activeHintEl = hint;
-      });
+      function createSectionCard(section) {
+        const sectionSlots = section.indices.map(getSlot);
+        const used = sectionSlots.filter((s) => s.netId > 0).length;
 
-      return cell;
-    }
+        const card = document.createElement("article");
+        card.className = "section" + (section.family ? ` family-${section.family}` : "");
 
-    function createSectionCard(section) {
-      const sectionSlots = section.indices.map(getSlot);
-      const used = sectionSlots.filter(s => s.netId > 0).length;
-      const color = sectionColors[section.id] || "gray";
+        const head = document.createElement("header");
+        head.className = "section-head";
+        const title = document.createElement("h2");
+        title.className = "section-title";
+        title.textContent = section.title;
+        const count = document.createElement("span");
+        count.className = "section-count";
+        count.textContent = `${used} / ${sectionSlots.length}`;
+        head.appendChild(title);
+        head.appendChild(count);
+        card.appendChild(head);
 
-      const card = document.createElement("article");
-      card.className = "section-card inline-flex w-fit overflow-hidden rounded-xl";
+        const body = document.createElement("div");
+        body.className = "section-body";
+        const grid = document.createElement("div");
+        grid.className = "grid";
+        grid.style.gridTemplateColumns = `repeat(${section.cols}, var(--cell))`;
+        sectionSlots.forEach((slot) => grid.appendChild(createCell(slot)));
+        body.appendChild(grid);
+        card.appendChild(body);
 
-      /* Left color stripe */
-      const stripe = document.createElement("div");
-      stripe.className = `section-stripe section-stripe-${color}`;
-      stripe.style.width = "3px";
-      card.appendChild(stripe);
+        return { card, used, total: sectionSlots.length };
+      }
 
-      const inner = document.createElement("div");
-      inner.className = "flex-1 min-w-0";
+      const sectionRowsEl = document.getElementById("section-rows");
 
-      const head = document.createElement("header");
-      head.className = "section-head flex items-center justify-between border-b px-4 py-2";
-      const title = document.createElement("h2");
-      title.className = "section-title text-[13px] font-semibold";
-      title.textContent = section.title;
-      const badge = document.createElement("span");
-      badge.className = "section-badge text-[11px] font-medium";
-      badge.textContent = `${used}/${sectionSlots.length}`;
-      head.appendChild(title);
-      head.appendChild(badge);
-
-      const body = document.createElement("div");
-      body.className = "overflow-x-auto p-3";
-      const grid = document.createElement("div");
-      grid.className = "grid gap-1.5";
-      grid.style.gridTemplateColumns = `repeat(${section.cols}, var(--cell))`;
-      sectionSlots.forEach(slot => grid.appendChild(createCell(slot)));
-      body.appendChild(grid);
-
-      inner.appendChild(head);
-      inner.appendChild(body);
-      card.appendChild(inner);
-      return { card, used, total: sectionSlots.length };
-    }
-
-    async function init() {
-      await loadNameDicts();
-
-      let usedTotal = 0, total = 0;
       sectionRowsConfig.forEach((rowIds) => {
         const row = document.createElement("div");
-        row.className = "overflow-x-auto";
-        const rowInner = document.createElement("div");
-        rowInner.className = "mx-auto flex w-max items-start gap-4 px-2";
-
+        row.className = "section-row";
         rowIds.forEach((id) => {
           if (id === "forge_stack") {
             const wrap = document.createElement("div");
-            wrap.className = "flex flex-col gap-4";
-            const f = createSectionCard(sectionById.forge);
-            const v = createSectionCard(sectionById.void);
-            wrap.appendChild(f.card);
-            wrap.appendChild(v.card);
-            rowInner.appendChild(wrap);
-            usedTotal += f.used + v.used;
-            total += f.total + v.total;
+            wrap.className = "section-stack";
+            wrap.appendChild(createSectionCard(sectionById.forge).card);
+            wrap.appendChild(createSectionCard(sectionById.void).card);
+            row.appendChild(wrap);
             return;
           }
           if (id === "misc_equip_stack") {
             const wrap = document.createElement("div");
-            wrap.className = "flex flex-col gap-4";
-            const e = createSectionCard(sectionById.misc_equip);
-            const t = createSectionCard(sectionById.trash);
-            wrap.appendChild(e.card);
-            wrap.appendChild(t.card);
-            rowInner.appendChild(wrap);
-            usedTotal += e.used + t.used;
-            total += e.total + t.total;
+            wrap.className = "section-stack";
+            wrap.appendChild(createSectionCard(sectionById.misc_equip).card);
+            wrap.appendChild(createSectionCard(sectionById.trash).card);
+            row.appendChild(wrap);
             return;
           }
           const section = sectionById[id];
           if (!section) return;
-          const { card, used, total: sectionTotal } = createSectionCard(section);
-          rowInner.appendChild(card);
-          usedTotal += used;
-          total += sectionTotal;
+          row.appendChild(createSectionCard(section).card);
         });
-
-        row.appendChild(rowInner);
-        sectionRows.appendChild(row);
+        sectionRowsEl.appendChild(row);
       });
-
-      document.getElementById("meta-total").textContent = String(total);
-      document.getElementById("meta-used").textContent = String(usedTotal);
-      document.getElementById("meta-empty").textContent = String(Math.max(0, total - usedTotal));
-    }
-
-    document.addEventListener("click", clearActiveHint);
-    init();
+    })();
   </script>
 </body>
 </html>

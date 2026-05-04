@@ -41,11 +41,13 @@ INVENTORY_SCREENSHOT_OPTIONS = ScreenshotOptions(
     viewport_width=2000,
     viewport_height=1000,
     full_page=True,
+    fit_content_height=True,
 )
 PROGRESS_SCREENSHOT_OPTIONS = ScreenshotOptions(
-    viewport_width=1700,
+    viewport_width=1200,
     viewport_height=700,
     full_page=True,
+    fit_content_height=True,
 )
 from nextbot.progression import PROGRESSION_KEY_TO_ZH as _PROGRESS_NAME_MAP
 
