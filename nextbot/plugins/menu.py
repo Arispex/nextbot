@@ -42,6 +42,7 @@ MENU_SCREENSHOT_OPTIONS = ScreenshotOptions(
     viewport_width=1920,
     viewport_height=1280,
     full_page=True,
+    fit_content_height=True,
 )
 
 CATEGORY_ORDER = [
