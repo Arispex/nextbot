@@ -42,6 +42,7 @@ WAREHOUSE_SCREENSHOT_OPTIONS = ScreenshotOptions(
     viewport_width=1200,
     viewport_height=600,
     full_page=True,
+    fit_content_height=True,
 )
 
 

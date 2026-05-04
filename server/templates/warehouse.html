@@ -1,141 +1,320 @@
 <!doctype html>
-<html lang="zh-CN" data-theme="light">
+<html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <script src="https://cdn.tailwindcss.com"></script>
+  <title>NextBot 仓库</title>
+  <link rel="stylesheet" href="/assets/css/render-fonts.css" />
+  <link rel="stylesheet" href="/assets/css/render-tokens.css" />
   <style>
-    [data-theme="dark"] body {
-      background: linear-gradient(160deg, #140a0a 0%, #1a0d09 50%, #0f0605 100%);
-    }
-    [data-theme="dark"] .page-header {
-      background: linear-gradient(90deg, rgba(220,38,38,0.0) 0%, rgba(234,179,8,0.10) 50%, rgba(220,38,38,0.0) 100%);
-      border-color: rgba(234,179,8,0.20);
-    }
-    [data-theme="dark"] .header-title { color: #fbbf24; text-shadow: 0 2px 20px rgba(234,179,8,0.30); }
-    [data-theme="dark"] .header-subtitle { color: #cbd5e1; }
-    [data-theme="dark"] .header-rule { background: linear-gradient(90deg, #dc2626, #eab308, transparent); }
-    [data-theme="dark"] .header-time { color: #64748b; }
-    [data-theme="dark"] .grid-card {
-      background: rgba(255,255,255,0.03);
-      border: 1px solid rgba(234,179,8,0.10);
-    }
-    [data-theme="dark"] .slot {
-      background: rgba(255,255,255,0.03);
-      border: 1px solid rgba(148,163,184,0.18);
-    }
-    [data-theme="dark"] .slot.occupied { border-color: rgba(234,179,8,0.40); background: rgba(234,179,8,0.06); }
-    [data-theme="dark"] .slot-id { color: #64748b; }
-    [data-theme="dark"] .slot-stack { background: rgba(15,23,42,0.85); color: #fde68a; }
-    [data-theme="dark"] .slot-name { color: #e2e8f0; }
-    [data-theme="dark"] .slot-prefix { color: #fbbf24; }
-    [data-theme="dark"] .slot-value { color: #fbbf24; }
-    [data-theme="dark"] .empty-icon { color: #1f2937; }
-    [data-theme="dark"] .page-footer { color: #1f2937; }
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
 
-    [data-theme="light"] body {
-      background: linear-gradient(135deg, #fef5ed 0%, #fff8f1 40%, #fef5ed 100%);
+    body {
+      background-color: var(--color-canvas);
+      color: var(--color-ink);
+      font-family: var(--font-body);
+      font-size: var(--type-body-md-size);
+      line-height: 1.55;
+      padding: var(--space-xxl) var(--space-xxl);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
     }
-    [data-theme="light"] .page-header {
-      background: linear-gradient(90deg, rgba(220,38,38,0.0) 0%, rgba(234,179,8,0.08) 50%, rgba(220,38,38,0.0) 100%);
-      border-color: rgba(234,179,8,0.25);
-    }
-    [data-theme="light"] .header-title { color: #b45309; }
-    [data-theme="light"] .header-subtitle { color: #78350f; }
-    [data-theme="light"] .header-rule { background: linear-gradient(90deg, #dc2626, #eab308, transparent); }
-    [data-theme="light"] .header-time { color: #a8a29e; }
-    [data-theme="light"] .grid-card {
-      background: #ffffff;
-      border: 1px solid #fef3c7;
-      box-shadow: 0 2px 12px rgba(234,179,8,0.06);
-    }
-    [data-theme="light"] .slot {
-      background: #fafaf9;
-      border: 1px solid #e7e5e4;
-    }
-    [data-theme="light"] .slot.occupied { border-color: #fcd34d; background: #fffbeb; }
-    [data-theme="light"] .slot-id { color: #94a3b8; }
-    [data-theme="light"] .slot-stack { background: #fffbeb; color: #b45309; border: 1px solid #fde68a; }
-    [data-theme="light"] .slot-name { color: #1e293b; }
-    [data-theme="light"] .slot-prefix { color: #b45309; }
-    [data-theme="light"] .slot-value { color: #b45309; }
-    [data-theme="light"] .empty-icon { color: #e7e5e4; }
-    [data-theme="light"] .page-footer { color: #e7e5e4; }
 
-    /* Tier chips by rank — none (gray) / blue (early) → purple (mid) → gold (endgame) */
-    .tier-chip { font-size: 9px; font-weight: 700; padding: 1px 5px; border-radius: 6px; line-height: 1.4; background: #f1f5f9; color: #475569; }
-    .tier-chip.tier-none { background: #f1f5f9; color: #64748b; }
-    .tier-chip.tier-0,.tier-chip.tier-1,.tier-chip.tier-2,.tier-chip.tier-3,.tier-chip.tier-4,
-    .tier-chip.tier-5 { background: #dbeafe; color: #1e40af; }
-    .tier-chip.tier-6,.tier-chip.tier-7,.tier-chip.tier-8,.tier-chip.tier-9,.tier-chip.tier-10 {
-      background: #ede9fe; color: #6d28d9;
+    .page {
+      max-width: 1200px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-xl);
     }
-    .tier-chip.tier-11,.tier-chip.tier-12,.tier-chip.tier-13,.tier-chip.tier-14,.tier-chip.tier-15 {
-      background: #fce7f3; color: #be185d;
+
+    /* ── Header (text hero — rule + eyebrow + serif title, like menu page).
+     * Owner info drops to a byline row below the title — distinguishes
+     * this page from the sister 背包 (inventory) page via the title text
+     * itself, so we don't lean on a tiny eyebrow caption to do the work. */
+    .header-rule {
+      width: 64px;
+      height: 4px;
+      background-color: var(--color-primary);
+      border-radius: var(--radius-pill);
+      margin-bottom: var(--space-md);
     }
-    .tier-chip.tier-16,.tier-chip.tier-17,.tier-chip.tier-18,.tier-chip.tier-19,.tier-chip.tier-20 {
-      background: linear-gradient(135deg, #fde68a, #fbbf24); color: #78350f;
+
+    .header-eyebrow {
+      color: var(--color-muted);
+      margin-bottom: var(--space-xs);
     }
-    [data-theme="dark"] .tier-chip { background: rgba(148,163,184,0.18); color: #cbd5e1; }
-    [data-theme="dark"] .tier-chip.tier-none { background: rgba(148,163,184,0.18); color: #94a3b8; }
-    [data-theme="dark"] .tier-chip.tier-0,[data-theme="dark"] .tier-chip.tier-1,[data-theme="dark"] .tier-chip.tier-2,
-    [data-theme="dark"] .tier-chip.tier-3,[data-theme="dark"] .tier-chip.tier-4,[data-theme="dark"] .tier-chip.tier-5 {
-      background: rgba(59,130,246,0.18); color: #bfdbfe;
+
+    .header-title {
+      color: var(--color-ink);
+      margin: 0 0 var(--space-md) 0;
     }
-    [data-theme="dark"] .tier-chip.tier-6,[data-theme="dark"] .tier-chip.tier-7,[data-theme="dark"] .tier-chip.tier-8,
-    [data-theme="dark"] .tier-chip.tier-9,[data-theme="dark"] .tier-chip.tier-10 {
-      background: rgba(139,92,246,0.18); color: #ddd6fe;
+
+    .owner-bar {
+      display: flex;
+      align-items: center;
+      gap: var(--space-md);
+      color: var(--color-muted-soft);
     }
-    [data-theme="dark"] .tier-chip.tier-11,[data-theme="dark"] .tier-chip.tier-12,[data-theme="dark"] .tier-chip.tier-13,
-    [data-theme="dark"] .tier-chip.tier-14,[data-theme="dark"] .tier-chip.tier-15 {
-      background: rgba(236,72,153,0.18); color: #fbcfe8;
+
+    .avatar {
+      width: 48px;
+      height: 48px;
+      border-radius: var(--radius-pill);
+      background-color: var(--color-surface-card);
+      border: 1px solid var(--color-hairline);
+      object-fit: cover;
+      flex-shrink: 0;
     }
-    [data-theme="dark"] .tier-chip.tier-16,[data-theme="dark"] .tier-chip.tier-17,[data-theme="dark"] .tier-chip.tier-18,
-    [data-theme="dark"] .tier-chip.tier-19,[data-theme="dark"] .tier-chip.tier-20 {
-      background: linear-gradient(135deg, #fcd34d, #f59e0b); color: #1f2937;
+
+    .owner-meta {
+      display: flex;
+      gap: var(--space-md);
+      align-items: baseline;
+      flex-wrap: wrap;
+      min-width: 0;
+    }
+
+    .owner-name {
+      color: var(--color-ink);
+      font-weight: 500;
+    }
+
+    .owner-id {
+      color: var(--color-muted);
+      font-family: var(--font-code);
+    }
+
+    .meta-divider {
+      color: var(--color-hairline);
+    }
+
+    .usage-value {
+      color: var(--color-ink);
+      font-weight: 600;
+      font-feature-settings: "tnum";
+    }
+
+    /* ── Slot grid ─────────────────────────────────────────── */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(10, 1fr);
+      gap: 10px;
+    }
+
+    .slot {
+      position: relative;
+      aspect-ratio: 4 / 5;
+      padding: 16px 6px 6px 6px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+      min-width: 0;
+      min-height: 0;
+      overflow: hidden;
+      border-radius: var(--radius-md);
+      box-sizing: border-box;
+    }
+
+    .slot.empty {
+      background-color: var(--color-canvas);
+      border: 1px dashed var(--color-hairline);
+    }
+
+    .slot.occupied {
+      background-color: var(--color-surface-card);
+      border: 1px solid var(--color-hairline);
+    }
+
+    .slot-id {
+      position: absolute;
+      top: 4px;
+      left: 6px;
+      color: var(--color-muted-soft);
+      font-family: var(--font-body);
+      font-size: 10px;
+      font-weight: 500;
+      font-feature-settings: "tnum";
+      letter-spacing: 0.3px;
+    }
+
+    .empty-dot {
+      color: var(--color-hairline);
+      font-size: 28px;
+      font-weight: 200;
+      line-height: 1;
+    }
+
+    .slot-icon {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .slot-icon img {
+      width: 40px;
+      height: 40px;
+      max-width: 100%;
+      object-fit: contain;
+      image-rendering: pixelated;
+    }
+
+    .slot-stack {
+      position: absolute;
+      top: 4px;
+      right: 4px;
+      background-color: var(--color-surface-cream-strong);
+      color: var(--color-ink);
+      font-family: var(--font-body);
+      font-size: 10px;
+      font-weight: 600;
+      font-feature-settings: "tnum";
+      padding: 1px 5px;
+      border-radius: var(--radius-sm);
+      line-height: 1.4;
+    }
+
+    .slot-prefix {
+      color: var(--color-accent-amber);
+      font-family: var(--font-body);
+      font-size: 9px;
+      font-weight: 600;
+      line-height: 1.2;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      text-align: center;
+    }
+
+    .slot-name {
+      color: var(--color-ink);
+      font-family: var(--font-body);
+      font-size: 10px;
+      font-weight: 600;
+      line-height: 1.2;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      text-align: center;
+    }
+
+    .slot-value {
+      color: var(--color-muted);
+      font-family: var(--font-body);
+      font-size: 9px;
+      font-weight: 600;
+      line-height: 1.2;
+      font-feature-settings: "tnum";
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      text-align: center;
+    }
+
+    /* ── Tier chips: 4-tier semantic mapping per DESIGN.md ─── */
+    .tier-chip {
+      font-family: var(--font-body);
+      font-size: 9px;
+      font-weight: 600;
+      line-height: 1.4;
+      padding: 1px 5px;
+      border-radius: var(--radius-sm);
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      border: 1px solid transparent;
+    }
+
+    /* Tier none / 0–5 → cream (neutral, lowest threshold) */
+    .tier-chip.tier-none,
+    .tier-chip.tier-0, .tier-chip.tier-1, .tier-chip.tier-2,
+    .tier-chip.tier-3, .tier-chip.tier-4, .tier-chip.tier-5 {
+      background-color: var(--color-canvas);
+      color: var(--color-muted);
+      border-color: var(--color-hairline);
+    }
+
+    /* Tier 6–10 → accent-teal (mid game) */
+    .tier-chip.tier-6, .tier-chip.tier-7, .tier-chip.tier-8,
+    .tier-chip.tier-9, .tier-chip.tier-10 {
+      background-color: var(--color-canvas);
+      color: var(--color-accent-teal);
+      border-color: var(--color-accent-teal);
+    }
+
+    /* Tier 11–15 → accent-amber (late game) */
+    .tier-chip.tier-11, .tier-chip.tier-12, .tier-chip.tier-13,
+    .tier-chip.tier-14, .tier-chip.tier-15 {
+      background-color: var(--color-canvas);
+      color: var(--color-accent-amber);
+      border-color: var(--color-accent-amber);
+    }
+
+    /* Tier 16–20 → primary coral solid (endgame, scarce-coral moment) */
+    .tier-chip.tier-16, .tier-chip.tier-17, .tier-chip.tier-18,
+    .tier-chip.tier-19, .tier-chip.tier-20 {
+      background-color: var(--color-primary);
+      color: var(--color-on-primary);
+      border-color: var(--color-primary);
+    }
+
+    .footer {
+      text-align: right;
+      color: var(--color-muted-soft);
+      margin-top: var(--space-md);
     }
   </style>
 </head>
-<body class="px-8 py-6">
+<body>
+  <main class="page">
 
-  <div class="page-header mx-auto max-w-[1080px] rounded-2xl px-8 py-4 mb-4 border">
-    <div class="flex items-start justify-between gap-6">
-      <div style="flex:0 0 auto;">
-        <div class="header-rule h-1 w-16 rounded-full mb-3"></div>
-        <h1 class="header-title text-4xl font-black tracking-tight" style="letter-spacing:-0.02em;">用户仓库</h1>
+    <!-- Header: text hero (rule + eyebrow + serif title), owner info as byline -->
+    <header>
+      <div class="header-rule"></div>
+      <div class="header-eyebrow type-caption-uppercase">仓库系统</div>
+      <h1 class="header-title type-display-lg">用户仓库</h1>
+      <div class="owner-bar">
+        <img id="wh-avatar" class="avatar" alt="avatar" />
+        <div class="owner-meta type-body-sm">
+          <span class="owner-name" id="wh-owner-name"></span>
+          <span class="owner-id" id="wh-owner-id"></span>
+          <span class="meta-divider">·</span>
+          <span><span class="usage-value" id="wh-used"></span> / <span class="usage-value" id="wh-capacity"></span> 已使用</span>
+          <span class="meta-divider">·</span>
+          <span id="wh-generated-at"></span>
+        </div>
       </div>
-      <div style="flex:1 1 auto; text-align:center; align-self:center;">
-        <div id="wh-owner-name" class="header-title text-3xl font-black tracking-tight" style="letter-spacing:-0.02em; line-height:1.1;"></div>
-        <div id="wh-owner-qq" class="header-subtitle text-sm font-medium mt-1"></div>
-        <div id="wh-subtitle" class="header-subtitle text-sm font-medium mt-1"></div>
-      </div>
-      <div style="flex:0 0 auto; text-align:right;">
-        <div class="header-time text-xs" id="wh-generated-at"></div>
-      </div>
-    </div>
-  </div>
+    </header>
 
-  <div class="grid-card mx-auto max-w-[1080px] rounded-2xl p-4">
-    <div id="wh-grid" style="display:grid; grid-template-columns:repeat(10, 1fr); gap:8px;"></div>
-  </div>
+    <section id="wh-grid" class="grid"></section>
 
-  <div class="mx-auto max-w-[1080px] mt-4 flex flex-col items-center gap-1">
-    <div class="page-footer text-xs font-medium tracking-widest">Powered by NextBot</div>
-  </div>
+    <footer class="footer type-caption">Powered by NextBot</footer>
+  </main>
 
   <script id="wh-data" type="application/json">__WAREHOUSE_DATA_JSON__</script>
   <script>
     (async function () {
       const data = JSON.parse(document.getElementById("wh-data").textContent);
       const slots = Array.isArray(data.slots) ? data.slots : [];
-      const theme = String(data.theme || "light");
-      document.documentElement.setAttribute("data-theme", theme);
 
+      const ownerId = String(data.owner_user_id || "");
+      document.getElementById("wh-avatar").src =
+        `http://q1.qlogo.cn/g?b=qq&nk=${encodeURIComponent(ownerId)}&s=100`;
       document.getElementById("wh-owner-name").textContent = data.owner_user_name || "未知用户";
-      document.getElementById("wh-owner-qq").textContent = "QQ：" + (data.owner_user_id || "-");
-      document.getElementById("wh-subtitle").textContent = "已使用 " + (data.used || 0) + " / " + (data.capacity || 0);
+      document.getElementById("wh-owner-id").textContent = ownerId ? `(${ownerId})` : "";
+      document.getElementById("wh-used").textContent = String(data.used || 0);
+      document.getElementById("wh-capacity").textContent = String(data.capacity || 0);
       document.getElementById("wh-generated-at").textContent = data.generated_at || "";
 
+      // Item / prefix dictionaries — fetched async, fallback to numeric ids.
       const itemNameMap = new Map();
       const prefixNameMap = new Map();
       try {
@@ -162,118 +341,63 @@
       } catch (e) { /* dict fetch failed → fall back to numeric ids */ }
 
       const grid = document.getElementById("wh-grid");
-      slots.forEach((slot) => {
+      for (const slot of slots) {
         const occupied = Number(slot.item_id || 0) > 0;
         const cell = document.createElement("div");
-        cell.className = "slot rounded-xl" + (occupied ? " occupied" : "");
-        cell.style.position = "relative";
-        cell.style.aspectRatio = "4 / 5";
-        cell.style.padding = "16px 6px 6px 6px";
-        cell.style.display = "flex";
-        cell.style.flexDirection = "column";
-        cell.style.alignItems = "center";
-        cell.style.justifyContent = "center";
-        cell.style.gap = "3px";
-        cell.style.minWidth = "0";
-        cell.style.minHeight = "0";
-        cell.style.overflow = "hidden";
-        cell.style.boxSizing = "border-box";
+        cell.className = "slot " + (occupied ? "occupied" : "empty");
 
-        // Top: slot id (absolute, top-left)
+        // Slot id (always shown, top-left)
         const id = document.createElement("div");
         id.className = "slot-id";
-        id.style.position = "absolute";
-        id.style.top = "4px";
-        id.style.left = "6px";
-        id.style.fontSize = "10px";
-        id.style.fontWeight = "700";
-        id.textContent = "#" + slot.slot_index;
+        id.textContent = `#${slot.slot_index}`;
         cell.appendChild(id);
 
-        // Icon (centered)
         const iconWrap = document.createElement("div");
-        iconWrap.style.display = "flex";
-        iconWrap.style.alignItems = "center";
-        iconWrap.style.justifyContent = "center";
-        iconWrap.style.flexShrink = "0";
+        iconWrap.className = "slot-icon";
         if (occupied) {
           const img = document.createElement("img");
-          img.src = "/assets/items/Item_" + slot.item_id + ".png";
+          img.src = `/assets/items/Item_${slot.item_id}.png`;
           img.alt = String(slot.item_id);
-          img.style.width = "40px";
-          img.style.height = "40px";
-          img.style.maxWidth = "100%";
-          img.style.objectFit = "contain";
-          img.style.objectFit = "contain";
-          img.style.imageRendering = "pixelated";
           iconWrap.appendChild(img);
         } else {
-          const empty = document.createElement("div");
-          empty.className = "empty-icon";
-          empty.style.fontSize = "28px";
-          empty.style.fontWeight = "200";
-          empty.textContent = "·";
-          iconWrap.appendChild(empty);
+          const dot = document.createElement("div");
+          dot.className = "empty-dot";
+          dot.textContent = "·";
+          iconWrap.appendChild(dot);
         }
         cell.appendChild(iconWrap);
 
         if (occupied) {
-          // Stack badge
+          // Stack badge (only when count > 1)
           if (Number(slot.quantity || 0) > 1) {
             const stack = document.createElement("div");
             stack.className = "slot-stack";
-            stack.style.position = "absolute";
-            stack.style.top = "4px";
-            stack.style.right = "4px";
-            stack.style.fontSize = "10px";
-            stack.style.fontWeight = "800";
-            stack.style.padding = "1px 5px";
-            stack.style.borderRadius = "6px";
-            stack.textContent = "×" + slot.quantity;
+            stack.textContent = `×${slot.quantity}`;
             cell.appendChild(stack);
           }
 
-          // Bottom: prefix + item name + tier chip — all centered horizontally
-          const itemName = itemNameMap.get(Number(slot.item_id)) || ("ID:" + slot.item_id);
+          const itemName = itemNameMap.get(Number(slot.item_id)) || `ID:${slot.item_id}`;
           const prefixId = Number(slot.prefix_id || 0);
-          const prefixName = prefixId > 0 ? (prefixNameMap.get(prefixId) || ("前缀 ID:" + prefixId)) : "";
+          const prefixName = prefixId > 0
+            ? (prefixNameMap.get(prefixId) || `前缀 ID:${prefixId}`)
+            : "";
 
           if (prefixName) {
             const prefixLine = document.createElement("div");
             prefixLine.className = "slot-prefix";
-            prefixLine.style.fontSize = "9px";
-            prefixLine.style.fontWeight = "700";
-            prefixLine.style.lineHeight = "1.2";
-            prefixLine.style.overflow = "hidden";
-            prefixLine.style.textOverflow = "ellipsis";
-            prefixLine.style.whiteSpace = "nowrap";
-            prefixLine.style.maxWidth = "100%";
-            prefixLine.style.textAlign = "center";
             prefixLine.textContent = prefixName;
             cell.appendChild(prefixLine);
           }
 
           const nameLine = document.createElement("div");
           nameLine.className = "slot-name";
-          nameLine.style.fontSize = "10px";
-          nameLine.style.fontWeight = "700";
-          nameLine.style.lineHeight = "1.2";
-          nameLine.style.overflow = "hidden";
-          nameLine.style.textOverflow = "ellipsis";
-          nameLine.style.whiteSpace = "nowrap";
-          nameLine.style.maxWidth = "100%";
-          nameLine.style.textAlign = "center";
           nameLine.textContent = itemName;
           cell.appendChild(nameLine);
 
           if (slot.min_tier_zh) {
             const chip = document.createElement("div");
             const rank = Number(slot.min_tier_rank);
-            chip.className = "tier-chip" + (rank >= 0 ? " tier-" + rank : " tier-none");
-            chip.style.maxWidth = "100%";
-            chip.style.overflow = "hidden";
-            chip.style.textOverflow = "ellipsis";
-            chip.style.whiteSpace = "nowrap";
+            chip.className = "tier-chip " + (rank >= 0 ? `tier-${rank}` : "tier-none");
             chip.textContent = slot.min_tier_zh;
             cell.appendChild(chip);
           }
@@ -281,21 +405,13 @@
           if (Number(slot.value || 0) > 0) {
             const valueLine = document.createElement("div");
             valueLine.className = "slot-value";
-            valueLine.style.fontSize = "9px";
-            valueLine.style.fontWeight = "700";
-            valueLine.style.lineHeight = "1.2";
-            valueLine.style.maxWidth = "100%";
-            valueLine.style.overflow = "hidden";
-            valueLine.style.textOverflow = "ellipsis";
-            valueLine.style.whiteSpace = "nowrap";
-            valueLine.style.textAlign = "center";
-            valueLine.textContent = "💰 " + slot.value;
+            valueLine.textContent = `金币 ${slot.value}`;
             cell.appendChild(valueLine);
           }
         }
 
         grid.appendChild(cell);
-      });
+      }
     })();
   </script>
 </body>
