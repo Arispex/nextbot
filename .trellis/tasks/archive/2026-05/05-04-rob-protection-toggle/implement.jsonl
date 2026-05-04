@@ -1,0 +1,4 @@
+{"file": ".trellis/tasks/05-04-rob-protection-toggle/prd.md", "reason": "Self-contained PRD: file paths, line numbers, command schema, reply patterns, and ADR all included."}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "DB column addition + ALTER TABLE migration pattern; ensure consistency with project's schema-evolution rules."}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "User-facing reply formatting and validation error patterns."}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "Format for the toggle action log line; align with project's logger conventions."}

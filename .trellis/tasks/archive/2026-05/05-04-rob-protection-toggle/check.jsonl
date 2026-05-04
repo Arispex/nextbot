@@ -1,0 +1,4 @@
+{"file": ".trellis/tasks/05-04-rob-protection-toggle/prd.md", "reason": "Acceptance Criteria checklist drives the entire review."}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "Verify migration follows the additive ALTER TABLE pattern."}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Verify reply_failure / raise_command_usage usage matches conventions."}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "General quality bar (logging, naming, transactional safety)."}
