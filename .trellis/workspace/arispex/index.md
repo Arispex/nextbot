@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 77
+- **Total Sessions**: 78
 - **Last Active**: 2026-05-04
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~1405 | Active |
+| `journal-2.md` | ~1444 | Active |
 | `journal-1.md` | ~1999 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 78 | 2026-05-04 | WebUI 整体按 DESIGN.md 重构（Phase 1–5 + 后续 polish） | `58381ee`, `e7bdce1`, `1fd3e0d`, `c5d7589`, `6df0341`, `39e94d4`, `4d9978d` | `main` |
 | 77 | 2026-05-04 | 完成 关于 / 教程 重构 + 删除 RENDER_THEME 设置项 | `8e76a7c` | `main` |
 | 76 | 2026-05-04 | 封禁列表 / 管理员列表 重构 + render eyebrow 修正 | `b2ab6e1`, `5e81f0b` | `main` |
 | 75 | 2026-05-04 | 我的背包 / 用户背包 / 进度 页面按 DESIGN.md 重构 | `b61c87f` | `main` |

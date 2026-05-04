@@ -1403,3 +1403,42 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 78: WebUI 整体按 DESIGN.md 重构（Phase 1–5 + 后续 polish）
+
+**Date**: 2026-05-04
+**Task**: WebUI 整体按 DESIGN.md 重构（Phase 1–5 + 后续 polish）
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `58381ee` | (see git log) |
+| `e7bdce1` | (see git log) |
+| `1fd3e0d` | (see git log) |
+| `c5d7589` | (see git log) |
+| `6df0341` | (see git log) |
+| `39e94d4` | (see git log) |
+| `4d9978d` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
