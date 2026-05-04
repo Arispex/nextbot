@@ -185,18 +185,12 @@ img { max-width: 100%; height: auto; }
   background-color: var(--surface-soft);
 }
 
-.brand-logo-image {
+.brand-logo-svg {
   display: block;
   height: 36px;
-  max-width: 100%;
   width: auto;
-  object-fit: contain;
+  color: var(--color-ink);
 }
-
-.brand-logo-image-dark { display: none; }
-
-html.dark .brand-logo-image-light { display: none; }
-html.dark .brand-logo-image-dark { display: block; }
 
 /* ── Sidebar menu ──────────────────────────────────────── */
 .menu-wrap {
