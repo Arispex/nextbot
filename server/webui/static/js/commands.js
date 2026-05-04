@@ -845,12 +845,29 @@
     }
   });
 
-  // ── Restart Button ──
+  // ── Restart Button (warm-canvas confirm modal, no native confirm) ──
 
   if (restartButton) {
-    restartButton.addEventListener("click", async () => {
-      if (!confirm("确定要重启吗？")) return;
+    const restartModal = document.getElementById("restart-confirm-modal");
+    const restartConfirmBtn = document.getElementById("restart-confirm-confirm-btn");
+    const restartCancelBtn = document.getElementById("restart-confirm-cancel-btn");
+    const restartCloseBtn = document.getElementById("restart-confirm-close-btn");
+    const restartMask = restartModal?.querySelector("[data-restart-confirm-close]");
 
+    const closeRestartModal = () => restartModal?.classList.add("hidden");
+    const openRestartModal = () => restartModal?.classList.remove("hidden");
+
+    restartCancelBtn?.addEventListener("click", closeRestartModal);
+    restartCloseBtn?.addEventListener("click", closeRestartModal);
+    restartMask?.addEventListener("click", closeRestartModal);
+
+    restartButton.addEventListener("click", () => {
+      if (!restartModal) return;
+      openRestartModal();
+    });
+
+    restartConfirmBtn?.addEventListener("click", async () => {
+      closeRestartModal();
       restartButton.disabled = true;
       setStatus("正在重启…", "info");
       try {

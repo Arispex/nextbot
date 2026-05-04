@@ -536,7 +536,7 @@
     banModalConfirmButton.disabled = false;
     setBanModalAlert("");
     banReasonInput.value = "";
-    banModalTextNode.textContent = `确定要封禁用户 "${user.name || "未命名用户"}" 吗？`;
+    banModalTextNode.textContent = `确定封禁用户「${user.name || "未命名用户"}」吗？`;
     banModalNode.classList.remove("hidden");
     banReasonInput.focus();
   };
@@ -582,7 +582,7 @@
     deleteSaving = false;
     deleteModalConfirmButton.disabled = false;
     setDeleteModalAlert("");
-    deleteModalTextNode.textContent = `确定要删除用户 “${user.name || "未命名用户"}” 吗？此操作无法撤销。`;
+    deleteModalTextNode.textContent = `确定删除用户「${user.name || "未命名用户"}」吗？此操作不可恢复。`;
     deleteModalNode.classList.remove("hidden");
   };
 

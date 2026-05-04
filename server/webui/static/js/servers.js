@@ -538,7 +538,7 @@
     deleteSaving = false;
     deleteModalConfirmButton.disabled = false;
     setDeleteModalAlert("");
-    deleteModalTextNode.textContent = `确定要删除服务器 “${server.name}” 吗？此操作无法撤销。`;
+    deleteModalTextNode.textContent = `确定删除服务器「${server.name}」吗？此操作不可恢复。`;
     deleteModalNode.classList.remove("hidden");
   };
 

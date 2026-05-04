@@ -89,6 +89,25 @@
   </div>
 </div>
 
+<div id="restart-confirm-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="restart-confirm-title">
+  <div class="modal-mask" data-restart-confirm-close="1"></div>
+  <div class="modal-card confirm-modal-card">
+    <div class="modal-head">
+      <h3 id="restart-confirm-title" class="modal-title">重启 Bot</h3>
+      <button id="restart-confirm-close-btn" type="button" class="btn btn-icon modal-close-btn" aria-label="关闭">✕</button>
+    </div>
+    <div class="modal-body confirm-modal-body">
+      <p class="confirm-modal-text">
+        确定重启 Bot 吗？重启期间所有命令将暂时不可用，页面会在几秒后自动刷新。
+      </p>
+    </div>
+    <div class="modal-foot">
+      <button id="restart-confirm-cancel-btn" type="button" class="btn">取消</button>
+      <button id="restart-confirm-confirm-btn" type="button" class="btn btn-danger">重启</button>
+    </div>
+  </div>
+</div>
+
 <div id="alias-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="alias-modal-title">
   <div class="modal-mask" data-alias-modal-close="1"></div>
   <div class="modal-card">

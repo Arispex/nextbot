@@ -367,7 +367,7 @@
     deleteSaving = false;
     deleteModalConfirmButton.disabled = false;
     setDeleteModalAlert("");
-    deleteModalTextNode.textContent = `确定要删除身份组 “${group.name}” 吗？此操作无法撤销。`;
+    deleteModalTextNode.textContent = `确定删除身份组「${group.name}」吗？此操作不可恢复。`;
     deleteModalNode.classList.remove("hidden");
   };
 
