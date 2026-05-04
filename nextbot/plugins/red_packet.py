@@ -43,9 +43,10 @@ _TYPE_EN_TO_ZH = {v: k for k, v in _TYPE_ZH_TO_EN.items()}
 _STATUS_ZH = {"active": "进行中", "exhausted": "已抢完", "withdrawn": "已收回"}
 
 _RED_PACKET_SCREENSHOT_OPTIONS = ScreenshotOptions(
-    viewport_width=900,
-    viewport_height=800,
+    viewport_width=920,
+    viewport_height=600,
     full_page=True,
+    fit_content_height=True,
 )
 
 
