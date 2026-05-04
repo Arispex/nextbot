@@ -1641,3 +1641,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 85: 用户抢劫状态切换（带金币消耗）
+
+**Date**: 2026-05-04
+**Task**: 用户抢劫状态切换（带金币消耗）
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `de932cb` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
