@@ -381,7 +381,7 @@
         const actionButton = document.createElement("button");
         actionButton.type = "button";
         actionButton.className = "btn action-btn";
-        actionButton.textContent = "编辑参数";
+        actionButton.textContent = "参数";
         actionButton.addEventListener("click", () => {
           openParamModal(command.command_key);
         });
@@ -390,7 +390,7 @@
       const aliasButton = document.createElement("button");
       aliasButton.type = "button";
       aliasButton.className = "btn action-btn";
-      aliasButton.textContent = "编辑别名";
+      aliasButton.textContent = "别名";
       aliasButton.addEventListener("click", () => {
         openAliasModal(command.command_key);
       });
@@ -852,10 +852,10 @@
       if (!confirm("确定要重启吗？")) return;
 
       restartButton.disabled = true;
-      setStatus("正在重启...", "info");
+      setStatus("正在重启…", "info");
       try {
         await api.apiRequest("/webui/api/restart", { method: "POST" });
-        setStatus("重启中，页面将在几秒后自动刷新...", "success");
+        setStatus("重启中，页面即将自动刷新…", "success");
         setTimeout(() => location.reload(), 3000);
       } catch (error) {
         const message = error instanceof Error ? error.message : "重启失败";

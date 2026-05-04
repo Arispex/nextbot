@@ -1,22 +1,9 @@
-:root {
-  --success: #52c41a;
-  --warning: #faad14;
-}
-
-html.dark {
-  --success: #95de64;
-  --warning: #ffd666;
-}
-
-.app-content {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
+/* ── Settings (warm-canvas) ──────────────────────────── */
 
 .settings-layout {
-  display: grid;
-  gap: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xxl);
 }
 
 .settings-toolbar {
@@ -24,88 +11,92 @@ html.dark {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 12px;
+  gap: var(--space-sm);
 }
 
 .panel-head-actions {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-xs);
   flex-shrink: 0;
 }
 
+/* ── Status alert (4-tier semantic) ──────────────────── */
 .alert {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 10px;
-  border: 1px solid var(--line-strong);
-  border-radius: 12px;
-  background: var(--surface-soft);
+  align-items: flex-start;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background-color: var(--surface-soft);
   color: var(--text-muted);
 }
 
 .alert.info {
-  border-color: color-mix(in srgb, var(--primary) 32%, var(--line-strong));
-  background: color-mix(in srgb, var(--primary) 10%, var(--surface-soft));
-  color: color-mix(in srgb, var(--primary) 78%, var(--text));
+  border-color: var(--accent-teal);
+  color: var(--accent-teal);
 }
 
 .alert.success {
-  border-color: color-mix(in srgb, var(--success) 38%, var(--line-strong));
-  background: color-mix(in srgb, var(--success) 12%, var(--surface-soft));
-  color: color-mix(in srgb, var(--success) 78%, var(--text));
+  border-color: var(--accent-teal);
+  color: var(--accent-teal);
 }
 
 .alert.error {
-  border-color: color-mix(in srgb, var(--danger) 36%, var(--line-strong));
-  background: color-mix(in srgb, var(--danger) 12%, var(--surface-soft));
-  color: color-mix(in srgb, var(--danger) 80%, var(--text));
+  border-color: var(--primary);
+  color: var(--primary);
 }
 
 .alert.warning {
-  border-color: color-mix(in srgb, var(--warning) 40%, var(--line-strong));
-  background: color-mix(in srgb, var(--warning) 14%, var(--surface-soft));
-  color: color-mix(in srgb, var(--warning) 80%, var(--text));
+  border-color: var(--accent-amber);
+  color: var(--accent-amber);
 }
 
 .alert-message {
   font-size: 13px;
-  line-height: 1.5;
+  line-height: 1.55;
   white-space: pre-line;
 }
 
+/* ── Form sections (cream-cards) ─────────────────────── */
 .form-layout {
-  display: grid;
-  gap: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
 }
 
 .form-section {
+  background-color: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 14px;
-  display: grid;
-  gap: 12px;
-  background: var(--surface);
+  border-radius: var(--radius-lg);
+  padding: var(--space-lg) var(--space-xl);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
 }
 
 .section-title {
   margin: 0;
-  font-size: 14px;
+  font-size: 11px;
   font-weight: 600;
-  color: var(--text);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-muted);
 }
 
 .form-grid {
   display: grid;
-  gap: 12px;
+  gap: var(--space-md);
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .form-item {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 6px;
   align-content: start;
+  min-width: 0;
 }
 
 .form-span-2 {
@@ -113,39 +104,37 @@ html.dark {
 }
 
 .form-label {
-  font-size: 12px;
-  color: var(--text-muted);
-  line-height: 1.5;
+  font-size: 13px;
+  color: var(--text);
+  font-weight: 500;
+  line-height: 1.4;
 }
 
 .form-help {
   font-size: 12px;
-  line-height: 1.5;
+  line-height: 1.55;
   color: var(--text-muted);
 }
 
-.input,
-.select {
-  width: 100%;
-  height: 34px;
-  border: 1px solid var(--line-strong);
-  border-radius: 12px;
-  background: var(--surface);
-  color: var(--text);
-  padding: 0 10px;
-  font-size: 13px;
+/* Inputs inherit base styles from app-shell.css; only override
+ * what's settings-specific here. */
+.input.select {
+  /* select gets caret via app-shell rules */
 }
 
-.input:focus,
-.select:focus {
-  outline: none;
-  border-color: var(--primary);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 20%, transparent);
-}
-
+/* ── Inline preview tags ──────────────────────────────── */
 .form-preview {
-  display: grid;
-  gap: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.form-preview .form-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
 }
 
 .tag-list {
@@ -158,20 +147,25 @@ html.dark {
   display: inline-flex;
   align-items: center;
   min-height: 24px;
-  padding: 0 10px;
-  border-radius: 12px;
-  border: 1px solid var(--line-strong);
-  background: var(--surface-soft);
-  color: var(--text-muted);
+  padding: 0 var(--space-sm);
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--line);
+  background-color: var(--bg-layout);
+  color: var(--text);
+  font-family: var(--font-code);
   font-size: 12px;
+  font-feature-settings: "tnum";
   white-space: nowrap;
   max-width: 100%;
 }
 
 .tag-badge.none {
-  opacity: 0.75;
+  color: var(--text-muted-soft);
+  font-family: var(--font-body);
+  border-style: dashed;
 }
 
+/* ── Token input (password reveal) ───────────────────── */
 .token-input-wrap {
   position: relative;
   width: 100%;
@@ -179,19 +173,19 @@ html.dark {
 
 .token-input {
   padding-right: 40px;
+  font-family: var(--font-code);
 }
 
 .token-input-toggle {
   position: absolute;
-  right: 8px;
+  right: 6px;
   top: 50%;
   transform: translateY(-50%);
-  width: 24px;
-  height: 24px;
-  min-width: 24px;
+  width: 28px;
+  height: 28px;
   padding: 0;
   border: none;
-  border-radius: 12px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-muted);
   display: inline-flex;
@@ -201,8 +195,8 @@ html.dark {
 }
 
 .token-input-toggle:hover {
-  color: var(--text);
-  background: var(--surface-soft);
+  color: var(--primary);
+  background-color: var(--surface-soft);
 }
 
 .token-input-toggle svg {
@@ -210,10 +204,9 @@ html.dark {
   height: 14px;
 }
 
-.hidden {
-  display: none !important;
-}
+.hidden { display: none !important; }
 
+/* ── Responsive ──────────────────────────────────────── */
 @media (max-width: 1080px) {
   .panel-head-actions {
     width: 100%;
@@ -228,5 +221,9 @@ html.dark {
 
   .form-span-2 {
     grid-column: span 1;
+  }
+
+  .form-section {
+    padding: var(--space-md);
   }
 }
