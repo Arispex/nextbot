@@ -1,169 +1,262 @@
 <!doctype html>
-<html lang="zh-CN" data-theme="light">
+<html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>NextBot - 菜单</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <title>NextBot 菜单</title>
+  <link rel="stylesheet" href="/assets/css/render-fonts.css" />
+  <link rel="stylesheet" href="/assets/css/render-tokens.css" />
   <style>
-    /* ── Light theme ────────────────────────────────────────── */
-    [data-theme="light"] body {
-      background: linear-gradient(160deg, #f0f4ff 0%, #f8fafc 40%, #eef2f7 100%);
-      color: #0f172a;
-    }
-    [data-theme="light"] .blob-1 { background: rgba(99,102,241,0.25); }
-    [data-theme="light"] .blob-2 { background: rgba(186,230,253,0.40); }
-    [data-theme="light"] .blob-3 { background: rgba(148,163,184,0.25); }
-    [data-theme="light"] .header-title { color: #0f172a; }
-    [data-theme="light"] .header-sub   { color: #94a3b8; }
-    [data-theme="light"] .header-rule  { background: linear-gradient(90deg, #6366f1, #818cf8, transparent); }
-    [data-theme="light"] .card         { background: white; border-color: #e8ecf4; box-shadow: 0 2px 8px rgba(30,50,120,0.06); }
-    [data-theme="light"] .index-badge  { background: #eef2ff; border-color: #e0e7ff; color: #818cf8; }
-    [data-theme="light"] .cmd-name     { color: #0f172a; }
-    [data-theme="light"] .cmd-desc     { color: #64748b; }
-    [data-theme="light"] .usage-block  { background: #f6f8ff; border-color: #e0e7ff; color: #475569; }
-    [data-theme="light"] .perm-label   { color: #cbd5e1; }
-    [data-theme="light"] .perm-badge   { background: #eef2ff; border-color: #c7d2fe; color: #4338ca; }
-    [data-theme="light"] .perm-none    { background: #fffbeb; border-color: #fde68a; color: #92400e; }
-    [data-theme="light"] .footer-text  { color: #cbd5e1; }
-    [data-theme="light"] .empty-wrap   { border-color: #e2e8f0; background: rgba(255,255,255,0.6); }
-    [data-theme="light"] .empty-title  { color: #94a3b8; }
-    [data-theme="light"] .empty-desc   { color: #cbd5e1; }
+    /* ── Global reset & canvas ─────────────────────────────── */
+    *,
+    *::before,
+    *::after { box-sizing: border-box; }
 
-    /* ── Dark theme ─────────────────────────────────────────── */
-    [data-theme="dark"] body {
-      background-color: #0d0d0f;
-      background-image:
-        radial-gradient(ellipse at 15% 0%, rgba(60,40,120,0.18) 0%, transparent 55%),
-        radial-gradient(ellipse at 85% 100%, rgba(20,40,100,0.22) 0%, transparent 55%),
-        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64'%3E%3Crect width='64' height='64' fill='%23111114'/%3E%3Crect x='0' y='0' width='32' height='32' fill='%2312121a' opacity='0.5'/%3E%3Crect x='32' y='32' width='32' height='32' fill='%2312121a' opacity='0.5'/%3E%3C/svg%3E");
-      color: #e2e8f0;
-    }
-    [data-theme="dark"] .blob-1 { background: rgba(99,102,241,0.08); }
-    [data-theme="dark"] .blob-2 { background: rgba(14,165,233,0.06); }
-    [data-theme="dark"] .blob-3 { background: rgba(50,50,80,0.15); }
-    [data-theme="dark"] .header-title { color: #e2e8f0; }
-    [data-theme="dark"] .header-sub   { color: #334155; }
-    [data-theme="dark"] .header-rule  { background: linear-gradient(90deg, #6366f1, #818cf8, transparent); }
-    [data-theme="dark"] .card         { background: rgba(20,20,30,0.9); border-color: rgba(60,65,100,0.4); box-shadow: none; }
-    [data-theme="dark"] .index-badge  { background: rgba(30,35,70,0.8); border-color: rgba(80,90,160,0.35); color: #818cf8; }
-    [data-theme="dark"] .cmd-name     { color: #e2e8f0; }
-    [data-theme="dark"] .cmd-desc     { color: #475569; }
-    [data-theme="dark"] .usage-block  { background: rgba(15,15,25,0.8); border-color: rgba(60,65,100,0.35); color: #64748b; }
-    [data-theme="dark"] .perm-label   { color: #1e293b; }
-    [data-theme="dark"] .perm-badge   { background: rgba(30,35,70,0.8); border-color: rgba(80,90,160,0.45); color: #818cf8; }
-    [data-theme="dark"] .perm-none    { background: rgba(40,30,10,0.8); border-color: rgba(120,80,20,0.4); color: #d97706; }
-    [data-theme="dark"] .footer-text  { color: #1e293b; }
-    [data-theme="dark"] .empty-wrap   { border-color: rgba(60,65,100,0.3); background: rgba(16,16,24,0.8); }
-    [data-theme="dark"] .empty-title  { color: #334155; }
-    [data-theme="dark"] .empty-desc   { color: #1e293b; }
+    html,
+    body { margin: 0; padding: 0; }
 
-    /* ── Shared ─────────────────────────────────────────────── */
-    .usage-block { font-family: ui-monospace,'SFMono-Regular',Menlo,monospace; }
+    body {
+      background-color: var(--color-canvas);
+      color: var(--color-ink);
+      font-family: var(--font-body);
+      font-size: var(--type-body-md-size);
+      line-height: 1.55;
+      min-height: 100vh;
+      padding: var(--space-section) var(--space-xxl);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    /* ── Page frame ────────────────────────────────────────── */
+    .page {
+      max-width: 1760px;
+      margin: 0 auto;
+    }
+
+    /* ── Header ────────────────────────────────────────────── */
+    .header {
+      margin-bottom: var(--space-xxl);
+    }
+
+    .header-rule {
+      width: 64px;
+      height: 4px;
+      background-color: var(--color-primary);
+      border-radius: var(--radius-pill);
+      margin-bottom: var(--space-lg);
+    }
+
+    .header-eyebrow {
+      color: var(--color-muted);
+      margin-bottom: var(--space-xs);
+    }
+
+    .header-title {
+      color: var(--color-ink);
+      margin: 0 0 var(--space-md) 0;
+    }
+
+    .header-meta {
+      color: var(--color-muted-soft);
+      display: flex;
+      gap: var(--space-md);
+      align-items: baseline;
+    }
+
+    .header-meta-divider {
+      color: var(--color-hairline);
+    }
+
+    /* ── Empty state ───────────────────────────────────────── */
+    .empty-state {
+      border: 1px dashed var(--color-hairline);
+      background-color: var(--color-surface-soft);
+      border-radius: var(--radius-lg);
+      padding: var(--space-xxl);
+      text-align: center;
+      color: var(--color-muted);
+    }
+
+    .empty-state-title {
+      color: var(--color-body-strong);
+      margin-bottom: var(--space-xs);
+    }
+
+    /* ── Card grid ─────────────────────────────────────────── */
+    .grid {
+      display: grid;
+      gap: var(--space-lg);
+      grid-template-columns: repeat(3, 1fr);
+    }
+
+    /* When there are only 1–2 cards, let them grow but stay aligned left.
+     * minmax(360px, 480px) keeps single cards from stretching across the
+     * full width on a 1920px viewport. */
+    .grid[data-count="1"],
+    .grid[data-count="2"] {
+      grid-template-columns: repeat(auto-fit, minmax(360px, 480px));
+    }
+
+    /* ── Command card ──────────────────────────────────────── */
+    .card {
+      background-color: var(--color-surface-card);
+      border: 1px solid var(--color-hairline);
+      border-radius: var(--radius-lg);
+      padding: var(--space-xl);
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-md);
+      /* No shadow — color-block first, depth comes from surface contrast. */
+    }
+
+    .card-name {
+      color: var(--color-ink);
+      margin: 0;
+      overflow-wrap: break-word;
+      word-break: break-word;
+    }
+
+    .card-desc {
+      color: var(--color-body);
+      margin: 0;
+      overflow-wrap: break-word;
+      word-break: break-word;
+    }
+
+    /* ── Usage code block (dark navy embedded mockup) ──────── */
+    .usage-block {
+      background-color: var(--color-surface-dark);
+      color: var(--color-on-dark);
+      border-radius: var(--radius-md);
+      padding: var(--space-md) var(--space-lg);
+      overflow-wrap: break-word;
+      word-break: break-all;
+    }
+
+    .usage-block.is-empty {
+      color: var(--color-on-dark-soft);
+      font-style: italic;
+    }
+
+    /* ── Permission row (caption + pill badge) ─────────────── */
+    .perm-row {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      margin-top: auto;
+      padding-top: var(--space-xs);
+    }
+
+    .perm-label {
+      color: var(--color-muted);
+    }
+
+    .perm-badge {
+      background-color: var(--color-canvas);
+      color: var(--color-ink);
+      border: 1px solid var(--color-hairline);
+      border-radius: var(--radius-pill);
+      padding: var(--space-xxs) var(--space-sm);
+      overflow-wrap: break-word;
+      word-break: break-all;
+    }
+
+    .perm-badge.is-empty {
+      background-color: var(--color-primary);
+      color: var(--color-on-primary);
+      border-color: transparent;
+    }
+
+    /* ── Footer ────────────────────────────────────────────── */
+    .footer {
+      margin-top: var(--space-xxl);
+      text-align: right;
+      color: var(--color-muted-soft);
+    }
   </style>
 </head>
-<body class="min-h-screen px-8 py-8">
-
-  <div class="pointer-events-none fixed inset-0 overflow-hidden">
-    <div class="blob-1 absolute left-[5%] top-8 h-64 w-64 rounded-full blur-3xl"></div>
-    <div class="blob-2 absolute right-[6%] top-16 h-80 w-80 rounded-full blur-3xl"></div>
-    <div class="blob-3 absolute bottom-10 left-1/2 h-72 w-[40rem] -translate-x-1/2 rounded-full blur-3xl"></div>
-  </div>
-
-  <main class="relative mx-auto max-w-[1880px]">
-
-    <header class="mb-8">
-      <div class="header-rule h-1 w-24 rounded-full mb-5"></div>
-      <h1 id="menu-title" class="header-title text-5xl font-bold" style="letter-spacing: -0.03em;"></h1>
-      <p id="footer-generated-at" class="header-sub mt-2 text-sm"></p>
+<body>
+  <main class="page">
+    <header class="header">
+      <div class="header-rule"></div>
+      <div id="header-eyebrow" class="header-eyebrow type-caption-uppercase"></div>
+      <h1 id="header-title" class="header-title type-display-lg"></h1>
+      <div class="header-meta type-body-sm">
+        <span id="header-count"></span>
+        <span class="header-meta-divider">·</span>
+        <span id="header-generated-at"></span>
+      </div>
     </header>
 
-    <div id="empty-state" class="hidden empty-wrap rounded-3xl border border-dashed py-20 text-center">
-      <div class="empty-title text-lg font-semibold">暂无命令</div>
-      <div class="empty-desc mt-2 text-sm">当前分类下没有可显示的命令</div>
+    <div id="empty-state" class="empty-state" hidden>
+      <div class="empty-state-title type-title-md">暂无命令</div>
+      <div class="type-body-sm">当前分类下没有可显示的命令</div>
     </div>
 
-    <div id="card-grid" class="grid gap-4" style="grid-template-columns: repeat(3, 1fr);"></div>
+    <div id="card-grid" class="grid"></div>
 
-    <footer class="mt-8 text-right text-xs tracking-widest footer-text">
-      Powered by NextBot
-    </footer>
+    <footer class="footer type-caption">Powered by NextBot</footer>
   </main>
 
   <script id="menu-data" type="application/json">__MENU_DATA_JSON__</script>
   <script>
     const data = JSON.parse(document.getElementById("menu-data").textContent);
     const commands = Array.isArray(data.commands) ? data.commands : [];
-    const theme = String(data.theme || "light");
 
-    document.documentElement.setAttribute("data-theme", theme);
-    document.getElementById("menu-title").textContent = data.title || "菜单";
-    document.getElementById("footer-generated-at").textContent = data.generated_at || "";
+    document.getElementById("header-eyebrow").textContent = "命令菜单";
+    document.getElementById("header-title").textContent = data.title || "菜单";
+    document.getElementById("header-count").textContent = `${commands.length} 个命令`;
+    document.getElementById("header-generated-at").textContent = data.generated_at || "";
 
     const grid = document.getElementById("card-grid");
+    grid.dataset.count = String(commands.length);
 
     if (!commands.length) {
-      document.getElementById("empty-state").classList.remove("hidden");
-      grid.classList.add("hidden");
+      document.getElementById("empty-state").hidden = false;
+      grid.hidden = true;
     }
 
-    commands.forEach((item, index) => {
-      const name       = String(item?.display_name || "").trim() || "-";
+    for (const item of commands) {
+      const name       = String(item?.display_name || "").trim() || "—";
       const desc       = String(item?.description  || "").trim() || "暂无介绍";
       const usage      = String(item?.usage        || "").trim();
       const permission = String(item?.permission   || "").trim();
 
       const card = document.createElement("article");
-      card.className = "card rounded-2xl p-5 border flex flex-col gap-3";
-
-      // Header row: index badge + name
-      const cardHead = document.createElement("div");
-      cardHead.className = "flex items-start gap-3";
-
-      const indexBadge = document.createElement("div");
-      indexBadge.className = "index-badge shrink-0 mt-0.5 h-7 w-7 rounded-lg border flex items-center justify-center text-[11px] font-bold";
-      indexBadge.textContent = String(index + 1).padStart(2, "0");
+      card.className = "card";
 
       const nameEl = document.createElement("h2");
-      nameEl.className = "cmd-name text-xl font-bold leading-tight";
-      nameEl.style.letterSpacing = "-0.02em";
+      nameEl.className = "card-name type-title-md";
       nameEl.textContent = name;
 
-      cardHead.appendChild(indexBadge);
-      cardHead.appendChild(nameEl);
-
-      // Description
       const descEl = document.createElement("p");
-      descEl.className = "cmd-desc text-sm leading-relaxed";
+      descEl.className = "card-desc type-body-md";
       descEl.textContent = desc;
 
-      // Usage
       const usageEl = document.createElement("div");
-      usageEl.className = "usage-block rounded-lg border px-3 py-2 text-[13px] leading-relaxed break-all";
-      usageEl.textContent = usage || "—";
+      usageEl.className = "usage-block type-code" + (usage ? "" : " is-empty");
+      usageEl.textContent = usage || "暂无用法";
 
-      // Footer: permission badge
-      const cardFoot = document.createElement("div");
-      cardFoot.className = "mt-auto pt-1 flex items-center gap-2";
+      const permRow = document.createElement("div");
+      permRow.className = "perm-row";
 
       const permLabel = document.createElement("span");
-      permLabel.className = "perm-label text-[10px] font-semibold uppercase tracking-widest";
+      permLabel.className = "perm-label type-caption-uppercase";
       permLabel.textContent = "权限";
 
       const permBadge = document.createElement("span");
-      permBadge.className = "rounded-full border px-2.5 py-0.5 text-[11px] font-medium break-all "
-        + (permission ? "perm-badge" : "perm-none");
+      permBadge.className = "perm-badge type-caption" + (permission ? "" : " is-empty");
       permBadge.textContent = permission || "无需额外权限";
 
-      cardFoot.appendChild(permLabel);
-      cardFoot.appendChild(permBadge);
+      permRow.appendChild(permLabel);
+      permRow.appendChild(permBadge);
 
-      card.appendChild(cardHead);
+      card.appendChild(nameEl);
       card.appendChild(descEl);
       card.appendChild(usageEl);
-      card.appendChild(cardFoot);
+      card.appendChild(permRow);
       grid.appendChild(card);
-    });
+    }
   </script>
 </body>
 </html>

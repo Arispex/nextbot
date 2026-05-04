@@ -16,6 +16,8 @@ SERVER_DIR = Path(__file__).resolve().parent.parent
 ITEMS_DIR = SERVER_DIR / "assets" / "items"
 DICTS_DIR = SERVER_DIR / "assets" / "dicts"
 BOSS_IMGS_DIR = SERVER_DIR / "assets" / "imgs" / "boss"
+FONTS_DIR = SERVER_DIR / "assets" / "fonts"
+CSS_DIR = SERVER_DIR / "assets" / "css"
 LOGOS_DIR = SERVER_DIR.parent / "logos"
 
 
@@ -148,6 +150,18 @@ async def get_dict_asset(file_path: str) -> FileResponse:
 async def get_boss_img_asset(file_path: str) -> FileResponse:
     resolved_path = _resolve_static_file(BOSS_IMGS_DIR, file_path)
     return FileResponse(path=resolved_path)
+
+
+@router.get("/assets/fonts/{file_path:path}")
+async def get_font_asset(file_path: str) -> FileResponse:
+    resolved_path = _resolve_static_file(FONTS_DIR, file_path)
+    return FileResponse(path=resolved_path, media_type="font/woff2")
+
+
+@router.get("/assets/css/{file_path:path}")
+async def get_css_asset(file_path: str) -> FileResponse:
+    resolved_path = _resolve_static_file(CSS_DIR, file_path)
+    return FileResponse(path=resolved_path, media_type="text/css; charset=utf-8")
 
 
 @router.get("/assets/imgs/logo-light.png")
