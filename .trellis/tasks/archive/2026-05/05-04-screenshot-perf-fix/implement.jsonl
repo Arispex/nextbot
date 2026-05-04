@@ -1,0 +1,4 @@
+{"file": ".trellis/tasks/05-04-screenshot-perf-fix/prd.md", "reason": "Self-contained PRD with code skeleton, ADR, and acceptance criteria."}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Verify the new RenderScreenshotError phases follow project's exception conventions."}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "Logger format for retry warnings + browser lifecycle logs."}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Concurrency / lifecycle / resource cleanup quality bar."}
