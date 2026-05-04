@@ -1,129 +1,288 @@
 <!doctype html>
-<html lang="zh-CN" data-theme="light">
+<html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>NextBot - 用户信息</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <title>NextBot 用户信息</title>
+  <link rel="stylesheet" href="/assets/css/render-fonts.css" />
+  <link rel="stylesheet" href="/assets/css/render-tokens.css" />
   <style>
-    /* ── Light theme ────────────────────────────────────────── */
-    [data-theme="light"] body { background: linear-gradient(160deg, #f0f4ff 0%, #f8fafc 40%, #eef2f7 100%); }
-    [data-theme="light"] .main-card    { background: white; border-color: #e2e8f0; box-shadow: 0 20px 60px rgba(30,64,175,0.10), 0 4px 16px rgba(0,0,0,0.05); }
-    [data-theme="light"] .avatar-ring  { border-color: #e2e8f0; box-shadow: 0 4px 12px rgba(30,64,175,0.12); }
-    [data-theme="light"] .user-name    { color: #0f172a; }
-    [data-theme="light"] .user-id      { color: #94a3b8; }
-    [data-theme="light"] .group-badge  { background: #eff6ff; border: 1px solid #bfdbfe; color: #1d4ed8; }
-    [data-theme="light"] .reg-time     { color: #94a3b8; }
-    [data-theme="light"] .divider      { background: #f1f5f9; }
-    [data-theme="light"] .stat-card    { background: #f8fafc; border: 1px solid #e2e8f0; }
-    [data-theme="light"] .stat-label   { color: #94a3b8; }
-    [data-theme="light"] .stat-value   { color: #0f172a; }
-    [data-theme="light"] .perm-badge   { background: #f1f5f9; border: 1px solid #e2e8f0; color: #475569; }
-    [data-theme="light"] .perm-none    { color: #cbd5e1; }
-    [data-theme="light"] .wall-wrap    { background: #f8fafc; border: 1px solid #e2e8f0; }
-    [data-theme="light"] .wall-title   { color: #334155; }
-    [data-theme="light"] .month-label  { color: #94a3b8; }
-    [data-theme="light"] .day-empty    { background: #e2e8f0; }
-    [data-theme="light"] .day-signed   { background: #22c55e; }
-    [data-theme="light"] .day-outside  { background: transparent; }
-    [data-theme="light"] .footer-text  { color: #cbd5e1; }
+    /* ── Global reset & canvas ─────────────────────────────── */
+    *,
+    *::before,
+    *::after { box-sizing: border-box; }
 
-    /* ── Dark theme ─────────────────────────────────────────── */
-    [data-theme="dark"] body {
-      background-color: #0d0d0f;
-      background-image:
-        radial-gradient(ellipse at 15% 0%, rgba(60,40,120,0.18) 0%, transparent 55%),
-        radial-gradient(ellipse at 85% 100%, rgba(20,40,100,0.22) 0%, transparent 55%),
-        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64'%3E%3Crect width='64' height='64' fill='%23111114'/%3E%3Crect x='0' y='0' width='32' height='32' fill='%2312121a' opacity='0.5'/%3E%3Crect x='32' y='32' width='32' height='32' fill='%2312121a' opacity='0.5'/%3E%3C/svg%3E");
+    html,
+    body { margin: 0; padding: 0; }
+
+    body {
+      background-color: var(--color-canvas);
+      color: var(--color-ink);
+      font-family: var(--font-body);
+      font-size: var(--type-body-md-size);
+      line-height: 1.55;
+      padding: var(--space-xxl) var(--space-xxl);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
     }
-    [data-theme="dark"] .main-card    { background: rgba(18,18,26,0.96); border-color: rgba(60,65,100,0.35); box-shadow: 0 0 60px rgba(0,0,0,0.8); }
-    [data-theme="dark"] .avatar-ring  { border-color: rgba(60,65,100,0.5); box-shadow: 0 4px 16px rgba(0,0,0,0.6); }
-    [data-theme="dark"] .user-name    { color: #e2e8f0; }
-    [data-theme="dark"] .user-id      { color: #475569; }
-    [data-theme="dark"] .group-badge  { background: rgba(30,35,70,0.8); border: 1px solid rgba(80,90,160,0.45); color: #818cf8; }
-    [data-theme="dark"] .reg-time     { color: #334155; }
-    [data-theme="dark"] .divider      { background: rgba(60,65,100,0.25); }
-    [data-theme="dark"] .stat-card    { background: rgba(20,20,30,0.8); border: 1px solid rgba(60,65,100,0.35); }
-    [data-theme="dark"] .stat-label   { color: #475569; }
-    [data-theme="dark"] .stat-value   { color: #e2e8f0; }
-    [data-theme="dark"] .perm-badge   { background: rgba(30,35,70,0.7); border: 1px solid rgba(60,65,100,0.4); color: #818cf8; }
-    [data-theme="dark"] .perm-none    { color: #334155; }
-    [data-theme="dark"] .wall-wrap    { background: rgba(16,16,24,0.8); border: 1px solid rgba(60,65,100,0.3); }
-    [data-theme="dark"] .wall-title   { color: #94a3b8; }
-    [data-theme="dark"] .month-label  { color: #334155; }
-    [data-theme="dark"] .day-empty    { background: rgba(40,40,60,0.6); }
-    [data-theme="dark"] .day-signed   { background: #6366f1; }
-    [data-theme="dark"] .day-outside  { background: transparent; }
-    [data-theme="dark"] .footer-text  { color: #1e293b; }
+
+    /* ── Page frame ────────────────────────────────────────── */
+    .page {
+      max-width: 920px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-xl);
+    }
+
+    /* ── Header ────────────────────────────────────────────── */
+    /* No header-rule: the avatar + serif name already serve as the visual
+     * hero anchor on this page. The coral rule is reserved for text-only
+     * hero pages (menu, leaderboard) where there's no visual element to
+     * carry that weight. */
+    .header {
+      display: flex;
+      align-items: center;
+      gap: var(--space-lg);
+    }
+
+    .avatar {
+      width: 88px;
+      height: 88px;
+      border-radius: var(--radius-pill);
+      background-color: var(--color-surface-card);
+      border: 1px solid var(--color-hairline);
+      object-fit: cover;
+      flex-shrink: 0;
+    }
+
+    .header-meta {
+      min-width: 0;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-xxs);
+    }
+
+    .name-row {
+      display: flex;
+      align-items: baseline;
+      gap: var(--space-sm);
+      flex-wrap: wrap;
+    }
+
+    .user-name {
+      color: var(--color-ink);
+      margin: 0;
+      overflow-wrap: break-word;
+      word-break: break-word;
+    }
+
+    .group-badge {
+      background-color: var(--color-surface-card);
+      color: var(--color-ink);
+      border: 1px solid var(--color-hairline);
+      border-radius: var(--radius-pill);
+      padding: var(--space-xxs) var(--space-sm);
+    }
+
+    .user-id {
+      color: var(--color-muted);
+      font-family: var(--font-code);
+    }
+
+    .reg-time {
+      color: var(--color-muted-soft);
+    }
+
+    /* ── Stats grid ────────────────────────────────────────── */
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: var(--space-md);
+      /* All cards stretch to the tallest card's height (the perm card
+       * grows with badge count). Short cards keep their content top-aligned
+       * with breathing room below — consistent row baseline beats variable
+       * card heights. */
+    }
+
+    .stat-card {
+      background-color: var(--color-surface-card);
+      border: 1px solid var(--color-hairline);
+      border-radius: var(--radius-lg);
+      padding: var(--space-lg);
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-xs);
+      min-width: 0;
+    }
+
+    .stat-label {
+      color: var(--color-muted);
+    }
+
+    /* Override the default editorial-serif treatment for stat values:
+     * Cormorant Garamond uses old-style figures ("120" reads as "I2O") which
+     * destroys glance-readability for data. Keep the 28px scale + slight
+     * negative tracking for editorial weight, but switch to humanist sans
+     * with tabular numerals for legibility. */
+    .stat-value {
+      font-family: var(--font-body);
+      font-weight: 600;
+      font-size: 28px;
+      line-height: 1.2;
+      letter-spacing: -0.5px;
+      font-feature-settings: "tnum";
+      color: var(--color-ink);
+      margin: 0;
+      overflow-wrap: break-word;
+      word-break: break-word;
+    }
+
+    .stat-unit {
+      font-weight: 400;
+      letter-spacing: 0;
+      color: var(--color-muted);
+      margin-left: var(--space-xxs);
+    }
+
+    /* ── Permissions list (overflow stat-card) ─────────────── */
+    .perm-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-xxs);
+      margin-top: var(--space-xxs);
+    }
+
+    .perm-badge {
+      background-color: var(--color-canvas);
+      color: var(--color-body);
+      border: 1px solid var(--color-hairline);
+      border-radius: var(--radius-pill);
+      padding: 2px var(--space-xs);
+      font-family: var(--font-body);
+      font-size: 11px;
+      font-weight: 500;
+      line-height: 1.3;
+      overflow-wrap: break-word;
+      word-break: break-all;
+    }
+
+    .perm-empty {
+      color: var(--color-muted-soft);
+    }
+
+    /* ── Contribution wall ─────────────────────────────────── */
+    .wall-card {
+      background-color: var(--color-surface-card);
+      border: 1px solid var(--color-hairline);
+      border-radius: var(--radius-lg);
+      padding: var(--space-lg);
+    }
+
+    .wall-title {
+      color: var(--color-muted);
+      margin-bottom: var(--space-sm);
+    }
+
+    .wall-body {
+      display: flex;
+      gap: var(--space-xs);
+    }
+
+    .wall-day-labels {
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      color: var(--color-muted-soft);
+      font-family: var(--font-body);
+      font-size: 10px;
+      line-height: 1;
+    }
+
+    .wall-cols {
+      display: flex;
+      min-width: 0;
+      flex: 1;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .wall-months {
+      color: var(--color-muted-soft);
+      font-family: var(--font-body);
+      font-size: 10px;
+      white-space: nowrap;
+    }
+
+    /* ── Footer ────────────────────────────────────────────── */
+    .footer {
+      text-align: right;
+      color: var(--color-muted-soft);
+      margin-top: var(--space-md);
+    }
   </style>
 </head>
-<body class="min-h-screen px-6 py-8">
+<body>
+  <main class="page">
 
-  <main class="main-card mx-auto max-w-[820px] overflow-hidden rounded-3xl border">
+    <!-- Header (sits directly on canvas; no rule, avatar is the visual anchor) -->
+    <header class="header">
+      <img id="user-avatar" class="avatar" alt="avatar" />
+      <div class="header-meta">
+        <div class="name-row">
+          <h1 id="user-name" class="user-name type-display-md"></h1>
+          <span id="group-badge" class="group-badge type-caption"></span>
+        </div>
+        <div id="user-id" class="user-id type-body-sm"></div>
+        <div id="reg-time" class="reg-time type-body-sm"></div>
+      </div>
+    </header>
 
-    <!-- Header -->
-    <section class="px-8 py-7">
-      <div class="flex items-center gap-6">
-        <img id="user-avatar" class="avatar-ring h-20 w-20 shrink-0 rounded-full border-2 object-cover" alt="avatar" />
-        <div class="min-w-0 flex-1">
-          <div class="flex flex-wrap items-center gap-2">
-            <h1 id="user-name" class="user-name text-2xl font-bold tracking-tight"></h1>
-            <span id="group-badge" class="group-badge rounded-full px-2.5 py-0.5 text-xs font-semibold"></span>
-          </div>
-          <div id="user-id" class="user-id mt-1 text-sm font-mono"></div>
-          <div id="reg-time" class="reg-time mt-1 text-xs"></div>
+    <!-- Stats: 4 individual feature-cards -->
+    <section class="stats">
+      <div class="stat-card">
+        <div class="stat-label type-caption-uppercase">金币</div>
+        <div id="stat-coins" class="stat-value"></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label type-caption-uppercase">累计签到</div>
+        <div class="stat-value">
+          <span id="stat-sign-total"></span><span class="stat-unit">次</span>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label type-caption-uppercase">连续签到</div>
+        <div class="stat-value">
+          <span id="stat-sign-streak"></span><span class="stat-unit">天</span>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label type-caption-uppercase">权限</div>
+        <div id="stat-permissions" class="perm-list"></div>
+      </div>
+    </section>
+
+    <!-- Contribution wall: an individual feature-card -->
+    <section class="wall-card">
+      <div class="wall-title type-caption-uppercase">签到记录</div>
+      <div class="wall-body">
+        <div id="wall-day-labels" class="wall-day-labels"></div>
+        <div class="wall-cols">
+          <div id="wall-months" class="wall-months"></div>
+          <div id="wall-grid"></div>
         </div>
       </div>
     </section>
 
-    <div class="divider mx-8 h-px"></div>
-
-    <!-- Stats -->
-    <section class="grid grid-cols-4 gap-3 px-8 py-5">
-      <div class="stat-card rounded-2xl px-4 py-3 text-center">
-        <div class="stat-label text-[10px] font-semibold uppercase tracking-widest">金币</div>
-        <div id="stat-coins" class="stat-value mt-1 text-xl font-black tabular-nums"></div>
-      </div>
-      <div class="stat-card rounded-2xl px-4 py-3 text-center">
-        <div class="stat-label text-[10px] font-semibold uppercase tracking-widest">累计签到</div>
-        <div id="stat-sign-total" class="stat-value mt-1 text-xl font-black tabular-nums"></div>
-      </div>
-      <div class="stat-card rounded-2xl px-4 py-3 text-center">
-        <div class="stat-label text-[10px] font-semibold uppercase tracking-widest">连续签到</div>
-        <div id="stat-sign-streak" class="stat-value mt-1 text-xl font-black tabular-nums"></div>
-      </div>
-      <div class="stat-card rounded-2xl px-4 py-3">
-        <div class="stat-label text-[10px] font-semibold uppercase tracking-widest">权限</div>
-        <div id="stat-permissions" class="mt-1.5 flex flex-wrap gap-1"></div>
-      </div>
-    </section>
-
-    <div class="divider mx-8 h-px"></div>
-
-    <!-- Contribution Wall -->
-    <section class="px-8 py-5">
-      <div class="wall-wrap rounded-2xl px-5 py-4">
-        <div class="wall-title mb-3 text-xs font-semibold uppercase tracking-widest">签到记录</div>
-        <div class="flex gap-2">
-          <!-- Day labels -->
-          <div id="wall-day-labels" class="flex shrink-0 flex-col text-[10px]"></div>
-          <!-- Month labels + grid -->
-          <div class="flex min-w-0 flex-1 flex-col gap-[2px]">
-            <div id="wall-months" class="text-[10px]"></div>
-            <div id="wall-grid"></div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <div class="footer-text px-8 pb-5 text-right text-xs tracking-widest">Powered by NextBot</div>
+    <footer class="footer type-caption">Powered by NextBot</footer>
   </main>
 
   <script id="user-info-data" type="application/json">__USER_INFO_DATA_JSON__</script>
   <script>
     const data = JSON.parse(document.getElementById("user-info-data").textContent);
-    document.documentElement.setAttribute("data-theme", data.theme || "light");
 
+    // Header
     document.getElementById("user-avatar").src =
       `http://q1.qlogo.cn/g?b=qq&nk=${encodeURIComponent(data.user_id || "")}&s=100`;
     document.getElementById("user-name").textContent = data.user_name || "—";
@@ -131,23 +290,25 @@
     document.getElementById("group-badge").textContent = data.group || "guest";
     document.getElementById("reg-time").textContent = `注册时间：${data.created_at || ""}`;
 
-    document.getElementById("stat-coins").textContent = Number(data.coins || 0).toLocaleString("zh-CN");
-    document.getElementById("stat-sign-total").textContent = `${data.sign_total ?? 0} 次`;
-    document.getElementById("stat-sign-streak").textContent = `${data.sign_streak ?? 0} 天`;
+    // Stats
+    document.getElementById("stat-coins").textContent =
+      Number(data.coins || 0).toLocaleString("zh-CN");
+    document.getElementById("stat-sign-total").textContent = data.sign_total ?? 0;
+    document.getElementById("stat-sign-streak").textContent = data.sign_streak ?? 0;
 
     // Permissions
     const permWrap = document.getElementById("stat-permissions");
     const perms = String(data.permissions || "").split(",").map(s => s.trim()).filter(Boolean);
     if (perms.length) {
-      perms.forEach(p => {
+      for (const p of perms) {
         const b = document.createElement("span");
-        b.className = "perm-badge rounded-full px-2 py-0.5 text-[10px] font-medium";
+        b.className = "perm-badge";
         b.textContent = p;
         permWrap.appendChild(b);
-      });
+      }
     } else {
       const none = document.createElement("span");
-      none.className = "perm-none text-xs";
+      none.className = "perm-empty type-caption";
       none.textContent = "无";
       permWrap.appendChild(none);
     }
@@ -163,23 +324,18 @@
       return `${y}-${m}-${day}`;
     };
 
-    // today in local time
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const todayStr = toDateStr(today);
-
-    // range start
     const rangeStart = new Date(today);
     rangeStart.setDate(rangeStart.getDate() - (days - 1));
 
-    // align to Monday
-    const dow = (rangeStart.getDay() + 6) % 7; // 0=Mon
+    // Align to Monday so the wall reads top-to-bottom Mon..Sun.
+    const dow = (rangeStart.getDay() + 6) % 7;
     const wallStart = new Date(rangeStart);
     wallStart.setDate(wallStart.getDate() - dow);
 
-    // build weeks
     const weeks = [];
-    const monthCols = {}; // colIndex -> month label
+    const monthCols = {};
     const seenMonths = new Set();
     let cur = new Date(wallStart);
     let col = 0;
@@ -206,10 +362,10 @@
     }
 
     const gap = 2;
-    const cellH = 11; // fixed row height px
+    const cellH = 11;
     const numCols = weeks.length;
 
-    // Month labels row — fixed height so spacer can align exactly
+    // Month labels row
     const monthsEl = document.getElementById("wall-months");
     monthsEl.style.display = "grid";
     monthsEl.style.gridTemplateColumns = `repeat(${numCols}, 1fr)`;
@@ -219,23 +375,20 @@
     monthsEl.style.overflow = "visible";
     weeks.forEach((_, ci) => {
       const span = document.createElement("span");
-      span.className = "month-label";
       span.style.whiteSpace = "nowrap";
       span.style.overflow = "visible";
       span.textContent = monthCols[ci] || "";
       monthsEl.appendChild(span);
     });
 
-    // Day labels (一, 三, 五 on rows 0, 2, 4 = Mon, Wed, Fri)
+    // Day labels (Mon/Wed/Fri shown on rows 0/2/4)
     const dayLabelsEl = document.getElementById("wall-day-labels");
     const DAY_LABELS = ["周一", "", "周三", "", "周五", "", "周日"];
-    // spacer = month row height + gap between months and grid
     const topSpacer = document.createElement("div");
     topSpacer.style.height = `${cellH + gap}px`;
     dayLabelsEl.appendChild(topSpacer);
     DAY_LABELS.forEach((label, i) => {
       const span = document.createElement("span");
-      span.className = "month-label";
       span.style.height = `${cellH}px`;
       span.style.lineHeight = `${cellH}px`;
       span.style.display = "block";
@@ -245,7 +398,7 @@
       dayLabelsEl.appendChild(span);
     });
 
-    // Grid — CSS grid, column-major flow, 1fr columns fill width
+    // Grid
     const gridEl = document.getElementById("wall-grid");
     gridEl.style.display = "grid";
     gridEl.style.gridTemplateRows = `repeat(7, ${cellH}px)`;
@@ -253,14 +406,17 @@
     gridEl.style.gridAutoFlow = "column";
     gridEl.style.gap = `${gap}px`;
 
+    const COLOR_EMPTY = getComputedStyle(document.documentElement)
+      .getPropertyValue("--color-hairline").trim() || "#e6dfd8";
+    const COLOR_SIGNED = getComputedStyle(document.documentElement)
+      .getPropertyValue("--color-accent-teal").trim() || "#5db8a6";
+
     weeks.forEach(week => {
       week.forEach(({ ds, signed, inRange, afterToday }) => {
-        // 不渲染今天之后的格子，让 grid 行自然空缺（与 GitHub 行为一致）
         if (afterToday) return;
         const cell = document.createElement("div");
         cell.style.borderRadius = "2px";
-        // rangeStart 之前的格子显示为灰色空格（而非透明），与 GitHub 一致
-        cell.className = inRange ? (signed ? "day-signed" : "day-empty") : "day-empty";
+        cell.style.backgroundColor = signed ? COLOR_SIGNED : COLOR_EMPTY;
         if (inRange) cell.title = `${ds}${signed ? " ✓" : ""}`;
         gridEl.appendChild(cell);
       });

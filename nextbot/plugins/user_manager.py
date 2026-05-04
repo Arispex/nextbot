@@ -31,9 +31,10 @@ from nextbot.text_utils import EMOJI_USER, reply_block, reply_failure, reply_suc
 
 
 USER_INFO_SCREENSHOT_OPTIONS = ScreenshotOptions(
-    viewport_width=820,
+    viewport_width=920,
     viewport_height=600,
     full_page=True,
+    fit_content_height=True,
 )
 
 add_matcher = on_command("注册账号")
