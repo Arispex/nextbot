@@ -1,0 +1,1 @@
+{"file": ".trellis/tasks/05-04-add-logo-svg/prd.md", "reason": "Acceptance check is purely 'file exists + opens in browser without errors' — no spec required."}
