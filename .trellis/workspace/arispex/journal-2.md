@@ -1442,3 +1442,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 79: WebUI native confirm() 替换为 dialog + 删除文案统一使用「」
+
+**Date**: 2026-05-04
+**Task**: WebUI native confirm() 替换为 dialog + 删除文案统一使用「」
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `55b6322` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
