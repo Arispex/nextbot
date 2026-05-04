@@ -1370,3 +1370,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 77: 完成 关于 / 教程 重构 + 删除 RENDER_THEME 设置项
+
+**Date**: 2026-05-04
+**Task**: 完成 关于 / 教程 重构 + 删除 RENDER_THEME 设置项
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8e76a7c` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
