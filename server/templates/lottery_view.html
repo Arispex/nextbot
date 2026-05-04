@@ -353,7 +353,7 @@
       const cost = Number(data.cost_per_draw || 0);
       const missPct = Number(data.miss_probability || 0);
 
-      document.getElementById("header-eyebrow").textContent = "奖池系统";
+      document.getElementById("header-eyebrow").textContent = "抽奖系统";
       document.getElementById("header-title").textContent = String(data.pool_name || "未命名奖池").trim() || "未命名奖池";
       document.getElementById("pool-id").textContent = String(data.pool_id ?? "-");
       document.getElementById("header-count").textContent = `共 ${total} 件奖品`;
