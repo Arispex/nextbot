@@ -1839,3 +1839,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 91: 新增 我的地图 命令（玩家查询）
+
+**Date**: 2026-05-06
+**Task**: 新增 我的地图 命令（玩家查询）
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `5c7b2c7` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
