@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 92
+- **Total Sessions**: 93
 - **Last Active**: 2026-05-06
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~1907 | Active |
+| `journal-2.md` | ~1940 | Active |
 | `journal-1.md` | ~1999 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 93 | 2026-05-06 | 查看商店排版改 2 列网格 | `890c2a3` | `main` |
 | 92 | 2026-05-06 | 查看奖池排版改 2 列网格 | `9f42d9f` | `main` |
 | 91 | 2026-05-06 | 新增 我的地图 命令（玩家查询） | `5c7b2c7` | `main` |
 | 90 | 2026-05-05 | 抽奖概率精度提升至 0.01% | `c3bf4fa` | `main` |
