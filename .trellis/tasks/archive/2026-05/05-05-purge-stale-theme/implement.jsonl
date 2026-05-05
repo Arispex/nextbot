@@ -1,0 +1,2 @@
+{"file": ".trellis/tasks/05-05-purge-stale-theme/prd.md", "reason": "Self-contained PRD with full file list, line numbers, deletion pattern, and verification commands."}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Dead-code removal quality bar (no orphaned params, no orphan keys in dicts)."}
