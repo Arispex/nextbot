@@ -83,10 +83,15 @@
       color: var(--color-muted);
     }
 
+    /* 2-up grid: each prize card keeps its original horizontal layout
+     * (icon + mid + right) but two cards share a row, halving page height
+     * vs the previous single-column list. align-items: stretch makes paired
+     * cards equal-height when description / meta wrap differently. */
     .list {
-      display: flex;
-      flex-direction: column;
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
       gap: var(--space-md);
+      align-items: stretch;
     }
 
     .prize {
@@ -97,6 +102,7 @@
       display: flex;
       align-items: stretch;
       gap: var(--space-lg);
+      min-width: 0;
     }
 
     .prize-icon {

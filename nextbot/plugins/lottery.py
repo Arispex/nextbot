@@ -263,8 +263,8 @@ async def handle_lottery_list(bot: Bot, event: Event, arg: Message = CommandArg(
     params={
         "limit": {
             "type": "int", "label": "每页条数",
-            "description": "每页显示的奖品数量",
-            "required": False, "default": 10, "min": 1, "max": 50,
+            "description": "每页显示的奖品数量（按 2 列网格布局，建议为偶数）",
+            "required": False, "default": 20, "min": 1, "max": 100,
         },
     },
     category="抽奖系统",
@@ -289,7 +289,7 @@ async def handle_lottery_view(bot: Bot, event: Event, arg: Message = CommandArg(
             await bot.send(event, reply_failure("查询", "页数必须为正整数"))
             return
 
-    limit = max(1, min(int(get_current_param("limit", 10)), 50))
+    limit = max(1, min(int(get_current_param("limit", 20)), 100))
 
     session = get_session()
     try:
