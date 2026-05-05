@@ -1707,3 +1707,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 87: 截图等待动态资源回归修复
+
+**Date**: 2026-05-05
+**Task**: 截图等待动态资源回归修复
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `48dc18c` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
