@@ -1,0 +1,2 @@
+{"file": ".trellis/tasks/05-05-screenshot-wait-images-fix/prd.md", "reason": "AC drives review."}
+{"file": "server/screenshot.py", "reason": "Verify the inserted waits are in the right order and don't break retry/lifecycle paths."}

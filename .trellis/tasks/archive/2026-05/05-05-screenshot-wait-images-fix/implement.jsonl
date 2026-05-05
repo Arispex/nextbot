@@ -1,0 +1,3 @@
+{"file": ".trellis/tasks/05-05-screenshot-wait-images-fix/prd.md", "reason": "Self-contained PRD with the regression analysis, exact code snippet, and ADR."}
+{"file": "server/screenshot.py", "reason": "Existing implementation reference — agent must preserve singleton/retry/lifecycle structure and only add the two waits in the right place."}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "House rules for exception handling and message phrasing."}
