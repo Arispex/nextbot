@@ -91,7 +91,6 @@ async def _render_and_send(
     total_pages: int,
     file_prefix: str,
     self_entry: dict | None = None,
-    theme: str,
 ) -> None:
     page_url = create_leaderboard_page(
         title=title,
@@ -100,7 +99,6 @@ async def _render_and_send(
         total_pages=total_pages,
         entries=entries,
         self_entry=self_entry,
-        theme=theme,
     )
     logger.info(
         f"{title}渲染地址：page={page}/{total_pages} entry_count={len(entries)} internal_url={page_url}"
