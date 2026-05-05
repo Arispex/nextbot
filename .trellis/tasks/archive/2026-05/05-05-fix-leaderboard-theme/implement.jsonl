@@ -1,0 +1,2 @@
+{"file": ".trellis/tasks/05-05-fix-leaderboard-theme/prd.md", "reason": "Self-contained PRD with exact line numbers and the 2-line patch."}
+{"file": "nextbot/plugins/leaderboard.py", "reason": "Target file — agent must touch only the _render_and_send signature + the create_leaderboard_page call inside it; do not modify the 16 call sites."}
