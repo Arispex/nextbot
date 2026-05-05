@@ -345,6 +345,13 @@
   <script id="lottery-view-data" type="application/json">__LOTTERY_VIEW_DATA_JSON__</script>
   <script>
     (async function () {
+      function formatProbabilityPct(n) {
+        const v = Number(n) || 0;
+        const r2 = Math.round(v * 100) / 100;
+        const r1 = Math.round(v * 10) / 10;
+        return r2 === r1 ? r1.toFixed(1) : r2.toFixed(2);
+      }
+
       const data = JSON.parse(document.getElementById("lottery-view-data").textContent);
       const prizes = Array.isArray(data.prizes) ? data.prizes : [];
       const total = Number(data.total || prizes.length || 0);
@@ -361,7 +368,7 @@
       if (missPct > 0) {
         document.getElementById("miss-divider").hidden = false;
         const missEl = document.getElementById("header-miss");
-        missEl.textContent = `未中奖率 ${missPct.toFixed(1)}%`;
+        missEl.textContent = `未中奖率 ${formatProbabilityPct(missPct)}%`;
         missEl.hidden = false;
       }
       document.getElementById("header-page").textContent = `第 ${page} / ${totalPages} 页`;
@@ -523,7 +530,7 @@
         right.appendChild(probLbl);
         const prob = document.createElement("div");
         prob.className = "prob";
-        prob.textContent = (Number(p.probability) || 0).toFixed(1);
+        prob.textContent = formatProbabilityPct(p.probability);
         const probUnit = document.createElement("span");
         probUnit.className = "prob-unit";
         probUnit.textContent = "%";

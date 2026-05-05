@@ -48,6 +48,13 @@
 
   async function callApi(url, opts = {}) { return api.apiRequest(url, opts); }
 
+  function formatProbabilityPct(n) {
+    const v = Number(n) || 0;
+    const r2 = Math.round(v * 100) / 100;
+    const r1 = Math.round(v * 10) / 10;
+    return r2 === r1 ? r1.toFixed(1) : r2.toFixed(2);
+  }
+
   // ---------- Probability resolution ----------
 
   function resolveProbabilities(prizes) {
@@ -257,7 +264,7 @@
     const probChip = document.createElement("span");
     const isDefault = prize.weight === null || prize.weight === undefined;
     probChip.className = "weight-chip" + (isDefault ? " is-default" : "");
-    probChip.textContent = (probabilityPct || 0).toFixed(1) + "%" + (isDefault ? "（默认）" : "");
+    probChip.textContent = formatProbabilityPct(probabilityPct) + "%" + (isDefault ? "（默认）" : "");
     tdProb.appendChild(probChip);
     tr.appendChild(tdProb);
 
