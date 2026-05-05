@@ -47,7 +47,6 @@ def create_inventory_page(
     show_stats: bool = True,
     show_index: bool = True,
     slots: list[dict[str, Any]] = [],
-    theme: str = "light",
 ) -> str:
     payload = inventory_page.build_payload(
         user_id=user_id,
@@ -63,7 +62,6 @@ def create_inventory_page(
         show_stats=show_stats,
         show_index=show_index,
         slots=slots,
-        theme=theme,
     )
     token = create_page("inventory", payload)
     settings = get_server_settings()
@@ -75,13 +73,11 @@ def create_progress_page(
     server_id: int,
     server_name: str,
     progress: dict[str, Any],
-    theme: str = "dark",
 ) -> str:
     payload = progress_page.build_payload(
         server_id=server_id,
         server_name=server_name,
         progress=progress,
-        theme=theme,
     )
     token = create_page("progress", payload)
     settings = get_server_settings()
@@ -96,7 +92,6 @@ def create_leaderboard_page(
     total_pages: int,
     entries: list[dict[str, Any]],
     self_entry: dict[str, Any] | None = None,
-    theme: str = "dark",
 ) -> str:
     payload = leaderboard_page.build_payload(
         title=title,
@@ -105,7 +100,6 @@ def create_leaderboard_page(
         total_pages=total_pages,
         entries=entries,
         self_entry=self_entry,
-        theme=theme,
     )
     token = create_page("leaderboard", payload)
     settings = get_server_settings()
@@ -117,21 +111,17 @@ def create_ban_list_page(
     page: int,
     total_pages: int,
     entries: list[dict[str, Any]],
-    theme: str = "dark",
 ) -> str:
     payload = ban_list_page.build_payload(
-        page=page, total_pages=total_pages, entries=entries, theme=theme,
+        page=page, total_pages=total_pages, entries=entries,
     )
     token = create_page("ban_list", payload)
     settings = get_server_settings()
     return f"{_build_internal_base_url(settings)}/render/ban_list/{token}"
 
 
-def create_about_page(
-    *,
-    theme: str = "light",
-) -> str:
-    payload = about_page.build_payload(theme=theme)
+def create_about_page() -> str:
+    payload = about_page.build_payload()
     token = create_page("about", payload)
     settings = get_server_settings()
     return f"{_build_internal_base_url(settings)}/render/about/{token}"
@@ -140,9 +130,8 @@ def create_about_page(
 def create_admin_list_page(
     *,
     admins: list[dict[str, str]],
-    theme: str = "light",
 ) -> str:
-    payload = admin_list_page.build_payload(admins=admins, theme=theme)
+    payload = admin_list_page.build_payload(admins=admins)
     token = create_page("admin_list", payload)
     settings = get_server_settings()
     return f"{_build_internal_base_url(settings)}/render/admin_list/{token}"
@@ -160,7 +149,6 @@ def create_user_info_page(
     created_at: str,
     sign_dates: list[str],
     days: int = 90,
-    theme: str = "light",
 ) -> str:
     payload = user_info_page.build_payload(
         user_id=user_id,
@@ -173,7 +161,6 @@ def create_user_info_page(
         created_at=created_at,
         sign_dates=sign_dates,
         days=days,
-        theme=theme,
     )
     token = create_page("user_info", payload)
     settings = get_server_settings()
@@ -184,9 +171,8 @@ def create_menu_page(
     *,
     title: str,
     commands: list[dict[str, str]],
-    theme: str = "light",
 ) -> str:
-    payload = menu_page.build_payload(title=title, commands=commands, theme=theme)
+    payload = menu_page.build_payload(title=title, commands=commands)
     token = create_page("menu", payload)
     settings = get_server_settings()
     return f"{_build_internal_base_url(settings)}/render/menu/{token}"
@@ -197,10 +183,9 @@ def create_red_packet_own_page(
     page: int,
     total_pages: int,
     entries: list[dict[str, Any]],
-    theme: str = "light",
 ) -> str:
     payload = red_packet_own_page.build_payload(
-        page=page, total_pages=total_pages, entries=entries, theme=theme,
+        page=page, total_pages=total_pages, entries=entries,
     )
     token = create_page("red_packet_own", payload)
     settings = get_server_settings()
@@ -212,10 +197,9 @@ def create_red_packet_all_page(
     page: int,
     total_pages: int,
     entries: list[dict[str, Any]],
-    theme: str = "light",
 ) -> str:
     payload = red_packet_all_page.build_payload(
-        page=page, total_pages=total_pages, entries=entries, theme=theme,
+        page=page, total_pages=total_pages, entries=entries,
     )
     token = create_page("red_packet_all", payload)
     settings = get_server_settings()
@@ -226,12 +210,10 @@ def create_tutorial_page(
     *,
     tutorial: dict[str, Any],
     self_user_id: str,
-    theme: str = "light",
 ) -> str:
     payload = tutorial_page.build_payload(
         tutorial=tutorial,
         self_user_id=self_user_id,
-        theme=theme,
     )
     token = create_page("tutorial", payload)
     settings = get_server_settings()
@@ -243,13 +225,11 @@ def create_warehouse_page(
     owner_user_id: str,
     owner_user_name: str,
     slots: list[dict[str, Any]],
-    theme: str = "light",
 ) -> str:
     payload = warehouse_page.build_payload(
         owner_user_id=owner_user_id,
         owner_user_name=owner_user_name,
         slots=slots,
-        theme=theme,
     )
     token = create_page("warehouse", payload)
     settings = get_server_settings()
@@ -262,10 +242,9 @@ def create_lottery_list_page(
     page: int = 1,
     total_pages: int = 1,
     total: int = 0,
-    theme: str = "light",
 ) -> str:
     payload = lottery_list_page.build_payload(
-        entries=entries, page=page, total_pages=total_pages, total=total, theme=theme,
+        entries=entries, page=page, total_pages=total_pages, total=total,
     )
     token = create_page("lottery_list", payload)
     settings = get_server_settings()
@@ -283,12 +262,11 @@ def create_lottery_view_page(
     page: int = 1,
     total_pages: int = 1,
     total: int = 0,
-    theme: str = "light",
 ) -> str:
     payload = lottery_view_page.build_payload(
         pool_id=pool_id, pool_name=pool_name, pool_description=pool_description,
         cost_per_draw=cost_per_draw, prizes=prizes, miss_probability=miss_probability,
-        page=page, total_pages=total_pages, total=total, theme=theme,
+        page=page, total_pages=total_pages, total=total,
     )
     token = create_page("lottery_view", payload)
     settings = get_server_settings()
@@ -309,7 +287,6 @@ def create_lottery_result_page(
     item_value_gained: int = 0,
     item_slots_used: int = 0,
     command_results: list[dict[str, Any]] | None = None,
-    theme: str = "light",
 ) -> str:
     payload = lottery_result_page.build_payload(
         pool_id=pool_id, pool_name=pool_name,
@@ -318,7 +295,6 @@ def create_lottery_result_page(
         total_cost=total_cost, coin_delta=coin_delta,
         item_value_gained=item_value_gained, outcomes=outcomes,
         item_slots_used=item_slots_used, command_results=command_results,
-        theme=theme,
     )
     token = create_page("lottery_result", payload)
     settings = get_server_settings()
@@ -331,14 +307,12 @@ def create_shop_list_page(
     page: int = 1,
     total_pages: int = 1,
     total: int = 0,
-    theme: str = "light",
 ) -> str:
     payload = shop_list_page.build_payload(
         entries=entries,
         page=page,
         total_pages=total_pages,
         total=total,
-        theme=theme,
     )
     token = create_page("shop_list", payload)
     settings = get_server_settings()
@@ -357,7 +331,6 @@ def create_shop_view_page(
     page: int = 1,
     total_pages: int = 1,
     total: int = 0,
-    theme: str = "light",
 ) -> str:
     payload = shop_view_page.build_payload(
         shop_id=shop_id,
@@ -370,7 +343,6 @@ def create_shop_view_page(
         page=page,
         total_pages=total_pages,
         total=total,
-        theme=theme,
     )
     token = create_page("shop_view", payload)
     settings = get_server_settings()

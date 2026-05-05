@@ -15,7 +15,6 @@ def build_payload(
     page: int,
     total_pages: int,
     entries: list[dict[str, Any]],
-    theme: str = "light",
 ) -> dict[str, Any]:
     normalized: list[dict[str, Any]] = []
     for i, item in enumerate(entries):
@@ -43,7 +42,6 @@ def build_payload(
         "page": int(page),
         "total_pages": int(total_pages),
         "entries": normalized,
-        "theme": str(theme).strip() if str(theme).strip() in {"dark", "light"} else "light",
     }
 
 
@@ -54,7 +52,6 @@ def render(payload: dict[str, Any]) -> bytes:
         "page": int(payload.get("page", 1)),
         "total_pages": int(payload.get("total_pages", 1)),
         "entries": payload.get("entries", []),
-        "theme": str(payload.get("theme", "light")),
     }
     data_json = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
     content = template.replace("__RED_PACKET_OWN_DATA_JSON__", data_json)

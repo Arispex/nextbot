@@ -92,7 +92,6 @@ def build_payload(
     *,
     tutorial: dict[str, Any],
     self_user_id: str,
-    theme: str = "light",
 ) -> dict[str, Any]:
     return {
         "generated_at": beijing_now_text(),
@@ -103,7 +102,6 @@ def build_payload(
             tutorial.get("steps", []),
             self_user_id=str(self_user_id),
         ),
-        "theme": str(theme).strip() if str(theme).strip() in {"dark", "light"} else "light",
     }
 
 
@@ -115,7 +113,6 @@ def render(payload: dict[str, Any]) -> bytes:
         "subtitle": str(payload.get("subtitle", "")),
         "emoji": str(payload.get("emoji", "")),
         "steps": payload.get("steps", []),
-        "theme": str(payload.get("theme", "light")),
     }
     data_json = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
     content = template.replace("__TUTORIAL_DATA_JSON__", data_json)

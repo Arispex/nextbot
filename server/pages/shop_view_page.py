@@ -72,7 +72,6 @@ def build_payload(
     page: int = 1,
     total_pages: int = 1,
     total: int = 0,
-    theme: str = "light",
 ) -> dict[str, Any]:
     normalized = _normalize_items(items)
     return {
@@ -87,7 +86,6 @@ def build_payload(
         "page": max(1, int(page)),
         "total_pages": max(1, int(total_pages)),
         "total": max(0, int(total)),
-        "theme": str(theme).strip() if str(theme).strip() in {"dark", "light"} else "light",
     }
 
 
@@ -105,7 +103,6 @@ def render(payload: dict[str, Any]) -> bytes:
         "page": int(payload.get("page", 1)),
         "total_pages": int(payload.get("total_pages", 1)),
         "total": int(payload.get("total", 0)),
-        "theme": str(payload.get("theme", "light")),
     }
     data_json = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
     content = template.replace("__SHOP_VIEW_DATA_JSON__", data_json)

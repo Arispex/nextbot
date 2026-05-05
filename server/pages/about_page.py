@@ -15,10 +15,7 @@ THANKS_LIST: list[dict[str, str]] = [
 ]
 
 
-def build_payload(
-    *,
-    theme: str = "light",
-) -> dict[str, Any]:
+def build_payload() -> dict[str, Any]:
     return {
         "generated_at": beijing_now_text(),
         "project_name": "NextBot",
@@ -30,7 +27,6 @@ def build_payload(
             {"qq": str(t["qq"]), "name": str(t["name"])}
             for t in THANKS_LIST
         ],
-        "theme": str(theme).strip() if str(theme).strip() in {"dark", "light"} else "light",
     }
 
 
@@ -44,7 +40,6 @@ def render(payload: dict[str, Any]) -> bytes:
         "author": str(payload.get("author", "")),
         "author_url": str(payload.get("author_url", "")),
         "thanks": payload.get("thanks", []),
-        "theme": str(payload.get("theme", "light")),
     }
     data_json = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
     content = template.replace("__ABOUT_DATA_JSON__", data_json)

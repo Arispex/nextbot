@@ -91,7 +91,6 @@ def build_payload(
     item_value_gained: int = 0,
     item_slots_used: int = 0,
     command_results: list[dict[str, Any]] | None = None,
-    theme: str = "light",
 ) -> dict[str, Any]:
     normalized = _normalize_outcomes(outcomes)
     cmd_results = command_results or []
@@ -117,7 +116,6 @@ def build_payload(
             for r in cmd_results
             if isinstance(r, dict)
         ],
-        "theme": str(theme).strip() if str(theme).strip() in {"dark", "light"} else "light",
     }
 
 
@@ -137,7 +135,6 @@ def render(payload: dict[str, Any]) -> bytes:
         "outcomes": payload.get("outcomes", []),
         "item_slots_used": int(payload.get("item_slots_used", 0)),
         "command_results": payload.get("command_results", []),
-        "theme": str(payload.get("theme", "light")),
     }
     data_json = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
     content = template.replace("__LOTTERY_RESULT_DATA_JSON__", data_json)

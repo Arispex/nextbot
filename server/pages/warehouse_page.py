@@ -68,7 +68,6 @@ def build_payload(
     owner_user_id: str,
     owner_user_name: str,
     slots: list[dict[str, Any]],
-    theme: str = "light",
 ) -> dict[str, Any]:
     normalized = _normalize_slots(slots)
     used = sum(1 for s in normalized if s["item_id"] > 0)
@@ -79,7 +78,6 @@ def build_payload(
         "capacity": WAREHOUSE_CAPACITY,
         "used": used,
         "slots": normalized,
-        "theme": str(theme).strip() if str(theme).strip() in {"dark", "light"} else "light",
     }
 
 
@@ -92,7 +90,6 @@ def render(payload: dict[str, Any]) -> bytes:
         "capacity": int(payload.get("capacity", WAREHOUSE_CAPACITY)),
         "used": int(payload.get("used", 0)),
         "slots": payload.get("slots", []),
-        "theme": str(payload.get("theme", "light")),
     }
     data_json = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
     content = template.replace("__WAREHOUSE_DATA_JSON__", data_json)

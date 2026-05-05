@@ -22,7 +22,6 @@ def build_payload(
     created_at: str,
     sign_dates: list[str],
     days: int = 90,
-    theme: str = "light",
 ) -> dict[str, Any]:
     return {
         "generated_at": beijing_now_text(),
@@ -36,7 +35,6 @@ def build_payload(
         "created_at": str(created_at),
         "sign_dates": [str(d) for d in sign_dates],
         "days": max(7, min(int(days), 365)),
-        "theme": str(theme).strip() if str(theme).strip() in {"dark", "light"} else "light",
     }
 
 
@@ -54,7 +52,6 @@ def render(payload: dict[str, Any]) -> bytes:
         "created_at": str(payload.get("created_at", "")),
         "sign_dates": payload.get("sign_dates", []),
         "days": int(payload.get("days", 90)),
-        "theme": str(payload.get("theme", "light")),
     }
     data_json = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
     content = template.replace("__USER_INFO_DATA_JSON__", data_json)

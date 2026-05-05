@@ -69,7 +69,6 @@ def build_payload(
     show_stats: bool = True,
     show_index: bool,
     slots: list[dict[str, Any]],
-    theme: str = "light",
 ) -> dict[str, Any]:
     return {
         "generated_at": beijing_now_text(),
@@ -86,7 +85,6 @@ def build_payload(
         "show_stats": bool(show_stats),
         "show_index": bool(show_index),
         "slots": _normalize_slots(slots),
-        "theme": str(theme).strip() if str(theme).strip() in {"dark", "light"} else "light",
     }
 
 
@@ -107,7 +105,6 @@ def render(payload: dict[str, Any]) -> bytes:
         "show_stats": bool(payload.get("show_stats", True)),
         "show_index": bool(payload.get("show_index", True)),
         "slots": payload.get("slots", []),
-        "theme": str(payload.get("theme", "light")),
     }
     data_json = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
     content = template.replace("__INVENTORY_DATA_JSON__", data_json)
