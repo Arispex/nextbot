@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 89
+- **Total Sessions**: 90
 - **Last Active**: 2026-05-05
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~1808 | Active |
+| `journal-2.md` | ~1841 | Active |
 | `journal-1.md` | ~1999 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 90 | 2026-05-05 | 抽奖概率精度提升至 0.01% | `c3bf4fa` | `main` |
 | 89 | 2026-05-05 | 彻底清理 RENDER_THEME 残留死代码 | `f40ee7a` | `main` |
 | 88 | 2026-05-05 | 排行榜命令崩溃修复 (theme 残留) | `8dc55ea` | `main` |
 | 87 | 2026-05-05 | 截图等待动态资源回归修复 | `48dc18c` | `main` |
