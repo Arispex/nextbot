@@ -1,4 +1,5 @@
 import base64
+import binascii
 from pathlib import Path
 from urllib.parse import urlparse, urlunparse
 
@@ -35,6 +36,7 @@ self_kick_matcher = on_command("自踢")
 inventory_matcher = on_command("用户背包")
 my_inventory_matcher = on_command("我的背包")
 progress_matcher = on_command("进度")
+my_map_matcher = on_command("我的地图")
 
 INVENTORY_SCREENSHOT_OPTIONS = ScreenshotOptions(
     viewport_width=2000,
@@ -583,6 +585,90 @@ async def handle_my_inventory(
         await bot.send(event, OBV11MessageSegment.image(file=image_uri))
         return
     await bot.send(event, f"✅ 截图成功，文件：{screenshot_path}")
+
+
+@my_map_matcher.handle()
+@command_control(
+    command_key="player_query.map.self",
+    display_name="我的地图",
+    permission="player_query.map.self",
+    description="查询当前用户在指定服务器世界中的探索地图",
+    usage="我的地图 <服务器 ID>",
+    category="玩家查询",
+)
+@require_permission("player_query.map.self")
+async def handle_my_map(bot: Bot, event: Event, arg: Message = CommandArg()):
+    # API 已直接返回最终的 PNG base64，无需走 page+screenshot 渲染。
+    args = parse_command_args_with_fallback(event, arg, "我的地图")
+    if len(args) != 1:
+        raise_command_usage()
+
+    try:
+        server_id = int(args[0])
+    except ValueError:
+        raise_command_usage()
+
+    user_id = event.get_user_id()
+    session = get_session()
+    try:
+        server = session.query(Server).filter(Server.id == server_id).first()
+        user = session.query(User).filter(User.user_id == user_id).first()
+    finally:
+        session.close()
+
+    if server is None:
+        await bot.send(event, reply_failure("查询", "服务器不存在"))
+        return
+    if user is None:
+        await bot.send(event, reply_failure("查询", "用户不存在"))
+        return
+
+    logger.info(
+        f"我的地图请求：server_id={server.id} user_id={user.user_id} target_user_name={user.name}"
+    )
+
+    try:
+        response = await request_server_api(
+            server,
+            f"/nextbot/users/{user.name}/map-image",
+            timeout=30.0,
+        )
+    except TShockRequestError:
+        await bot.send(event, reply_failure("查询", "无法连接服务器"))
+        return
+
+    if not is_success(response):
+        await bot.send(event, reply_failure("查询", f"{get_error_reason(response)}"))
+        return
+
+    b64_string = str(response.payload.get("base64") or "").strip()
+    if not b64_string:
+        await bot.send(event, reply_failure("查询", "返回数据格式错误"))
+        return
+
+    try:
+        png_bytes = base64.b64decode(b64_string, validate=True)
+    except (binascii.Error, ValueError):
+        await bot.send(event, reply_failure("查询", "返回数据格式错误"))
+        return
+
+    screenshot_path = Path("/tmp") / (
+        f"map-{server.id}-{user.user_id}-{beijing_filename_timestamp()}.png"
+    )
+    try:
+        screenshot_path.write_bytes(png_bytes)
+    except OSError:
+        await bot.send(event, reply_failure("查询", "保存图片失败"))
+        return
+
+    logger.info(
+        f"我的地图发送成功：server_id={server.id} user_id={user.user_id} file={screenshot_path}"
+    )
+
+    if bot.adapter.get_name() == "OneBot V11":
+        await bot.send(event, OBV11MessageSegment.image(file=f"base64://{b64_string}"))
+        return
+    await bot.send(event, f"✅ 地图生成成功，文件：{screenshot_path}")
 
 
 @progress_matcher.handle()

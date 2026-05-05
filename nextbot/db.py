@@ -57,6 +57,7 @@ DEFAULT_GUEST_PERMISSIONS: frozenset[str] = frozenset({
     "player_query.inventory.self",
     "player_query.inventory.user",
     "player_query.kick.self",
+    "player_query.map.self",
     "player_query.online",
     "player_query.progress",
     "security.login.confirm",
