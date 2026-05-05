@@ -84,11 +84,16 @@
       color: var(--color-muted);
     }
 
-    /* ── Item rows (each on canvas, no outer wrapper) ─────── */
+    /* ── Item rows: 2-up grid (mirrors lottery_view 9f42d9f).
+     * Each card keeps its original horizontal layout (icon + mid + right);
+     * laying two cards per row halves screenshot height vs the prior
+     * single-column list. align-items: stretch keeps paired cards equal-
+     * height when description / meta wrap differently. */
     .list {
-      display: flex;
-      flex-direction: column;
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
       gap: var(--space-md);
+      align-items: stretch;
     }
 
     .item {
@@ -99,6 +104,7 @@
       display: flex;
       align-items: stretch;
       gap: var(--space-lg);
+      min-width: 0;
     }
 
     .item-icon {

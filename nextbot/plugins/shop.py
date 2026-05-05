@@ -244,11 +244,11 @@ async def handle_shop_list(bot: Bot, event: Event, arg: Message = CommandArg()) 
         "limit": {
             "type": "int",
             "label": "每页条数",
-            "description": "每页显示的商品数量",
+            "description": "每页显示的商品数量（按 2 列网格布局，建议为偶数）",
             "required": False,
-            "default": 10,
+            "default": 20,
             "min": 1,
-            "max": 50,
+            "max": 100,
         },
     },
     category="商店系统",
@@ -273,7 +273,7 @@ async def handle_shop_view(bot: Bot, event: Event, arg: Message = CommandArg()) 
             await bot.send(event, reply_failure("查询", "页数必须为正整数"))
             return
 
-    limit = max(1, min(int(get_current_param("limit", 10)), 50))
+    limit = max(1, min(int(get_current_param("limit", 20)), 100))
 
     user_id = event.get_user_id()
     session = get_session()
