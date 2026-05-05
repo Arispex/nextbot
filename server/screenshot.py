@@ -140,6 +140,25 @@ async def screenshot_url(
                         f"截图导航超时（{render_options.wait_until} > {render_options.timeout_ms}ms）：{exc}"
                     ) from exc
 
+                # Plan A 的 load 只等 HTML 同步资源；JS fetch 后动态 createElement('img') 的 sprite
+                # 不在等待范围。下面两道补丁覆盖动态资源场景，避免回退到不稳定的 networkidle。
+                with contextlib.suppress(PlaywrightTimeoutError):
+                    await page.wait_for_load_state("networkidle", timeout=5000)
+                await page.evaluate(
+                    """
+                    () => Promise.all(
+                      Array.from(document.images).map(img =>
+                        img.complete && img.naturalHeight > 0
+                          ? Promise.resolve()
+                          : new Promise(resolve => {
+                              img.addEventListener('load',  resolve, { once: true });
+                              img.addEventListener('error', resolve, { once: true });
+                            })
+                      )
+                    )
+                    """
+                )
+
                 try:
                     await page.evaluate(
                         "document.fonts ? document.fonts.ready : Promise.resolve()"
