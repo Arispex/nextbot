@@ -1,0 +1,4 @@
+{"file": ".trellis/tasks/05-05-player-query-map/prd.md", "reason": "Self-contained PRD with full handler skeleton, error matrix, and ADR."}
+{"file": "nextbot/plugins/player_query.py", "reason": "Reference implementation pattern (我的背包 at line 441-585) — agent must mirror style: decorator order, reply text, logger format."}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "House rules for reply formatting and validation errors."}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "Logger format conventions."}
