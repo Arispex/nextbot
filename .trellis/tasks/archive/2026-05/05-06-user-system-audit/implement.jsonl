@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "项目质量基线作为对照，判定是否违规"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "错误处理规范，对照命令是否符合"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "DB 访问规范"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "日志规范"}
+{"file": ".trellis/tasks/05-06-user-system-audit/prd.md", "reason": "本任务 PRD —— 范围 + 维度 + 输出格式"}
