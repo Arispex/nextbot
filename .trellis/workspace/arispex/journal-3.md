@@ -71,3 +71,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 97: 新增 地图探索率排行榜 命令
+
+**Date**: 2026-05-06
+**Task**: 新增 地图探索率排行榜 命令
+**Branch**: `main`
+
+### Summary
+
+新增 地图探索率排行榜 <服务器 ID> [页数] 命令，调后端 /nextbot/leaderboards/map-exploration API。命令参数 / 错误回复 / self_entry / 日志格式与 在线时长排行榜 完全一致；数值格式 X.XX%。新增权限 leaderboard.map_exploration 默认加入 guest 组。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `235fa5a` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
