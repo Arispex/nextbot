@@ -1,6 +1,7 @@
+import asyncio
 import base64
 import re
-from pathlib import Path
+from typing import Any, Literal
 
 from nonebot import on_command
 from nonebot.adapters import Bot, Event, Message
@@ -13,11 +14,14 @@ from nextbot.message_parser import (
     resolve_user_id_arg_with_fallback,
 )
 from nextbot.permissions import require_permission
-from nextbot.time_utils import beijing_filename_timestamp, format_beijing_datetime
+from nextbot.screenshot_temp import temp_screenshot_path
+from nextbot.time_utils import format_beijing_datetime
 from server.screenshot import RenderScreenshotError, ScreenshotOptions, screenshot_url
 from server.web_server import create_user_info_page
 
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
 from nextbot.db import Server, User, UserSignRecord, get_session
 from nextbot.tshock_api import (
@@ -43,6 +47,8 @@ self_info_matcher = on_command("我的信息")
 rename_matcher = on_command("更改用户名称")
 MAX_USER_NAME_LENGTH = 16
 
+SyncStatus = Literal["new", "exists", "fail"]
+
 
 def _validate_user_name(name: str) -> str | None:
     value = name.strip()
@@ -52,74 +58,115 @@ def _validate_user_name(name: str) -> str | None:
         return f"用户名称过长，最多 {MAX_USER_NAME_LENGTH} 个字符"
     if value.isdigit():
         return "用户名称不能为纯数字"
-    if not re.fullmatch(r"[A-Za-z0-9\u4e00-\u9fff]+", value):
+    if not re.fullmatch(r"[A-Za-z0-9一-鿿]+", value):
         return "用户名称不能包含符号，只能使用中文、英文和数字"
     return None
 
 
+async def _sync_one_whitelist(
+    server: Server, user_id: str, name: str
+) -> tuple[Server, SyncStatus, str]:
+    # 先查询白名单，判断用户名是否已存在
+    try:
+        wl_response = await request_server_api(server, "/nextbot/whitelist")
+    except TShockRequestError:
+        logger.info(
+            f"白名单同步失败：server_id={server.id} user_id={user_id} name={name} reason=无法连接服务器"
+        )
+        return server, "fail", "无法连接服务器"
+
+    if not is_success(wl_response):
+        reason = get_error_reason(wl_response)
+        logger.info(
+            f"白名单查询失败：server_id={server.id} user_id={user_id} name={name} "
+            f"http_status={wl_response.http_status} api_status={wl_response.api_status} reason={reason}"
+        )
+        return server, "fail", reason
+
+    existing_users = wl_response.payload.get("users", [])
+    if name in existing_users:
+        logger.info(
+            f"白名单已存在：server_id={server.id} user_id={user_id} name={name}"
+        )
+        return server, "exists", ""
+
+    # 添加白名单
+    try:
+        response = await request_server_api(
+            server,
+            f"/nextbot/whitelist/add/{name}",
+        )
+    except TShockRequestError:
+        logger.info(
+            f"白名单同步失败：server_id={server.id} user_id={user_id} name={name} reason=无法连接服务器"
+        )
+        return server, "fail", "无法连接服务器"
+
+    if is_success(response):
+        return server, "new", ""
+
+    reason = get_error_reason(response)
+    logger.info(
+        "白名单同步失败："
+        f"server_id={server.id} user_id={user_id} name={name} "
+        f"http_status={response.http_status} api_status={response.api_status} reason={reason}"
+    )
+    return server, "fail", reason
+
+
 async def _sync_whitelist_to_all_servers(
     user_id: str, name: str
-) -> list[tuple[Server, bool, str]]:
+) -> list[tuple[Server, SyncStatus, str]]:
     session = get_session()
     try:
         servers = session.query(Server).order_by(Server.id.asc()).all()
     finally:
         session.close()
 
-    results: list[tuple[Server, bool, str]] = []
-    for server in servers:
-        # 先查询白名单，判断用户名是否已存在
-        try:
-            wl_response = await request_server_api(server, "/nextbot/whitelist")
-        except TShockRequestError:
-            logger.info(
-                f"白名单同步失败：server_id={server.id} user_id={user_id} name={name} reason=无法连接服务器"
-            )
-            results.append((server, False, "无法连接服务器"))
-            continue
+    if not servers:
+        return []
 
-        if not is_success(wl_response):
-            reason = get_error_reason(wl_response)
-            logger.info(
-                f"白名单查询失败：server_id={server.id} user_id={user_id} name={name} "
-                f"http_status={wl_response.http_status} api_status={wl_response.api_status} reason={reason}"
-            )
-            results.append((server, False, reason))
-            continue
+    results = await asyncio.gather(
+        *(_sync_one_whitelist(server, user_id, name) for server in servers)
+    )
+    return list(results)
 
-        existing_users = wl_response.payload.get("users", [])
-        if name in existing_users:
-            logger.info(
-                f"白名单已存在：server_id={server.id} user_id={user_id} name={name}"
-            )
-            results.append((server, True, "already"))
-            continue
 
-        # 添加白名单
-        try:
-            response = await request_server_api(
-                server,
-                f"/nextbot/whitelist/add/{name}",
-            )
-        except TShockRequestError:
-            logger.info(
-                f"白名单同步失败：server_id={server.id} user_id={user_id} name={name} reason=无法连接服务器"
-            )
-            results.append((server, False, "无法连接服务器"))
-            continue
+async def _rename_one_whitelist(
+    server: Server, old_name: str, new_name: str
+) -> tuple[Server, bool, bool, str, str]:
+    """对单个服务器执行白名单 remove(old) + add(new)。
 
-        if is_success(response):
-            results.append((server, True, ""))
-            continue
+    返回 (server, remove_ok, add_ok, remove_msg, add_msg)。
+    """
+    remove_ok = False
+    add_ok = False
+    remove_msg = ""
+    add_msg = ""
 
-        reason = get_error_reason(response)
-        logger.info(
-            "白名单同步失败："
-            f"server_id={server.id} user_id={user_id} name={name} "
-            f"http_status={response.http_status} api_status={response.api_status} reason={reason}"
+    # 删除旧白名单
+    try:
+        response = await request_server_api(
+            server, f"/nextbot/whitelist/remove/{old_name}",
         )
-        results.append((server, False, reason))
-    return results
+        remove_ok = is_success(response)
+        if not remove_ok:
+            remove_msg = get_error_reason(response)
+    except TShockRequestError:
+        remove_msg = "无法连接服务器"
+
+    # 添加新白名单
+    try:
+        response = await request_server_api(
+            server, f"/nextbot/whitelist/add/{new_name}",
+        )
+        add_ok = is_success(response)
+        if not add_ok:
+            add_msg = get_error_reason(response)
+    except TShockRequestError:
+        add_msg = "无法连接服务器"
+
+    return server, remove_ok, add_ok, remove_msg, add_msg
 
 
 @add_matcher.handle()
@@ -161,8 +208,14 @@ async def handle_add_whitelist(
             return
 
         user = User(user_id=user_id, name=name, group="default")
-        session.add(user)
-        session.commit()
+        try:
+            session.add(user)
+            session.commit()
+        except IntegrityError:
+            session.rollback()
+            logger.info(f"注册并发竞态：name={name} 已被另一并发请求占用")
+            await bot.send(event, at + " " + reply_failure("注册", "用户名称已被占用"))
+            return
     finally:
         session.close()
 
@@ -216,10 +269,10 @@ async def handle_sync_whitelist(
         return
 
     lines: list[str] = []
-    for server, success, reason in results:
-        if success and reason == "already":
+    for server, status, reason in results:
+        if status == "exists":
             lines.append(f"{server.id}.{server.name}：ℹ️ 已在白名单中")
-        elif success:
+        elif status == "new":
             lines.append(f"{server.id}.{server.name}：✅ 同步成功")
         else:
             lines.append(f"{server.id}.{server.name}：❌ 同步失败，{reason}")
@@ -230,58 +283,74 @@ async def handle_sync_whitelist(
     await bot.send(event, at + "\n" + reply_success("同步白名单") + "\n" + "\n".join(lines))
 
 
-def _get_sign_dates(user_id: str, days: int) -> list[str]:
-    session = get_session()
-    try:
-        records = (
-            session.query(UserSignRecord)
-            .filter(UserSignRecord.user_id == user_id)
-            .order_by(UserSignRecord.sign_date.desc())
-            .limit(days)
-            .all()
-        )
-        return [r.sign_date for r in records]
-    finally:
-        session.close()
+def _get_sign_dates(session: Session, user_id: str, days: int) -> list[str]:
+    records = (
+        session.query(UserSignRecord)
+        .filter(UserSignRecord.user_id == user_id)
+        .order_by(UserSignRecord.sign_date.desc())
+        .limit(days)
+        .all()
+    )
+    return [r.sign_date for r in records]
 
 
-async def _render_and_send_user_info(bot: Bot, event: Event, user: User, days: int) -> None:
-    sign_dates = _get_sign_dates(user.user_id, days)
-    created_at = format_beijing_datetime(user.created_at)
+async def _render_and_send_user_info(
+    bot: Bot,
+    event: Event,
+    *,
+    user_data: dict[str, Any],
+    sign_dates: list[str],
+    days: int,
+) -> None:
     page_url = create_user_info_page(
-        user_id=user.user_id,
-        user_name=user.name,
-        coins=int(user.coins or 0),
-        sign_streak=int(user.sign_streak or 0),
-        sign_total=int(user.sign_total or 0),
-        permissions=str(user.permissions or ""),
-        group=str(user.group or ""),
-        created_at=created_at,
+        user_id=user_data["user_id"],
+        user_name=user_data["user_name"],
+        coins=user_data["coins"],
+        sign_streak=user_data["sign_streak"],
+        sign_total=user_data["sign_total"],
+        permissions=user_data["permissions"],
+        group=user_data["group"],
+        created_at=user_data["created_at"],
         sign_dates=sign_dates,
         days=days,
     )
     logger.info(
-        f"用户信息渲染地址：user_id={user.user_id} name={user.name} "
+        f"用户信息渲染地址：user_id={user_data['user_id']} name={user_data['user_name']} "
         f"days={days} sign_dates_count={len(sign_dates)} internal_url={page_url}"
     )
-    screenshot_path = Path("/tmp") / f"user-info-{user.user_id}-{beijing_filename_timestamp()}.png"
-    try:
-        await screenshot_url(page_url, screenshot_path, options=USER_INFO_SCREENSHOT_OPTIONS)
-    except RenderScreenshotError as exc:
-        await bot.send(event, reply_failure("查询", f"{exc}"))
-        return
-
-    logger.info(f"用户信息截图成功：user_id={user.user_id} file={screenshot_path}")
-    if bot.adapter.get_name() == "OneBot V11":
+    async with temp_screenshot_path(f"user-info-{user_data['user_id']}") as screenshot_path:
         try:
-            raw = screenshot_path.read_bytes()
-            image_uri = f"base64://{base64.b64encode(raw).decode('ascii')}"
-        except OSError:
-            await bot.send(event, reply_failure("查询", "读取截图文件失败"))
+            await screenshot_url(page_url, screenshot_path, options=USER_INFO_SCREENSHOT_OPTIONS)
+        except RenderScreenshotError as exc:
+            await bot.send(event, reply_failure("查询", f"{exc}"))
             return
-        await bot.send(event, OBV11MessageSegment.image(file=image_uri))
-        return
-    await bot.send(event, f"✅ 截图成功，文件：{screenshot_path}")
+
+        logger.info(
+            f"用户信息截图成功：user_id={user_data['user_id']} file={screenshot_path}"
+        )
+        if bot.adapter.get_name() == "OneBot V11":
+            try:
+                raw = screenshot_path.read_bytes()
+                image_uri = f"base64://{base64.b64encode(raw).decode('ascii')}"
+            except OSError:
+                await bot.send(event, reply_failure("查询", "读取截图文件失败"))
+                return
+            await bot.send(event, OBV11MessageSegment.image(file=image_uri))
+            return
+        await bot.send(event, f"✅ 截图成功，文件：{screenshot_path}")
+
+
+def _serialize_user_for_render(user: User) -> dict[str, Any]:
+    return {
+        "user_id": user.user_id,
+        "user_name": user.name,
+        "coins": int(user.coins or 0),
+        "sign_streak": int(user.sign_streak or 0),
+        "sign_total": int(user.sign_total or 0),
+        "permissions": str(user.permissions or ""),
+        "group": str(user.group or ""),
+        "created_at": format_beijing_datetime(user.created_at),
+    }
 
 
 @info_matcher.handle()
@@ -318,17 +387,21 @@ async def handle_user_info(
         await bot.send(event, reply_failure("查询", "用户参数解析失败"))
         return
 
+    days = 365
     session = get_session()
     try:
         user = session.query(User).filter(User.user_id == target_user_id).first()
+        if user is None:
+            await bot.send(event, reply_failure("查询", "用户不存在"))
+            return
+        user_data = _serialize_user_for_render(user)
+        sign_dates = _get_sign_dates(session, str(user.user_id), days)
     finally:
         session.close()
 
-    if user is None:
-        await bot.send(event, reply_failure("查询", "用户不存在"))
-        return
-
-    await _render_and_send_user_info(bot, event, user, 365)
+    await _render_and_send_user_info(
+        bot, event, user_data=user_data, sign_dates=sign_dates, days=days,
+    )
 
 
 @self_info_matcher.handle()
@@ -349,17 +422,21 @@ async def handle_self_info(
         raise_command_usage()
 
     user_id = event.get_user_id()
+    days = 365
     session = get_session()
     try:
         user = session.query(User).filter(User.user_id == user_id).first()
+        if user is None:
+            await bot.send(event, reply_failure("查询", "未注册账号"))
+            return
+        user_data = _serialize_user_for_render(user)
+        sign_dates = _get_sign_dates(session, str(user.user_id), days)
     finally:
         session.close()
 
-    if user is None:
-        await bot.send(event, reply_failure("查询", "未注册账号"))
-        return
-
-    await _render_and_send_user_info(bot, event, user, 365)
+    await _render_and_send_user_info(
+        bot, event, user_data=user_data, sign_dates=sign_dates, days=days,
+    )
 
 
 @rename_matcher.handle()
@@ -420,7 +497,15 @@ async def handle_rename(bot: Bot, event: Event, arg: Message = CommandArg()) -> 
             return
 
         user.name = new_name
-        session.commit()
+        try:
+            session.commit()
+        except IntegrityError:
+            session.rollback()
+            logger.info(
+                f"更改用户名称并发竞态：user_id={target_user_id} new_name={new_name} 已被另一并发请求占用"
+            )
+            await bot.send(event, at + " " + reply_failure("更改", "用户名称已被占用"))
+            return
     finally:
         session.close()
 
@@ -444,34 +529,10 @@ async def handle_rename(bot: Bot, event: Event, arg: Message = CommandArg()) -> 
         lines.append("🖥️ 同步服务器白名单结果：ℹ️ 暂无服务器")
     else:
         lines.append("🖥️ 同步服务器白名单结果：")
-        for server in servers:
-            remove_ok = False
-            add_ok = False
-            remove_msg = ""
-            add_msg = ""
-
-            # 删除旧白名单
-            try:
-                response = await request_server_api(
-                    server, f"/nextbot/whitelist/remove/{old_name}",
-                )
-                remove_ok = is_success(response)
-                if not remove_ok:
-                    remove_msg = get_error_reason(response)
-            except TShockRequestError:
-                remove_msg = "无法连接服务器"
-
-            # 添加新白名单
-            try:
-                response = await request_server_api(
-                    server, f"/nextbot/whitelist/add/{new_name}",
-                )
-                add_ok = is_success(response)
-                if not add_ok:
-                    add_msg = get_error_reason(response)
-            except TShockRequestError:
-                add_msg = "无法连接服务器"
-
+        rename_results = await asyncio.gather(
+            *(_rename_one_whitelist(s, old_name, new_name) for s in servers)
+        )
+        for server, remove_ok, add_ok, remove_msg, add_msg in rename_results:
             if remove_ok and add_ok:
                 lines.append(f"{server.id}.{server.name}：✅ 同步成功")
             else:

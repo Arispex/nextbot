@@ -5,7 +5,17 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, Float, Integer, String, Text, UniqueConstraint
+from nonebot.log import logger
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    Float,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
+from sqlalchemy import text as sa_text
 from sqlalchemy.engine import Engine, create_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
@@ -103,7 +113,7 @@ class User(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     user_id: Mapped[str] = mapped_column(String, nullable=False, unique=True)
-    name: Mapped[str] = mapped_column(String, nullable=False)
+    name: Mapped[str] = mapped_column(String, nullable=False, index=True)
     coins: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     signed_today: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     last_sign_date: Mapped[str] = mapped_column(String, nullable=False, default="")
@@ -358,6 +368,7 @@ def init_db() -> None:
     ensure_red_packet_schema()
     ensure_shop_schema()
     ensure_lottery_schema()
+    ensure_user_name_unique_schema()
     ensure_default_groups()
     ensure_default_stats()
 
@@ -690,6 +701,35 @@ def ensure_user_dice_schema() -> None:
             conn.commit()
     finally:
         conn.close()
+
+
+def ensure_user_name_unique_schema() -> None:
+    """启动时确保 User.name 上有大小写不敏感的唯一索引。
+
+    若已有重复 name（历史脏数据），只创建普通索引并 logger.warning，
+    不阻断启动（让管理员手工处理后再手动重建索引）。
+    """
+    engine = get_engine()
+    with engine.begin() as conn:
+        try:
+            conn.execute(sa_text(
+                'CREATE UNIQUE INDEX IF NOT EXISTS "ix_user_name_lower_unique" '
+                'ON "user" (LOWER("name"))'
+            ))
+            logger.info("User.name 唯一索引已就绪")
+        except Exception as exc:  # noqa: BLE001
+            # 通常是因为已有大小写重复的 name
+            logger.warning(
+                f"User.name 唯一索引创建失败（可能存在历史重复 name 数据，请手动清理后重启）: {exc}"
+            )
+            # 退而求其次：建非唯一索引提升查询性能
+            try:
+                conn.execute(sa_text(
+                    'CREATE INDEX IF NOT EXISTS "ix_user_name_lower" '
+                    'ON "user" (LOWER("name"))'
+                ))
+            except Exception:  # noqa: BLE001
+                pass
 
 
 def ensure_red_packet_schema() -> None:

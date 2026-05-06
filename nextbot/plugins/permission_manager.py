@@ -1,5 +1,4 @@
 import base64
-from pathlib import Path
 
 from nonebot import on_command
 from nonebot.adapters import Bot, Event, Message
@@ -22,7 +21,7 @@ from nextbot.permissions import (
     require_permission,
     split_csv_values,
 )
-from nextbot.time_utils import beijing_filename_timestamp
+from nextbot.screenshot_temp import temp_screenshot_path
 from nextbot.text_utils import (
     EMOJI_CHART,
     EMOJI_GROUP,
@@ -292,24 +291,24 @@ async def handle_admin_list(bot: Bot, event: Event, arg: Message = CommandArg())
     page_url = create_admin_list_page(admins=admins)
     logger.info(f"管理员列表渲染地址：admin_count={len(admins)} internal_url={page_url}")
 
-    screenshot_path = Path("/tmp") / f"admin-list-{beijing_filename_timestamp()}.png"
-    try:
-        await screenshot_url(page_url, screenshot_path, options=ADMIN_LIST_SCREENSHOT_OPTIONS)
-    except RenderScreenshotError as exc:
-        await bot.send(event, reply_failure("查询", f"{exc}"))
-        return
-
-    logger.info(f"管理员列表截图成功：file={screenshot_path}")
-    if bot.adapter.get_name() == "OneBot V11":
+    async with temp_screenshot_path("admin-list") as screenshot_path:
         try:
-            raw = screenshot_path.read_bytes()
-            image_uri = f"base64://{base64.b64encode(raw).decode('ascii')}"
-        except OSError:
-            await bot.send(event, reply_failure("查询", "读取截图文件失败"))
+            await screenshot_url(page_url, screenshot_path, options=ADMIN_LIST_SCREENSHOT_OPTIONS)
+        except RenderScreenshotError as exc:
+            await bot.send(event, reply_failure("查询", f"{exc}"))
             return
-        await bot.send(event, OBV11MessageSegment.image(file=image_uri))
-        return
-    await bot.send(event, f"✅ 截图成功，文件：{screenshot_path}")
+
+        logger.info(f"管理员列表截图成功：file={screenshot_path}")
+        if bot.adapter.get_name() == "OneBot V11":
+            try:
+                raw = screenshot_path.read_bytes()
+                image_uri = f"base64://{base64.b64encode(raw).decode('ascii')}"
+            except OSError:
+                await bot.send(event, reply_failure("查询", "读取截图文件失败"))
+                return
+            await bot.send(event, OBV11MessageSegment.image(file=image_uri))
+            return
+        await bot.send(event, f"✅ 截图成功，文件：{screenshot_path}")
 
 
 _SYNC_CONFIRM_TOKEN = "确认"

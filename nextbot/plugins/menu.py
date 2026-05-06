@@ -31,7 +31,7 @@ from nextbot.text_utils import (
     reply_failure,
     reply_list,
 )
-from nextbot.time_utils import beijing_filename_timestamp
+from nextbot.screenshot_temp import temp_screenshot_path
 from server.screenshot import RenderScreenshotError, ScreenshotOptions, screenshot_url
 from server.web_server import create_menu_page
 
@@ -101,30 +101,30 @@ async def _render_and_send_menu(
         f"internal_url={page_url}"
     )
 
-    screenshot_path = Path("/tmp") / f"menu-{beijing_filename_timestamp()}.png"
-    try:
-        await screenshot_url(
-            page_url,
-            screenshot_path,
-            options=MENU_SCREENSHOT_OPTIONS,
-        )
-    except RenderScreenshotError as exc:
-        await bot.send(event, reply_failure("生成", f"{exc}"))
-        return
-
-    logger.info(
-        f"{title}截图成功：command_count={len(render_commands)} file={screenshot_path}"
-    )
-    if bot.adapter.get_name() == "OneBot V11":
+    async with temp_screenshot_path("menu") as screenshot_path:
         try:
-            image_uri = _to_base64_image_uri(screenshot_path)
-        except OSError:
-            await bot.send(event, reply_failure("生成", "读取截图文件失败"))
+            await screenshot_url(
+                page_url,
+                screenshot_path,
+                options=MENU_SCREENSHOT_OPTIONS,
+            )
+        except RenderScreenshotError as exc:
+            await bot.send(event, reply_failure("生成", f"{exc}"))
             return
-        await bot.send(event, OBV11MessageSegment.image(file=image_uri))
-        return
 
-    await bot.send(event, f"✅ 截图成功，文件：{screenshot_path}")
+        logger.info(
+            f"{title}截图成功：command_count={len(render_commands)} file={screenshot_path}"
+        )
+        if bot.adapter.get_name() == "OneBot V11":
+            try:
+                image_uri = _to_base64_image_uri(screenshot_path)
+            except OSError:
+                await bot.send(event, reply_failure("生成", "读取截图文件失败"))
+                return
+            await bot.send(event, OBV11MessageSegment.image(file=image_uri))
+            return
+
+        await bot.send(event, f"✅ 截图成功，文件：{screenshot_path}")
 
 
 def _group_by_category(items: list[dict]) -> tuple[list[str], dict[str, list[dict]]]:

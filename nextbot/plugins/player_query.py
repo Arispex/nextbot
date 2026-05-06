@@ -22,7 +22,8 @@ from nextbot.message_parser import (
     resolve_user_id_arg_with_fallback,
 )
 from nextbot.permissions import require_permission
-from nextbot.time_utils import beijing_filename_timestamp, format_online_seconds
+from nextbot.screenshot_temp import temp_screenshot_path
+from nextbot.time_utils import format_online_seconds
 from nextbot.tshock_api import (
     TShockRequestError,
     get_error_reason,
@@ -426,31 +427,31 @@ async def handle_user_inventory(
     )
     if bool(get_current_param("send_link", False)):
         await bot.send(event, f"ℹ️ 用户背包链接：{public_page_url}")
-    screenshot_path = Path("/tmp") / (
-        f"inventory-{server.id}-{target_user.user_id}-{beijing_filename_timestamp()}.png"
-    )
-    try:
-        await screenshot_url(
-            page_url,
-            screenshot_path,
-            options=INVENTORY_SCREENSHOT_OPTIONS,
-        )
-    except RenderScreenshotError as exc:
-        await bot.send(event, reply_failure("查询", f"{exc}"))
-        return
-
-    logger.info(
-        f"用户背包截图成功：server_id={server.id} target_user_id={target_user.user_id} file={screenshot_path}"
-    )
-    if bot.adapter.get_name() == "OneBot V11":
+    async with temp_screenshot_path(
+        f"inventory-{server.id}-{target_user.user_id}"
+    ) as screenshot_path:
         try:
-            image_uri = _to_base64_image_uri(screenshot_path)
-        except OSError:
-            await bot.send(event, reply_failure("查询", "读取截图文件失败"))
+            await screenshot_url(
+                page_url,
+                screenshot_path,
+                options=INVENTORY_SCREENSHOT_OPTIONS,
+            )
+        except RenderScreenshotError as exc:
+            await bot.send(event, reply_failure("查询", f"{exc}"))
             return
-        await bot.send(event, OBV11MessageSegment.image(file=image_uri))
-        return
-    await bot.send(event, f"✅ 截图成功，文件：{screenshot_path}")
+
+        logger.info(
+            f"用户背包截图成功：server_id={server.id} target_user_id={target_user.user_id} file={screenshot_path}"
+        )
+        if bot.adapter.get_name() == "OneBot V11":
+            try:
+                image_uri = _to_base64_image_uri(screenshot_path)
+            except OSError:
+                await bot.send(event, reply_failure("查询", "读取截图文件失败"))
+                return
+            await bot.send(event, OBV11MessageSegment.image(file=image_uri))
+            return
+        await bot.send(event, f"✅ 截图成功，文件：{screenshot_path}")
 
 
 @my_inventory_matcher.handle()
@@ -574,31 +575,31 @@ async def handle_my_inventory(
     if bool(get_current_param("send_link", False)):
         await bot.send(event, f"ℹ️ 我的背包链接：{public_page_url}")
 
-    screenshot_path = Path("/tmp") / (
-        f"inventory-{server.id}-{user.user_id}-{beijing_filename_timestamp()}.png"
-    )
-    try:
-        await screenshot_url(
-            page_url,
-            screenshot_path,
-            options=INVENTORY_SCREENSHOT_OPTIONS,
-        )
-    except RenderScreenshotError as exc:
-        await bot.send(event, reply_failure("查询", f"{exc}"))
-        return
-
-    logger.info(
-        f"我的背包截图成功：server_id={server.id} user_id={user.user_id} file={screenshot_path}"
-    )
-    if bot.adapter.get_name() == "OneBot V11":
+    async with temp_screenshot_path(
+        f"inventory-{server.id}-{user.user_id}"
+    ) as screenshot_path:
         try:
-            image_uri = _to_base64_image_uri(screenshot_path)
-        except OSError:
-            await bot.send(event, reply_failure("查询", "读取截图文件失败"))
+            await screenshot_url(
+                page_url,
+                screenshot_path,
+                options=INVENTORY_SCREENSHOT_OPTIONS,
+            )
+        except RenderScreenshotError as exc:
+            await bot.send(event, reply_failure("查询", f"{exc}"))
             return
-        await bot.send(event, OBV11MessageSegment.image(file=image_uri))
-        return
-    await bot.send(event, f"✅ 截图成功，文件：{screenshot_path}")
+
+        logger.info(
+            f"我的背包截图成功：server_id={server.id} user_id={user.user_id} file={screenshot_path}"
+        )
+        if bot.adapter.get_name() == "OneBot V11":
+            try:
+                image_uri = _to_base64_image_uri(screenshot_path)
+            except OSError:
+                await bot.send(event, reply_failure("查询", "读取截图文件失败"))
+                return
+            await bot.send(event, OBV11MessageSegment.image(file=image_uri))
+            return
+        await bot.send(event, f"✅ 截图成功，文件：{screenshot_path}")
 
 
 @my_map_matcher.handle()
@@ -666,27 +667,27 @@ async def handle_my_map(bot: Bot, event: Event, arg: Message = CommandArg()):
         await bot.send(event, reply_failure("查询", "返回数据格式错误"))
         return
 
-    screenshot_path = Path("/tmp") / (
-        f"map-{server.id}-{user.user_id}-{beijing_filename_timestamp()}.png"
-    )
-    try:
-        screenshot_path.write_bytes(png_bytes)
-    except OSError:
-        await bot.send(event, reply_failure("查询", "保存图片失败"))
-        return
+    async with temp_screenshot_path(
+        f"map-{server.id}-{user.user_id}"
+    ) as screenshot_path:
+        try:
+            screenshot_path.write_bytes(png_bytes)
+        except OSError:
+            await bot.send(event, reply_failure("查询", "保存图片失败"))
+            return
 
-    logger.info(
-        f"我的地图发送成功：server_id={server.id} user_id={user.user_id} file={screenshot_path}"
-    )
+        logger.info(
+            f"我的地图发送成功：server_id={server.id} user_id={user.user_id} file={screenshot_path}"
+        )
 
-    if bot.adapter.get_name() == "OneBot V11":
-        # 同消息内 @用户 + 图片，方便群里快速定位自己的地图回复
-        # （与 自踢 / 切换抢劫保护 等命令的 at 模式保持一致）。
-        at = OBV11MessageSegment.at(int(user_id))
-        image = OBV11MessageSegment.image(file=f"base64://{b64_string}")
-        await bot.send(event, at + image)
-        return
-    await bot.send(event, f"✅ 地图生成成功，文件：{screenshot_path}")
+        if bot.adapter.get_name() == "OneBot V11":
+            # 同消息内 @用户 + 图片，方便群里快速定位自己的地图回复
+            # （与 自踢 / 切换抢劫保护 等命令的 at 模式保持一致）。
+            at = OBV11MessageSegment.at(int(user_id))
+            image = OBV11MessageSegment.image(file=f"base64://{b64_string}")
+            await bot.send(event, at + image)
+            return
+        await bot.send(event, f"✅ 地图生成成功，文件：{screenshot_path}")
 
 
 @user_map_matcher.handle()
@@ -775,28 +776,28 @@ async def handle_user_map(bot: Bot, event: Event, arg: Message = CommandArg()):
         await bot.send(event, reply_failure("查询", "返回数据格式错误"))
         return
 
-    screenshot_path = Path("/tmp") / (
-        f"map-{server.id}-{target_user.user_id}-{beijing_filename_timestamp()}.png"
-    )
-    try:
-        screenshot_path.write_bytes(png_bytes)
-    except OSError:
-        await bot.send(event, reply_failure("查询", "保存图片失败"))
-        return
+    async with temp_screenshot_path(
+        f"map-{server.id}-{target_user.user_id}"
+    ) as screenshot_path:
+        try:
+            screenshot_path.write_bytes(png_bytes)
+        except OSError:
+            await bot.send(event, reply_failure("查询", "保存图片失败"))
+            return
 
-    logger.info(
-        f"用户地图发送成功：server_id={server.id} requester_user_id={requester_user_id} "
-        f"target_user_id={target_user.user_id} file={screenshot_path}"
-    )
+        logger.info(
+            f"用户地图发送成功：server_id={server.id} requester_user_id={requester_user_id} "
+            f"target_user_id={target_user.user_id} file={screenshot_path}"
+        )
 
-    if bot.adapter.get_name() == "OneBot V11":
-        # 同消息内 @ 发起人 + 图片，方便群里快速定位自己请求的回复
-        # （与 我的地图 的 at 模式一致）。
-        at = OBV11MessageSegment.at(int(requester_user_id))
-        image = OBV11MessageSegment.image(file=f"base64://{b64_string}")
-        await bot.send(event, at + image)
-        return
-    await bot.send(event, f"✅ 地图生成成功，文件：{screenshot_path}")
+        if bot.adapter.get_name() == "OneBot V11":
+            # 同消息内 @ 发起人 + 图片，方便群里快速定位自己请求的回复
+            # （与 我的地图 的 at 模式一致）。
+            at = OBV11MessageSegment.at(int(requester_user_id))
+            image = OBV11MessageSegment.image(file=f"base64://{b64_string}")
+            await bot.send(event, at + image)
+            return
+        await bot.send(event, f"✅ 地图生成成功，文件：{screenshot_path}")
 
 
 @progress_matcher.handle()
@@ -864,28 +865,26 @@ async def handle_world_progress(
         f"internal_url={page_url}"
     )
 
-    screenshot_path = Path("/tmp") / (
-        f"progress-{server.id}-{beijing_filename_timestamp()}.png"
-    )
-    try:
-        await screenshot_url(
-            page_url,
-            screenshot_path,
-            options=PROGRESS_SCREENSHOT_OPTIONS,
-        )
-    except RenderScreenshotError as exc:
-        await bot.send(event, reply_failure("查询", f"{exc}"))
-        return
-
-    logger.info(
-        f"世界进度截图成功：server_id={server.id} file={screenshot_path}"
-    )
-    if bot.adapter.get_name() == "OneBot V11":
+    async with temp_screenshot_path(f"progress-{server.id}") as screenshot_path:
         try:
-            image_uri = _to_base64_image_uri(screenshot_path)
-        except OSError:
-            await bot.send(event, reply_failure("查询", "读取截图文件失败"))
+            await screenshot_url(
+                page_url,
+                screenshot_path,
+                options=PROGRESS_SCREENSHOT_OPTIONS,
+            )
+        except RenderScreenshotError as exc:
+            await bot.send(event, reply_failure("查询", f"{exc}"))
             return
-        await bot.send(event, OBV11MessageSegment.image(file=image_uri))
-        return
-    await bot.send(event, f"✅ 截图成功，文件：{screenshot_path}")
+
+        logger.info(
+            f"世界进度截图成功：server_id={server.id} file={screenshot_path}"
+        )
+        if bot.adapter.get_name() == "OneBot V11":
+            try:
+                image_uri = _to_base64_image_uri(screenshot_path)
+            except OSError:
+                await bot.send(event, reply_failure("查询", "读取截图文件失败"))
+                return
+            await bot.send(event, OBV11MessageSegment.image(file=image_uri))
+            return
+        await bot.send(event, f"✅ 截图成功，文件：{screenshot_path}")

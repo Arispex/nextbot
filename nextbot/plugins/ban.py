@@ -14,7 +14,8 @@ from nextbot.command_config import command_control, get_current_param, raise_com
 from nextbot.db import Server, User, get_session
 from nextbot.message_parser import parse_command_args_with_fallback, resolve_user_id_arg_with_fallback
 from nextbot.permissions import require_permission
-from nextbot.time_utils import beijing_filename_timestamp, db_now_utc_naive
+from nextbot.screenshot_temp import temp_screenshot_path
+from nextbot.time_utils import db_now_utc_naive
 from nextbot.time_utils import format_beijing_datetime
 from nextbot.tshock_api import TShockRequestError, get_error_reason, is_success, request_server_api
 from nextbot.text_utils import EMOJI_USER, reply_failure, reply_success
@@ -183,24 +184,24 @@ async def handle_ban_list(bot: Bot, event: Event, arg: Message = CommandArg()) -
         f"封禁列表渲染地址：page={page}/{total_pages} total={total} internal_url={page_url}"
     )
 
-    screenshot_path = Path("/tmp") / f"ban-list-{beijing_filename_timestamp()}.png"
-    try:
-        await screenshot_url(page_url, screenshot_path, options=BAN_LIST_SCREENSHOT_OPTIONS)
-    except RenderScreenshotError as exc:
-        await bot.send(event, reply_failure("查询", f"{exc}"))
-        return
-
-    logger.info(f"封禁列表截图成功：page={page}/{total_pages} file={screenshot_path}")
-    if bot.adapter.get_name() == "OneBot V11":
+    async with temp_screenshot_path("ban-list") as screenshot_path:
         try:
-            image_uri = _to_base64_image_uri(screenshot_path)
-        except OSError:
-            await bot.send(event, reply_failure("查询", "读取截图文件失败"))
+            await screenshot_url(page_url, screenshot_path, options=BAN_LIST_SCREENSHOT_OPTIONS)
+        except RenderScreenshotError as exc:
+            await bot.send(event, reply_failure("查询", f"{exc}"))
             return
-        await bot.send(event, OBV11MessageSegment.image(file=image_uri))
-        return
 
-    await bot.send(event, f"✅ 截图成功，文件：{screenshot_path}")
+        logger.info(f"封禁列表截图成功：page={page}/{total_pages} file={screenshot_path}")
+        if bot.adapter.get_name() == "OneBot V11":
+            try:
+                image_uri = _to_base64_image_uri(screenshot_path)
+            except OSError:
+                await bot.send(event, reply_failure("查询", "读取截图文件失败"))
+                return
+            await bot.send(event, OBV11MessageSegment.image(file=image_uri))
+            return
+
+        await bot.send(event, f"✅ 截图成功，文件：{screenshot_path}")
 
 
 @unban_matcher.handle()

@@ -31,7 +31,8 @@ from nextbot.text_utils import (
     reply_failure,
     reply_success,
 )
-from nextbot.time_utils import beijing_filename_timestamp, db_now_utc_naive
+from nextbot.screenshot_temp import temp_screenshot_path
+from nextbot.time_utils import db_now_utc_naive
 from nextbot.tshock_api import TShockRequestError, get_error_reason, is_success, request_server_api
 from nextbot.warehouse_lock import warehouse_lock
 from server.screenshot import RenderScreenshotError, ScreenshotOptions, screenshot_url
@@ -226,26 +227,26 @@ async def _send_warehouse_image(
     page_url: str,
     file_prefix: str,
 ) -> None:
-    screenshot_path = Path("/tmp") / f"{file_prefix}-{beijing_filename_timestamp()}.png"
-    try:
-        await screenshot_url(
-            page_url, screenshot_path, options=WAREHOUSE_SCREENSHOT_OPTIONS,
-        )
-    except RenderScreenshotError as exc:
-        await bot.send(event, reply_failure("查询", str(exc)))
-        return
-
-    logger.info(f"仓库截图成功：file={screenshot_path}")
-    if bot.adapter.get_name() == "OneBot V11":
+    async with temp_screenshot_path(file_prefix) as screenshot_path:
         try:
-            image_uri = _to_base64_image_uri(screenshot_path)
-        except OSError:
-            await bot.send(event, reply_failure("查询", "读取截图文件失败"))
+            await screenshot_url(
+                page_url, screenshot_path, options=WAREHOUSE_SCREENSHOT_OPTIONS,
+            )
+        except RenderScreenshotError as exc:
+            await bot.send(event, reply_failure("查询", str(exc)))
             return
-        await bot.send(event, OBV11MessageSegment.image(file=image_uri))
-        return
 
-    await bot.send(event, f"✅ 截图成功，文件：{screenshot_path}")
+        logger.info(f"仓库截图成功：file={screenshot_path}")
+        if bot.adapter.get_name() == "OneBot V11":
+            try:
+                image_uri = _to_base64_image_uri(screenshot_path)
+            except OSError:
+                await bot.send(event, reply_failure("查询", "读取截图文件失败"))
+                return
+            await bot.send(event, OBV11MessageSegment.image(file=image_uri))
+            return
+
+        await bot.send(event, f"✅ 截图成功，文件：{screenshot_path}")
 
 
 list_self_matcher = on_command("我的仓库")

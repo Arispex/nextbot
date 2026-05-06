@@ -27,7 +27,8 @@ from nextbot.text_utils import (
     reply_failure,
     reply_success,
 )
-from nextbot.time_utils import beijing_filename_timestamp, db_now_utc_naive, format_beijing_datetime
+from nextbot.screenshot_temp import temp_screenshot_path
+from nextbot.time_utils import db_now_utc_naive, format_beijing_datetime
 from server.screenshot import RenderScreenshotError, ScreenshotOptions, screenshot_url
 from server.web_server import create_red_packet_all_page, create_red_packet_own_page
 
@@ -412,24 +413,24 @@ async def _send_red_packet_image(
     page_url: str,
     file_prefix: str,
 ) -> None:
-    screenshot_path = Path("/tmp") / f"{file_prefix}-{beijing_filename_timestamp()}.png"
-    try:
-        await screenshot_url(page_url, screenshot_path, options=_RED_PACKET_SCREENSHOT_OPTIONS)
-    except RenderScreenshotError as exc:
-        await bot.send(event, reply_failure("查询", str(exc)))
-        return
-
-    logger.info(f"红包列表截图成功：file={screenshot_path}")
-    if bot.adapter.get_name() == "OneBot V11":
+    async with temp_screenshot_path(file_prefix) as screenshot_path:
         try:
-            image_uri = _to_base64_image_uri(screenshot_path)
-        except OSError:
-            await bot.send(event, reply_failure("查询", "读取截图文件失败"))
+            await screenshot_url(page_url, screenshot_path, options=_RED_PACKET_SCREENSHOT_OPTIONS)
+        except RenderScreenshotError as exc:
+            await bot.send(event, reply_failure("查询", str(exc)))
             return
-        await bot.send(event, OBV11MessageSegment.image(file=image_uri))
-        return
 
-    await bot.send(event, f"✅ 截图成功，文件：{screenshot_path}")
+        logger.info(f"红包列表截图成功：file={screenshot_path}")
+        if bot.adapter.get_name() == "OneBot V11":
+            try:
+                image_uri = _to_base64_image_uri(screenshot_path)
+            except OSError:
+                await bot.send(event, reply_failure("查询", "读取截图文件失败"))
+                return
+            await bot.send(event, OBV11MessageSegment.image(file=image_uri))
+            return
+
+        await bot.send(event, f"✅ 截图成功，文件：{screenshot_path}")
 
 
 @list_own_matcher.handle()

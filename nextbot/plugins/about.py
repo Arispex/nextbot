@@ -10,7 +10,7 @@ from nonebot.params import CommandArg
 from nextbot.command_config import command_control, raise_command_usage
 from nextbot.message_parser import parse_command_args_with_fallback
 from nextbot.permissions import require_permission
-from nextbot.time_utils import beijing_filename_timestamp
+from nextbot.screenshot_temp import temp_screenshot_path
 from nextbot.text_utils import reply_failure
 from server.screenshot import RenderScreenshotError, ScreenshotOptions, screenshot_url
 from server.web_server import create_about_page
@@ -49,25 +49,25 @@ async def handle_about(bot: Bot, event: Event, arg: Message = CommandArg()) -> N
     page_url = create_about_page()
     logger.info(f"关于页面渲染地址：internal_url={page_url}")
 
-    screenshot_path = Path("/tmp") / f"about-{beijing_filename_timestamp()}.png"
-    try:
-        await screenshot_url(
-            page_url,
-            screenshot_path,
-            options=ABOUT_SCREENSHOT_OPTIONS,
-        )
-    except RenderScreenshotError as exc:
-        await bot.send(event, reply_failure("生成", f"{exc}"))
-        return
-
-    logger.info(f"关于页面截图成功：file={screenshot_path}")
-    if bot.adapter.get_name() == "OneBot V11":
+    async with temp_screenshot_path("about") as screenshot_path:
         try:
-            image_uri = _to_base64_image_uri(screenshot_path)
-        except OSError:
-            await bot.send(event, reply_failure("生成", "读取截图文件失败"))
+            await screenshot_url(
+                page_url,
+                screenshot_path,
+                options=ABOUT_SCREENSHOT_OPTIONS,
+            )
+        except RenderScreenshotError as exc:
+            await bot.send(event, reply_failure("生成", f"{exc}"))
             return
-        await bot.send(event, OBV11MessageSegment.image(file=image_uri))
-        return
 
-    await bot.send(event, f"✅ 截图成功，文件：{screenshot_path}")
+        logger.info(f"关于页面截图成功：file={screenshot_path}")
+        if bot.adapter.get_name() == "OneBot V11":
+            try:
+                image_uri = _to_base64_image_uri(screenshot_path)
+            except OSError:
+                await bot.send(event, reply_failure("生成", "读取截图文件失败"))
+                return
+            await bot.send(event, OBV11MessageSegment.image(file=image_uri))
+            return
+
+        await bot.send(event, f"✅ 截图成功，文件：{screenshot_path}")

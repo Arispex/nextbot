@@ -24,7 +24,8 @@ from nextbot.db import (
 from nextbot.message_parser import parse_command_args_with_fallback
 from nextbot.permissions import require_permission
 from nextbot.text_utils import reply_failure
-from nextbot.time_utils import beijing_filename_timestamp, db_now_utc_naive
+from nextbot.screenshot_temp import temp_screenshot_path
+from nextbot.time_utils import db_now_utc_naive
 from nextbot.tshock_api import TShockRequestError, get_error_reason, is_success, request_server_api
 from nextbot.warehouse_lock import warehouse_lock
 from server.screenshot import RenderScreenshotError, ScreenshotOptions, screenshot_url
@@ -232,23 +233,23 @@ async def handle_lottery_list(bot: Bot, event: Event, arg: Message = CommandArg(
         f"item_count={len(render_entries)} internal_url={page_url}"
     )
 
-    screenshot_path = Path("/tmp") / f"lottery-list-{beijing_filename_timestamp()}.png"
-    try:
-        await screenshot_url(page_url, screenshot_path, options=LOTTERY_LIST_SCREENSHOT_OPTIONS)
-    except RenderScreenshotError as exc:
-        await bot.send(event, reply_failure("查询", str(exc)))
-        return
-
-    if bot.adapter.get_name() == "OneBot V11":
+    async with temp_screenshot_path("lottery-list") as screenshot_path:
         try:
-            image_uri = _to_base64_image_uri(screenshot_path)
-        except OSError:
-            await bot.send(event, reply_failure("查询", "读取截图文件失败"))
+            await screenshot_url(page_url, screenshot_path, options=LOTTERY_LIST_SCREENSHOT_OPTIONS)
+        except RenderScreenshotError as exc:
+            await bot.send(event, reply_failure("查询", str(exc)))
             return
-        await bot.send(event, OBV11MessageSegment.image(file=image_uri))
-        return
 
-    await bot.send(event, f"✅ 截图成功，文件：{screenshot_path}")
+        if bot.adapter.get_name() == "OneBot V11":
+            try:
+                image_uri = _to_base64_image_uri(screenshot_path)
+            except OSError:
+                await bot.send(event, reply_failure("查询", "读取截图文件失败"))
+                return
+            await bot.send(event, OBV11MessageSegment.image(file=image_uri))
+            return
+
+        await bot.send(event, f"✅ 截图成功，文件：{screenshot_path}")
 
 
 # ---------- 查看奖池 ----------
@@ -362,23 +363,23 @@ async def handle_lottery_view(bot: Bot, event: Event, arg: Message = CommandArg(
         f"total={total} miss_pct={miss_pct:.2f} internal_url={page_url}"
     )
 
-    screenshot_path = Path("/tmp") / f"lottery-view-{pool_id}-{beijing_filename_timestamp()}.png"
-    try:
-        await screenshot_url(page_url, screenshot_path, options=LOTTERY_VIEW_SCREENSHOT_OPTIONS)
-    except RenderScreenshotError as exc:
-        await bot.send(event, reply_failure("查询", str(exc)))
-        return
-
-    if bot.adapter.get_name() == "OneBot V11":
+    async with temp_screenshot_path(f"lottery-view-{pool_id}") as screenshot_path:
         try:
-            image_uri = _to_base64_image_uri(screenshot_path)
-        except OSError:
-            await bot.send(event, reply_failure("查询", "读取截图文件失败"))
+            await screenshot_url(page_url, screenshot_path, options=LOTTERY_VIEW_SCREENSHOT_OPTIONS)
+        except RenderScreenshotError as exc:
+            await bot.send(event, reply_failure("查询", str(exc)))
             return
-        await bot.send(event, OBV11MessageSegment.image(file=image_uri))
-        return
 
-    await bot.send(event, f"✅ 截图成功，文件：{screenshot_path}")
+        if bot.adapter.get_name() == "OneBot V11":
+            try:
+                image_uri = _to_base64_image_uri(screenshot_path)
+            except OSError:
+                await bot.send(event, reply_failure("查询", "读取截图文件失败"))
+                return
+            await bot.send(event, OBV11MessageSegment.image(file=image_uri))
+            return
+
+        await bot.send(event, f"✅ 截图成功，文件：{screenshot_path}")
 
 
 # ---------- 抽奖 ----------
@@ -711,22 +712,22 @@ async def handle_lottery_draw(bot: Bot, event: Event, arg: Message = CommandArg(
         f"skipped={len(cmd_skip_reasons)} internal_url={page_url}"
     )
 
-    screenshot_path = Path("/tmp") / f"lottery-result-{pool_id}-{beijing_filename_timestamp()}.png"
-    try:
-        await screenshot_url(page_url, screenshot_path, options=LOTTERY_RESULT_SCREENSHOT_OPTIONS)
-    except RenderScreenshotError as exc:
-        await bot.send(event, at + " " + reply_failure("抽奖", str(exc)))
-        return
-
-    if bot.adapter.get_name() == "OneBot V11":
+    async with temp_screenshot_path(f"lottery-result-{pool_id}") as screenshot_path:
         try:
-            image_uri = _to_base64_image_uri(screenshot_path)
-        except OSError:
-            await bot.send(event, at + " " + reply_failure("抽奖", "读取截图文件失败"))
+            await screenshot_url(page_url, screenshot_path, options=LOTTERY_RESULT_SCREENSHOT_OPTIONS)
+        except RenderScreenshotError as exc:
+            await bot.send(event, at + " " + reply_failure("抽奖", str(exc)))
             return
-        await bot.send(event, OBV11MessageSegment.image(file=image_uri))
-        if cmd_skip_reasons:
-            await bot.send(event, at + " ⚠️ 部分指令奖品已跳过：" + "；".join(cmd_skip_reasons))
-        return
 
-    await bot.send(event, f"✅ 截图成功，文件：{screenshot_path}")
+        if bot.adapter.get_name() == "OneBot V11":
+            try:
+                image_uri = _to_base64_image_uri(screenshot_path)
+            except OSError:
+                await bot.send(event, at + " " + reply_failure("抽奖", "读取截图文件失败"))
+                return
+            await bot.send(event, OBV11MessageSegment.image(file=image_uri))
+            if cmd_skip_reasons:
+                await bot.send(event, at + " ⚠️ 部分指令奖品已跳过：" + "；".join(cmd_skip_reasons))
+            return
+
+        await bot.send(event, f"✅ 截图成功，文件：{screenshot_path}")

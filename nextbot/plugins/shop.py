@@ -34,7 +34,8 @@ from nextbot.text_utils import (
     reply_failure,
     reply_success,
 )
-from nextbot.time_utils import beijing_filename_timestamp, db_now_utc_naive
+from nextbot.screenshot_temp import temp_screenshot_path
+from nextbot.time_utils import db_now_utc_naive
 from nextbot.tshock_api import TShockRequestError, get_error_reason, is_success, request_server_api
 from nextbot.warehouse_lock import warehouse_lock
 from server.screenshot import RenderScreenshotError, ScreenshotOptions, screenshot_url
@@ -214,23 +215,23 @@ async def handle_shop_list(bot: Bot, event: Event, arg: Message = CommandArg()) 
         f"item_count={len(render_entries)} internal_url={page_url}"
     )
 
-    screenshot_path = Path("/tmp") / f"shop-list-{beijing_filename_timestamp()}.png"
-    try:
-        await screenshot_url(page_url, screenshot_path, options=SHOP_LIST_SCREENSHOT_OPTIONS)
-    except RenderScreenshotError as exc:
-        await bot.send(event, reply_failure("查询", str(exc)))
-        return
-
-    if bot.adapter.get_name() == "OneBot V11":
+    async with temp_screenshot_path("shop-list") as screenshot_path:
         try:
-            image_uri = _to_base64_image_uri(screenshot_path)
-        except OSError:
-            await bot.send(event, reply_failure("查询", "读取截图文件失败"))
+            await screenshot_url(page_url, screenshot_path, options=SHOP_LIST_SCREENSHOT_OPTIONS)
+        except RenderScreenshotError as exc:
+            await bot.send(event, reply_failure("查询", str(exc)))
             return
-        await bot.send(event, OBV11MessageSegment.image(file=image_uri))
-        return
 
-    await bot.send(event, f"✅ 截图成功，文件：{screenshot_path}")
+        if bot.adapter.get_name() == "OneBot V11":
+            try:
+                image_uri = _to_base64_image_uri(screenshot_path)
+            except OSError:
+                await bot.send(event, reply_failure("查询", "读取截图文件失败"))
+                return
+            await bot.send(event, OBV11MessageSegment.image(file=image_uri))
+            return
+
+        await bot.send(event, f"✅ 截图成功，文件：{screenshot_path}")
 
 
 @shop_view_matcher.handle()
@@ -353,23 +354,23 @@ async def handle_shop_view(bot: Bot, event: Event, arg: Message = CommandArg()) 
         f"商店详情渲染地址：shop_id={shop_id} page={page}/{total_pages} "
         f"total={total} item_count={len(render_items)} internal_url={page_url}"
     )
-    screenshot_path = Path("/tmp") / f"shop-{shop_id}-{beijing_filename_timestamp()}.png"
-    try:
-        await screenshot_url(page_url, screenshot_path, options=SHOP_VIEW_SCREENSHOT_OPTIONS)
-    except RenderScreenshotError as exc:
-        await bot.send(event, reply_failure("查询", str(exc)))
-        return
-
-    if bot.adapter.get_name() == "OneBot V11":
+    async with temp_screenshot_path(f"shop-{shop_id}") as screenshot_path:
         try:
-            image_uri = _to_base64_image_uri(screenshot_path)
-        except OSError:
-            await bot.send(event, reply_failure("查询", "读取截图文件失败"))
+            await screenshot_url(page_url, screenshot_path, options=SHOP_VIEW_SCREENSHOT_OPTIONS)
+        except RenderScreenshotError as exc:
+            await bot.send(event, reply_failure("查询", str(exc)))
             return
-        await bot.send(event, OBV11MessageSegment.image(file=image_uri))
-        return
 
-    await bot.send(event, f"✅ 截图成功，文件：{screenshot_path}")
+        if bot.adapter.get_name() == "OneBot V11":
+            try:
+                image_uri = _to_base64_image_uri(screenshot_path)
+            except OSError:
+                await bot.send(event, reply_failure("查询", "读取截图文件失败"))
+                return
+            await bot.send(event, OBV11MessageSegment.image(file=image_uri))
+            return
+
+        await bot.send(event, f"✅ 截图成功，文件：{screenshot_path}")
 
 
 @shop_buy_matcher.handle()

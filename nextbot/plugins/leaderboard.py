@@ -24,8 +24,8 @@ from nextbot.tshock_api import (
     request_server_api,
 )
 from nextbot.permissions import require_permission
+from nextbot.screenshot_temp import temp_screenshot_path
 from nextbot.time_utils import (
-    beijing_filename_timestamp,
     beijing_today_text,
     format_online_seconds,
     utc_naive_to_beijing,
@@ -105,24 +105,24 @@ async def _render_and_send(
         f"{title}渲染地址：page={page}/{total_pages} entry_count={len(entries)} internal_url={page_url}"
     )
 
-    screenshot_path = Path("/tmp") / f"{file_prefix}-{beijing_filename_timestamp()}.png"
-    try:
-        await screenshot_url(page_url, screenshot_path, options=LEADERBOARD_SCREENSHOT_OPTIONS)
-    except RenderScreenshotError as exc:
-        await bot.send(event, reply_failure("查询", f"{exc}"))
-        return
-
-    logger.info(f"{title}截图成功：page={page}/{total_pages} file={screenshot_path}")
-    if bot.adapter.get_name() == "OneBot V11":
+    async with temp_screenshot_path(file_prefix) as screenshot_path:
         try:
-            image_uri = _to_base64_image_uri(screenshot_path)
-        except OSError:
-            await bot.send(event, reply_failure("查询", "读取截图文件失败"))
+            await screenshot_url(page_url, screenshot_path, options=LEADERBOARD_SCREENSHOT_OPTIONS)
+        except RenderScreenshotError as exc:
+            await bot.send(event, reply_failure("查询", f"{exc}"))
             return
-        await bot.send(event, OBV11MessageSegment.image(file=image_uri))
-        return
 
-    await bot.send(event, f"✅ 截图成功，文件：{screenshot_path}")
+        logger.info(f"{title}截图成功：page={page}/{total_pages} file={screenshot_path}")
+        if bot.adapter.get_name() == "OneBot V11":
+            try:
+                image_uri = _to_base64_image_uri(screenshot_path)
+            except OSError:
+                await bot.send(event, reply_failure("查询", "读取截图文件失败"))
+                return
+            await bot.send(event, OBV11MessageSegment.image(file=image_uri))
+            return
+
+        await bot.send(event, f"✅ 截图成功，文件：{screenshot_path}")
 
 
 @coins_leaderboard_matcher.handle()

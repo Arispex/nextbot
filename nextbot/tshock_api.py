@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -53,11 +54,13 @@ async def request_server_api(
     include_token: bool = True,
 ) -> TShockResponse:
     request_path = path if path.startswith("/") else f"/{path}"
+    # Defense-in-depth：path 段做 percent-encoding，防止 DB 脏数据 / 漏校验导致路径劫持
+    safe_path = quote(request_path, safe="/")
     query = dict(params or {})
     if include_token and "token" not in query:
         query["token"] = server.token
 
-    url = f"http://{server.ip}:{server.restapi_port}{request_path}"
+    url = f"http://{server.ip}:{server.restapi_port}{safe_path}"
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.get(url, params=query)
