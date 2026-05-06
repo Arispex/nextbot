@@ -41,6 +41,7 @@ DEFAULT_GUEST_PERMISSIONS: frozenset[str] = frozenset({
     "leaderboard.fishing",
     "leaderboard.guess_number_income",
     "leaderboard.guess_number_win_rate",
+    "leaderboard.map_exploration",
     "leaderboard.online_time",
     "leaderboard.rob_income",
     "leaderboard.rob_loss",
