@@ -666,7 +666,11 @@ async def handle_my_map(bot: Bot, event: Event, arg: Message = CommandArg()):
     )
 
     if bot.adapter.get_name() == "OneBot V11":
-        await bot.send(event, OBV11MessageSegment.image(file=f"base64://{b64_string}"))
+        # 同消息内 @用户 + 图片，方便群里快速定位自己的地图回复
+        # （与 自踢 / 切换抢劫保护 等命令的 at 模式保持一致）。
+        at = OBV11MessageSegment.at(int(user_id))
+        image = OBV11MessageSegment.image(file=f"base64://{b64_string}")
+        await bot.send(event, at + image)
         return
     await bot.send(event, f"✅ 地图生成成功，文件：{screenshot_path}")
 
