@@ -1938,3 +1938,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 94: 我的地图 增加艾特用户
+
+**Date**: 2026-05-06
+**Task**: 我的地图 增加艾特用户
+**Branch**: `main`
+
+### Summary
+
+我的地图 命令在 OneBot V11 分支把 @用户 与地图图片合并为同一条消息发送，方便群里快速定位回复；其他 adapter 的 fallback 不变。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `c773bad` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
