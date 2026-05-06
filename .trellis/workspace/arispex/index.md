@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-3.md`
-- **Total Sessions**: 97
+- **Total Sessions**: 98
 - **Last Active**: 2026-05-06
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-3.md` | ~106 | Active |
+| `journal-3.md` | ~139 | Active |
 | `journal-2.md` | ~1973 | Archived |
 | `journal-1.md` | ~1999 | Archived |
 <!-- @@@/auto:active-documents -->
@@ -31,6 +31,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 98 | 2026-05-06 | 用户系统命令审计与修复 | `011aa68` | `main` |
 | 97 | 2026-05-06 | 新增 地图探索率排行榜 命令 | `235fa5a` | `main` |
 | 96 | 2026-05-06 | 背包页面新增地图探索率 | `a23be37` | `main` |
 | 95 | 2026-05-06 | 新增 用户地图 命令 | `0684bbb` | `main` |

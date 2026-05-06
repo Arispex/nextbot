@@ -104,3 +104,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 98: 用户系统命令审计与修复
+
+**Date**: 2026-05-06
+**Task**: 用户系统命令审计与修复
+**Branch**: `main`
+
+### Summary
+
+对 用户系统 5 个命令做安全/性能审计，sub-agent 初审 + 主代理二次复查后保留 1 必修 + 4 应修 + 4 建议（剔除 1 项误报，降级 1 项）。修复：注册并发竞态（启动建唯一索引 + IntegrityError 兜底）、多服务器同步并发化（asyncio.gather）、tshock_api path quote、项目级 /tmp 截图清理（temp_screenshot_path context manager 替换 12 个 plugin 调用点）、合并 session、SyncStatus Literal。修复后再次审计验证 用户系统 命令已无新增缺陷与漏洞，行为与文案完全一致。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `011aa68` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
