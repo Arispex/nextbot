@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "项目质量基线 — 错误处理、日志、注释规范"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "API 错误透传规范，与 用户背包 一致"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "日志格式规范"}
+{"file": ".trellis/tasks/05-06-user-map/prd.md", "reason": "本任务 PRD — 完整规格 + 镜像参照 用户背包/我的地图"}

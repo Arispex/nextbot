@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "review 时确认改动遵循质量基线"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "review 错误透传是否合规"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "review 日志格式"}
+{"file": ".trellis/tasks/05-06-user-map/prd.md", "reason": "对照 PRD acceptance criteria 验收"}
