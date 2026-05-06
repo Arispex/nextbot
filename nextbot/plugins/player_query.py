@@ -37,6 +37,7 @@ inventory_matcher = on_command("用户背包")
 my_inventory_matcher = on_command("我的背包")
 progress_matcher = on_command("进度")
 my_map_matcher = on_command("我的地图")
+user_map_matcher = on_command("用户地图")
 
 INVENTORY_SCREENSHOT_OPTIONS = ScreenshotOptions(
     viewport_width=2000,
@@ -669,6 +670,116 @@ async def handle_my_map(bot: Bot, event: Event, arg: Message = CommandArg()):
         # 同消息内 @用户 + 图片，方便群里快速定位自己的地图回复
         # （与 自踢 / 切换抢劫保护 等命令的 at 模式保持一致）。
         at = OBV11MessageSegment.at(int(user_id))
+        image = OBV11MessageSegment.image(file=f"base64://{b64_string}")
+        await bot.send(event, at + image)
+        return
+    await bot.send(event, f"✅ 地图生成成功，文件：{screenshot_path}")
+
+
+@user_map_matcher.handle()
+@command_control(
+    command_key="player_query.map.user",
+    display_name="用户地图",
+    permission="player_query.map.user",
+    description="查询指定用户在指定服务器世界中的探索地图",
+    usage="用户地图 <服务器 ID> <用户 QQ/@用户/用户名称>",
+    category="玩家查询",
+)
+@require_permission("player_query.map.user")
+async def handle_user_map(bot: Bot, event: Event, arg: Message = CommandArg()):
+    # API 已直接返回最终的 PNG base64，无需走 page+screenshot 渲染。
+    args = parse_command_args_with_fallback(event, arg, "用户地图")
+    if len(args) != 2:
+        raise_command_usage()
+
+    try:
+        server_id = int(args[0])
+    except ValueError:
+        raise_command_usage()
+
+    target_user_id, parse_error = resolve_user_id_arg_with_fallback(
+        event,
+        arg,
+        "用户地图",
+        arg_index=1,
+    )
+    if parse_error == "missing":
+        raise_command_usage()
+    if parse_error == "name_not_found":
+        await bot.send(event, reply_failure("查询", "用户名称不存在"))
+        return
+    if parse_error == "name_ambiguous":
+        await bot.send(event, reply_failure("查询", "用户名称不唯一，请使用用户 QQ 或 @用户"))
+        return
+    if target_user_id is None:
+        await bot.send(event, reply_failure("查询", "用户参数解析失败"))
+        return
+
+    requester_user_id = event.get_user_id()
+    session = get_session()
+    try:
+        server = session.query(Server).filter(Server.id == server_id).first()
+        target_user = (
+            session.query(User).filter(User.user_id == target_user_id).first()
+        )
+    finally:
+        session.close()
+
+    if server is None:
+        await bot.send(event, reply_failure("查询", "服务器不存在"))
+        return
+    if target_user is None:
+        await bot.send(event, reply_failure("查询", "用户不存在"))
+        return
+
+    logger.info(
+        f"用户地图请求：server_id={server.id} requester_user_id={requester_user_id} "
+        f"target_user_id={target_user.user_id} target_user_name={target_user.name}"
+    )
+
+    try:
+        response = await request_server_api(
+            server,
+            f"/nextbot/users/{target_user.name}/map-image",
+            timeout=30.0,
+        )
+    except TShockRequestError:
+        await bot.send(event, reply_failure("查询", "无法连接服务器"))
+        return
+
+    if not is_success(response):
+        await bot.send(event, reply_failure("查询", f"{get_error_reason(response)}"))
+        return
+
+    b64_string = str(response.payload.get("base64") or "").strip()
+    if not b64_string:
+        await bot.send(event, reply_failure("查询", "返回数据格式错误"))
+        return
+
+    try:
+        png_bytes = base64.b64decode(b64_string, validate=True)
+    except (binascii.Error, ValueError):
+        await bot.send(event, reply_failure("查询", "返回数据格式错误"))
+        return
+
+    screenshot_path = Path("/tmp") / (
+        f"map-{server.id}-{target_user.user_id}-{beijing_filename_timestamp()}.png"
+    )
+    try:
+        screenshot_path.write_bytes(png_bytes)
+    except OSError:
+        await bot.send(event, reply_failure("查询", "保存图片失败"))
+        return
+
+    logger.info(
+        f"用户地图发送成功：server_id={server.id} requester_user_id={requester_user_id} "
+        f"target_user_id={target_user.user_id} file={screenshot_path}"
+    )
+
+    if bot.adapter.get_name() == "OneBot V11":
+        # 同消息内 @ 发起人 + 图片，方便群里快速定位自己请求的回复
+        # （与 我的地图 的 at 模式一致）。
+        at = OBV11MessageSegment.at(int(requester_user_id))
         image = OBV11MessageSegment.image(file=f"base64://{b64_string}")
         await bot.send(event, at + image)
         return
