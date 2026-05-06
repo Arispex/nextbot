@@ -89,10 +89,10 @@
       color: var(--color-hairline);
     }
 
-    /* ── Stats tiles (5-up cream-card grid) ────────────────── */
+    /* ── Stats tiles (6-up cream-card grid) ────────────────── */
     .stats-tiles {
       display: grid;
-      grid-template-columns: repeat(5, minmax(0, 1fr));
+      grid-template-columns: repeat(6, minmax(0, 1fr));
       gap: var(--space-sm);
     }
 
@@ -307,6 +307,10 @@
         <span class="stat-label">在线时长</span>
         <span class="stat-value" id="meta-online-time"></span>
       </div>
+      <div class="stat-tile" id="tile-map-exploration">
+        <span class="stat-label">地图探索率</span>
+        <span class="stat-value" id="meta-map-exploration"></span>
+      </div>
     </section>
 
     <section id="section-rows" class="section-rows"></section>
@@ -351,6 +355,12 @@
         document.getElementById("meta-online-time").textContent = onlineText;
       } else {
         document.getElementById("tile-online-time").hidden = true;
+      }
+      const mapExplorationText = String(data.map_exploration_text || "").trim();
+      if (mapExplorationText) {
+        document.getElementById("meta-map-exploration").textContent = mapExplorationText;
+      } else {
+        document.getElementById("tile-map-exploration").hidden = true;
       }
 
       // ── Section / cell rendering ───────────────────────────

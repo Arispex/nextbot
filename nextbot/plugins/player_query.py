@@ -99,6 +99,16 @@ def _parse_user_info_texts(response_payload: dict[str, object]) -> dict[str, str
         return None
 
     online_seconds = _to_non_negative_int(response_payload.get("onlineSeconds"))
+
+    raw_map_exploration = response_payload.get("mapExplorationPercent")
+    map_exploration_value: float | None
+    if isinstance(raw_map_exploration, bool):
+        map_exploration_value = None
+    elif isinstance(raw_map_exploration, (int, float)):
+        map_exploration_value = float(raw_map_exploration)
+    else:
+        map_exploration_value = None
+
     return {
         "life_text": f"{current_life}/{max_life}",
         "mana_text": f"{current_mana}/{max_mana}",
@@ -106,6 +116,7 @@ def _parse_user_info_texts(response_payload: dict[str, object]) -> dict[str, str
         "pve_deaths_text": str(pve_deaths if pve_deaths is not None else 0),
         "pvp_deaths_text": str(pvp_deaths if pvp_deaths is not None else 0),
         "online_time_text": format_online_seconds(online_seconds) if online_seconds is not None else "",
+        "map_exploration_text": f"{map_exploration_value:.2f}%" if map_exploration_value is not None else "",
     }
 
 
@@ -402,6 +413,7 @@ async def handle_user_inventory(
         pve_deaths_text=info_texts["pve_deaths_text"],
         pvp_deaths_text=info_texts["pvp_deaths_text"],
         online_time_text=info_texts.get("online_time_text", ""),
+        map_exploration_text=info_texts.get("map_exploration_text", ""),
         show_stats=bool(get_current_param("show_stats", True)),
         show_index=bool(get_current_param("show_index", True)),
         slots=[item for item in inventory if isinstance(item, dict)],
@@ -548,6 +560,7 @@ async def handle_my_inventory(
         pve_deaths_text=info_texts["pve_deaths_text"],
         pvp_deaths_text=info_texts["pvp_deaths_text"],
         online_time_text=info_texts.get("online_time_text", ""),
+        map_exploration_text=info_texts.get("map_exploration_text", ""),
         show_stats=bool(get_current_param("show_stats", True)),
         show_index=bool(get_current_param("show_index", True)),
         slots=[item for item in inventory if isinstance(item, dict)],
