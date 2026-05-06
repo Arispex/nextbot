@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-3.md`
-- **Total Sessions**: 95
+- **Total Sessions**: 96
 - **Last Active**: 2026-05-06
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-3.md` | ~40 | Active |
+| `journal-3.md` | ~73 | Active |
 | `journal-2.md` | ~1973 | Archived |
 | `journal-1.md` | ~1999 | Archived |
 <!-- @@@/auto:active-documents -->
@@ -31,6 +31,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 96 | 2026-05-06 | 背包页面新增地图探索率 | `a23be37` | `main` |
 | 95 | 2026-05-06 | 新增 用户地图 命令 | `0684bbb` | `main` |
 | 94 | 2026-05-06 | 我的地图 增加艾特用户 | `c773bad` | `main` |
 | 93 | 2026-05-06 | 查看商店排版改 2 列网格 | `890c2a3` | `main` |

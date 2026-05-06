@@ -38,3 +38,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 96: 背包页面新增地图探索率
+
+**Date**: 2026-05-06
+**Task**: 背包页面新增地图探索率
+**Branch**: `main`
+
+### Summary
+
+用户背包/我的背包 渲染页面新增 地图探索率 stat tile，透传后端 API 新字段 mapExplorationPercent。stats-tiles 由 5 列改为 6 列，缺失时 tile 隐藏；缺失字段不会让原有校验失败，与 onlineSeconds 同模式。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `a23be37` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
