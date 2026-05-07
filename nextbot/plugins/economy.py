@@ -9,6 +9,8 @@ from nonebot.adapters import Bot, Event, Message
 from nonebot.adapters.onebot.v11 import MessageSegment as OBV11MessageSegment
 from nonebot.log import logger
 from nonebot.params import CommandArg
+from sqlalchemy import update
+from sqlalchemy.exc import IntegrityError
 
 from nextbot.command_config import (
     command_control,
@@ -34,6 +36,8 @@ transfer_matcher = on_command("转账")
 add_coins_matcher = on_command("添加金币")
 remove_coins_matcher = on_command("扣除金币")
 
+MAX_COINS_AMOUNT = 100_000_000
+
 
 def _parse_positive_int(text: str) -> int | None:
     value = text.strip()
@@ -44,6 +48,10 @@ def _parse_positive_int(text: str) -> int | None:
     if amount <= 0:
         return None
     return amount
+
+
+def _exceeds_max_amount(amount: int) -> bool:
+    return amount > MAX_COINS_AMOUNT
 
 
 @dataclass(frozen=True)
@@ -161,8 +169,10 @@ async def handle_sign(bot: Bot, event: Event, arg: Message = CommandArg()) -> No
             await bot.send(event, at + " " + reply_failure("签到", "请先注册账号"))
             return
 
+        # 单一真源：只判断 last_sign_date 是否是今天（不再读 signed_today，
+        # 该字段已 DEPRECATED；仅保留列以兼容旧 schema）。
         last_sign_date = str(user.last_sign_date or "").strip()
-        if bool(user.signed_today) or last_sign_date == today_text:
+        if last_sign_date == today_text:
             await bot.send(event, at + " " + reply_failure("签到", "今天已经签到过了"))
             return
 
@@ -177,33 +187,56 @@ async def handle_sign(bot: Bot, event: Event, arg: Message = CommandArg()) -> No
         )
         total_reward = base_reward + streak_result.streak_reward
 
-        user.coins = int(user.coins or 0) + total_reward
-        user.signed_today = True
-        user.last_sign_date = today_text
-        user.sign_streak = streak_result.next_streak
-        user.sign_total = int(user.sign_total or 0) + 1
-        session.add(UserSignRecord(
-            user_id=user_id,
-            sign_date=today_text,
-            streak=streak_result.next_streak,
-        ))
-        session.commit()
+        # 原子条件 UPDATE：仅当 last_sign_date != today 时才写入。
+        # 并发同时签到时，第二条 rowcount=0，被 schema/SQL 层拦下。
+        rowcount = session.execute(
+            update(User)
+            .where(User.user_id == user_id, User.last_sign_date != today_text)
+            .values(
+                coins=User.coins + total_reward,
+                last_sign_date=today_text,
+                sign_streak=streak_result.next_streak,
+                sign_total=User.sign_total + 1,
+            )
+        ).rowcount
+        if rowcount == 0:
+            await bot.send(event, at + " " + reply_failure("签到", "今天已经签到过了"))
+            return
+
+        # 写 UserSignRecord —— UniqueConstraint(user_id, sign_date) 兜底并发。
+        try:
+            session.add(UserSignRecord(
+                user_id=user_id,
+                sign_date=today_text,
+                streak=streak_result.next_streak,
+            ))
+            session.commit()
+        except IntegrityError:
+            session.rollback()
+            await bot.send(event, at + " " + reply_failure("签到", "今天已经签到过了"))
+            return
 
         today_order = (
             session.query(UserSignRecord)
             .filter(UserSignRecord.sign_date == today_text)
             .count()
         )
+        coins_after = int(
+            session.query(User.coins).filter(User.user_id == user_id).scalar() or 0
+        )
+        user_name = str(
+            session.query(User.name).filter(User.user_id == user_id).scalar() or ""
+        )
 
         logger.info(
             "签到成功："
-            f"user_id={user.user_id} name={user.name} base_reward={base_reward} "
+            f"user_id={user_id} name={user_name} base_reward={base_reward} "
             f"streak_reward={streak_result.streak_reward} total_reward={total_reward} "
-            f"streak={streak_result.next_streak} coins={user.coins} today_order={today_order}"
+            f"streak={streak_result.next_streak} coins={coins_after} today_order={today_order}"
         )
         lines = [
             f"{EMOJI_CHART} 签到排名：第 {today_order} 位",
-            f"{EMOJI_COIN} 获得金币：{base_reward}",
+            f"{EMOJI_COIN} 基础奖励：{base_reward}",
             f"{EMOJI_FIRE} 连续签到：{streak_result.next_streak} 天",
         ]
         if enable_streak:
@@ -213,7 +246,7 @@ async def handle_sign(bot: Bot, event: Event, arg: Message = CommandArg()) -> No
         lines.extend(
             [
                 f"{EMOJI_COIN} 本次总获得：{total_reward}",
-                f"{EMOJI_COIN} 当前金币：{user.coins}",
+                f"{EMOJI_COIN} 当前金币：{coins_after}",
             ]
         )
         await bot.send(
@@ -224,6 +257,13 @@ async def handle_sign(bot: Bot, event: Event, arg: Message = CommandArg()) -> No
                 hint="明日继续签到可获得连续奖励",
             ),
         )
+    except Exception:  # noqa: BLE001
+        logger.exception(f"签到处理异常：user_id={user_id}")
+        try:
+            await bot.send(event, at + " " + reply_failure("签到", "处理失败，请稍后重试"))
+        except Exception:  # noqa: BLE001
+            pass
+        return
     finally:
         session.close()
 
@@ -259,14 +299,22 @@ async def handle_transfer(bot: Bot, event: Event, arg: Message = CommandArg()) -
         await bot.send(event, at + " " + reply_failure("转账", "用户参数解析失败"))
         return
 
+    # F-2.2：解析风格统一为 _parse_positive_int（与 add/remove 一致）。
+    # 保留两条原文案区分非整数 vs 非正数。
     amount_str = args[1].strip()
-    try:
-        amount = int(amount_str)
-    except ValueError:
+    if not amount_str.isdigit():
+        # _parse_positive_int 严格 isdigit 拒绝 "+100" / "1_000" / 负号等
         await bot.send(event, at + " " + reply_failure("转账", "数量必须为整数"))
         return
-    if amount <= 0:
+    amount = _parse_positive_int(amount_str)
+    if amount is None:
         await bot.send(event, at + " " + reply_failure("转账", "数量必须大于 0"))
+        return
+    if _exceeds_max_amount(amount):
+        await bot.send(
+            event,
+            at + " " + reply_failure("转账", f"数量过大（最多 {MAX_COINS_AMOUNT}）"),
+        )
         return
 
     sender_id = event.get_user_id()
@@ -286,19 +334,45 @@ async def handle_transfer(bot: Bot, event: Event, arg: Message = CommandArg()) -
             await bot.send(event, at + " " + reply_failure("转账", "目标用户不存在"))
             return
 
-        sender_coins = int(sender.coins or 0)
-        if sender_coins < amount:
-            await bot.send(event, at + " " + reply_failure("转账", f"金币不足（当前：{sender_coins}）"))
+        # 一次原子条件 UPDATE：扣 sender（带 coins ≥ amount 条件）。
+        # 并发被抢走时 rowcount=0，回退"金币不足"。
+        rowcount = session.execute(
+            update(User)
+            .where(User.user_id == sender_id, User.coins >= amount)
+            .values(coins=User.coins - amount)
+        ).rowcount
+        if rowcount == 0:
+            sender_coins_now = int(
+                session.query(User.coins).filter(User.user_id == sender_id).scalar() or 0
+            )
+            await bot.send(
+                event,
+                at + " " + reply_failure("转账", f"金币不足（当前：{sender_coins_now}）"),
+            )
             return
 
-        sender.coins = sender_coins - amount
-        target.coins = int(target.coins or 0) + amount
+        # 加 target（同事务原子完成）
+        session.execute(
+            update(User)
+            .where(User.user_id == target_user_id)
+            .values(coins=User.coins + amount)
+        )
         session.commit()
 
+        sender_after = int(
+            session.query(User.coins).filter(User.user_id == sender_id).scalar() or 0
+        )
+        sender_name = str(
+            session.query(User.name).filter(User.user_id == sender_id).scalar() or ""
+        )
+        target_name = str(
+            session.query(User.name).filter(User.user_id == target_user_id).scalar() or ""
+        )
+
         logger.info(
-            f"转账成功：sender_id={sender.user_id} sender_name={sender.name} "
-            f"target_id={target.user_id} target_name={target.name} "
-            f"amount={amount} sender_remaining={sender.coins}"
+            f"转账成功：sender_id={sender_id} sender_name={sender_name} "
+            f"target_id={target_user_id} target_name={target_name} "
+            f"amount={amount} sender_remaining={sender_after}"
         )
         await bot.send(
             event,
@@ -306,11 +380,18 @@ async def handle_transfer(bot: Bot, event: Event, arg: Message = CommandArg()) -
                 reply_success("转账"),
                 [
                     f"{EMOJI_COIN} 转出金币：{amount}",
-                    f"{EMOJI_USER} 转账对象：{target.name}（{target.user_id}）",
-                    f"{EMOJI_COIN} 当前余额：{sender.coins}",
+                    f"{EMOJI_USER} 转账对象：{target_name}（{target_user_id}）",
+                    f"{EMOJI_COIN} 当前余额：{sender_after}",
                 ],
             ),
         )
+    except Exception:  # noqa: BLE001
+        logger.exception(f"转账处理异常：sender_id={sender_id}")
+        try:
+            await bot.send(event, at + " " + reply_failure("转账", "处理失败，请稍后重试"))
+        except Exception:  # noqa: BLE001
+            pass
+        return
     finally:
         session.close()
 
@@ -354,6 +435,12 @@ async def handle_add_coins(
     if amount is None:
         await bot.send(event, at + " " + reply_failure("添加", "数量必须为正整数"))
         return
+    if _exceeds_max_amount(amount):
+        await bot.send(
+            event,
+            at + " " + reply_failure("添加", f"数量过大（最多 {MAX_COINS_AMOUNT}）"),
+        )
+        return
 
     session = get_session()
     try:
@@ -362,10 +449,26 @@ async def handle_add_coins(
             await bot.send(event, at + " " + reply_failure("添加", "用户不存在"))
             return
 
-        user.coins += amount
+        # 原子条件 UPDATE：避免并发 lost-update。
+        session.execute(
+            update(User)
+            .where(User.user_id == target_user_id)
+            .values(coins=User.coins + amount)
+        )
         session.commit()
-        coins = user.coins
-        user_name = user.name
+        coins = int(
+            session.query(User.coins).filter(User.user_id == target_user_id).scalar() or 0
+        )
+        user_name = str(
+            session.query(User.name).filter(User.user_id == target_user_id).scalar() or ""
+        )
+    except Exception:  # noqa: BLE001
+        logger.exception(f"添加金币处理异常：user_id={target_user_id}")
+        try:
+            await bot.send(event, at + " " + reply_failure("添加", "处理失败，请稍后重试"))
+        except Exception:  # noqa: BLE001
+            pass
+        return
     finally:
         session.close()
 
@@ -424,6 +527,12 @@ async def handle_remove_coins(
     if amount is None:
         await bot.send(event, at + " " + reply_failure("扣除", "数量必须为正整数"))
         return
+    if _exceeds_max_amount(amount):
+        await bot.send(
+            event,
+            at + " " + reply_failure("扣除", f"数量过大（最多 {MAX_COINS_AMOUNT}）"),
+        )
+        return
 
     session = get_session()
     try:
@@ -432,14 +541,35 @@ async def handle_remove_coins(
             await bot.send(event, at + " " + reply_failure("扣除", "用户不存在"))
             return
 
-        if user.coins < amount:
-            await bot.send(event, at + " " + reply_failure("扣除", f"金币不足，当前仅有 {user.coins}"))
+        # 原子条件 UPDATE：避免并发 lost-update；rowcount=0 则金币不足。
+        rowcount = session.execute(
+            update(User)
+            .where(User.user_id == target_user_id, User.coins >= amount)
+            .values(coins=User.coins - amount)
+        ).rowcount
+        if rowcount == 0:
+            coins_now = int(
+                session.query(User.coins).filter(User.user_id == target_user_id).scalar() or 0
+            )
+            await bot.send(
+                event,
+                at + " " + reply_failure("扣除", f"金币不足，当前仅有 {coins_now}"),
+            )
             return
-
-        user.coins -= amount
         session.commit()
-        coins = user.coins
-        user_name = user.name
+        coins = int(
+            session.query(User.coins).filter(User.user_id == target_user_id).scalar() or 0
+        )
+        user_name = str(
+            session.query(User.name).filter(User.user_id == target_user_id).scalar() or ""
+        )
+    except Exception:  # noqa: BLE001
+        logger.exception(f"扣除金币处理异常：user_id={target_user_id}")
+        try:
+            await bot.send(event, at + " " + reply_failure("扣除", "处理失败，请稍后重试"))
+        except Exception:  # noqa: BLE001
+            pass
+        return
     finally:
         session.close()
 

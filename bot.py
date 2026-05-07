@@ -9,7 +9,6 @@ from nonebot.message import event_preprocessor
 
 from nextbot.command_config import sync_registered_commands_to_db
 from nextbot.data_dir import DATA_DIR
-from nextbot.signin_reset import start_signin_reset_worker
 from server.web_server import start_web_server
 from nextbot.access_control import get_group_ids, get_owner_ids
 from nextbot.db import (
@@ -21,6 +20,7 @@ from nextbot.db import (
     ensure_red_packet_schema,
     ensure_warehouse_schema,
     ensure_sign_record_schema,
+    ensure_sign_record_unique_schema,
     ensure_user_ban_schema,
     ensure_user_dice_schema,
     ensure_user_guess_schema,
@@ -159,6 +159,7 @@ async def _init_database() -> None:
         ensure_command_config_schema()
         ensure_user_signin_schema()
         ensure_sign_record_schema()
+        ensure_sign_record_unique_schema()
         ensure_user_ban_schema()
         ensure_user_rob_schema()
         ensure_user_guess_schema()
@@ -173,7 +174,6 @@ async def _init_database() -> None:
     logger.info("命令配置同步完成")
     from nextbot.command_config import register_alias_matchers
     register_alias_matchers()
-    start_signin_reset_worker()
     start_web_server()
 
 nonebot.load_plugins("nextbot/plugins")

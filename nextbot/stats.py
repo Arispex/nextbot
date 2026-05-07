@@ -14,7 +14,12 @@ from nextbot.db import (
     get_engine,
     get_session,
 )
-from nextbot.time_utils import beijing_now_text, db_now_utc_naive, format_beijing_datetime
+from nextbot.time_utils import (
+    beijing_now_text,
+    beijing_today_text,
+    db_now_utc_naive,
+    format_beijing_datetime,
+)
 
 
 def increment_stat(stat_key: str, delta: int = 1) -> None:
@@ -82,9 +87,10 @@ def get_dashboard_metrics() -> dict[str, int | str | list[str]]:
             or 0
         )
         command_disabled_count = max(command_total - command_enabled_count, 0)
+        today_text = beijing_today_text()
         signed_today_count = int(
             session.query(func.count(User.id))
-            .filter(User.signed_today.is_(True))
+            .filter(User.last_sign_date == today_text)
             .scalar()
             or 0
         )

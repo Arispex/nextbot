@@ -115,7 +115,6 @@ class User(Base):
     user_id: Mapped[str] = mapped_column(String, nullable=False, unique=True)
     name: Mapped[str] = mapped_column(String, nullable=False, index=True)
     coins: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    signed_today: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     last_sign_date: Mapped[str] = mapped_column(String, nullable=False, default="")
     sign_streak: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     sign_total: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
@@ -179,6 +178,9 @@ class CommandConfig(Base):
 
 class UserSignRecord(Base):
     __tablename__ = "user_sign_record"
+    __table_args__ = (
+        UniqueConstraint("user_id", "sign_date", name="uq_sign_record_user_date"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     user_id: Mapped[str] = mapped_column(String, nullable=False)
@@ -346,13 +348,26 @@ class LotteryPrize(Base):
     )
 
 
+_engine: Engine | None = None
+_session_factory: sessionmaker[Session] | None = None
+
+
+def _ensure_engine_and_factory() -> tuple[Engine, sessionmaker[Session]]:
+    global _engine, _session_factory
+    if _engine is None or _session_factory is None:
+        _engine = create_engine(
+            DATABASE_URL,
+            future=True,
+            echo=False,
+            connect_args={"check_same_thread": False},
+        )
+        _session_factory = sessionmaker(bind=_engine, autoflush=False, autocommit=False)
+    return _engine, _session_factory
+
+
 def get_engine() -> Engine:
-    return create_engine(
-        DATABASE_URL,
-        future=True,
-        echo=False,
-        connect_args={"check_same_thread": False},
-    )
+    engine, _ = _ensure_engine_and_factory()
+    return engine
 
 
 def init_db() -> None:
@@ -361,6 +376,7 @@ def init_db() -> None:
     ensure_command_config_schema()
     ensure_user_signin_schema()
     ensure_sign_record_schema()
+    ensure_sign_record_unique_schema()
     ensure_user_ban_schema()
     ensure_user_rob_schema()
     ensure_user_guess_schema()
@@ -374,9 +390,8 @@ def init_db() -> None:
 
 
 def get_session() -> Session:
-    engine = get_engine()
-    session_factory = sessionmaker(bind=engine, autoflush=False, autocommit=False)
-    return session_factory()
+    _, factory = _ensure_engine_and_factory()
+    return factory()
 
 
 def ensure_default_groups() -> None:
@@ -529,41 +544,28 @@ def ensure_shop_schema() -> None:
 
 
 def ensure_user_signin_schema() -> None:
-    if not DB_PATH.exists():
-        return
+    """启动时清理废弃的 signed_today 列（如存在）。
 
-    conn = sqlite3.connect(str(DB_PATH))
-    try:
-        rows = conn.execute('PRAGMA table_info("user")').fetchall()
-        if not rows:
-            return
+    历史上 signed_today 由 signin_reset.py worker 维护；现在已切换到
+    last_sign_date 单一真源，该字段不再需要。
 
+    SQLite 3.35+ 支持 ALTER TABLE DROP COLUMN。失败时（旧 SQLite）
+    保留列、仅 logger.warning，不阻断启动。
+    """
+    engine = get_engine()
+    with engine.begin() as conn:
+        rows = conn.execute(sa_text('PRAGMA table_info("user")')).fetchall()
         columns = {str(row[1]) for row in rows}
-        changed = False
         if "signed_today" not in columns:
-            conn.execute(
-                'ALTER TABLE "user" ADD COLUMN "signed_today" INTEGER NOT NULL DEFAULT 0'
+            return
+        try:
+            conn.execute(sa_text('ALTER TABLE "user" DROP COLUMN "signed_today"'))
+            logger.info("已清理废弃字段 user.signed_today")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                f"清理 user.signed_today 字段失败（可能 SQLite 版本 < 3.35），"
+                f"保留列不阻断启动: {exc}"
             )
-            changed = True
-        if "last_sign_date" not in columns:
-            conn.execute(
-                'ALTER TABLE "user" ADD COLUMN "last_sign_date" TEXT NOT NULL DEFAULT ""'
-            )
-            changed = True
-        if "sign_streak" not in columns:
-            conn.execute(
-                'ALTER TABLE "user" ADD COLUMN "sign_streak" INTEGER NOT NULL DEFAULT 0'
-            )
-            changed = True
-        if "sign_total" not in columns:
-            conn.execute(
-                'ALTER TABLE "user" ADD COLUMN "sign_total" INTEGER NOT NULL DEFAULT 0'
-            )
-            changed = True
-        if changed:
-            conn.commit()
-    finally:
-        conn.close()
 
 
 def ensure_sign_record_schema() -> None:
@@ -586,6 +588,34 @@ def ensure_sign_record_schema() -> None:
         conn.commit()
     finally:
         conn.close()
+
+
+def ensure_sign_record_unique_schema() -> None:
+    """启动时确保 user_sign_record 上有 (user_id, sign_date) 唯一索引。
+
+    若已有重复（历史脏数据），降级为非唯一索引并 logger.warning，
+    不阻断启动（让管理员手动清理重复数据后再手动重建唯一索引）。
+    """
+    engine = get_engine()
+    with engine.begin() as conn:
+        try:
+            conn.execute(sa_text(
+                'CREATE UNIQUE INDEX IF NOT EXISTS "uq_sign_record_user_date" '
+                'ON "user_sign_record" (user_id, sign_date)'
+            ))
+            logger.info("user_sign_record 唯一索引已就绪")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                f"user_sign_record 唯一索引创建失败（可能存在历史重复 (user_id, sign_date)，"
+                f"请手动清理后重启）: {exc}"
+            )
+            try:
+                conn.execute(sa_text(
+                    'CREATE INDEX IF NOT EXISTS "ix_sign_record_user_date" '
+                    'ON "user_sign_record" (user_id, sign_date)'
+                ))
+            except Exception:  # noqa: BLE001
+                pass
 
 
 def ensure_user_ban_schema() -> None:
