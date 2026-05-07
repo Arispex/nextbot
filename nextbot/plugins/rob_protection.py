@@ -6,7 +6,7 @@ from nonebot.params import CommandArg
 from sqlalchemy import update
 
 from nextbot.command_config import command_control, get_current_param, raise_command_usage
-from nextbot.db import User, get_session
+from nextbot.db import User, execute_rowcount, get_session
 from nextbot.message_parser import parse_command_args_with_fallback
 from nextbot.permissions import require_permission
 from nextbot.plugins.economy import MAX_COINS_AMOUNT
@@ -84,7 +84,8 @@ async def handle_toggle_rob_protection(
 
         # 原子条件 UPDATE：互斥旧状态 + 余额校验 + 扣费 + 切换。
         # 并发时第二条 rowcount=0，由 SQL 层兜底。
-        rowcount = session.execute(
+        rowcount = execute_rowcount(
+            session,
             update(User)
             .where(
                 User.user_id == user_id,
@@ -94,8 +95,8 @@ async def handle_toggle_rob_protection(
             .values(
                 coins=User.coins - cost,
                 rob_protected=target,
-            )
-        ).rowcount
+            ),
+        )
         if rowcount == 0:
             # 拉最新状态判定具体原因，保持原有错误文案
             latest = session.query(User).filter(User.user_id == user_id).first()

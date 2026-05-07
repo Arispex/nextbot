@@ -17,7 +17,7 @@ from nextbot.command_config import (
     get_current_param,
     raise_command_usage,
 )
-from nextbot.db import User, UserSignRecord, get_session
+from nextbot.db import User, UserSignRecord, execute_rowcount, get_session
 from nextbot.message_parser import parse_command_args_with_fallback, resolve_user_id_arg_with_fallback
 from nextbot.permissions import require_permission
 from nextbot.text_utils import (
@@ -189,7 +189,8 @@ async def handle_sign(bot: Bot, event: Event, arg: Message = CommandArg()) -> No
 
         # 原子条件 UPDATE：仅当 last_sign_date != today 时才写入。
         # 并发同时签到时，第二条 rowcount=0，被 schema/SQL 层拦下。
-        rowcount = session.execute(
+        rowcount = execute_rowcount(
+            session,
             update(User)
             .where(User.user_id == user_id, User.last_sign_date != today_text)
             .values(
@@ -197,8 +198,8 @@ async def handle_sign(bot: Bot, event: Event, arg: Message = CommandArg()) -> No
                 last_sign_date=today_text,
                 sign_streak=streak_result.next_streak,
                 sign_total=User.sign_total + 1,
-            )
-        ).rowcount
+            ),
+        )
         if rowcount == 0:
             await bot.send(event, at + " " + reply_failure("签到", "今天已经签到过了"))
             return
@@ -336,11 +337,12 @@ async def handle_transfer(bot: Bot, event: Event, arg: Message = CommandArg()) -
 
         # 一次原子条件 UPDATE：扣 sender（带 coins ≥ amount 条件）。
         # 并发被抢走时 rowcount=0，回退"金币不足"。
-        rowcount = session.execute(
+        rowcount = execute_rowcount(
+            session,
             update(User)
             .where(User.user_id == sender_id, User.coins >= amount)
-            .values(coins=User.coins - amount)
-        ).rowcount
+            .values(coins=User.coins - amount),
+        )
         if rowcount == 0:
             sender_coins_now = int(
                 session.query(User.coins).filter(User.user_id == sender_id).scalar() or 0
@@ -542,11 +544,12 @@ async def handle_remove_coins(
             return
 
         # 原子条件 UPDATE：避免并发 lost-update；rowcount=0 则金币不足。
-        rowcount = session.execute(
+        rowcount = execute_rowcount(
+            session,
             update(User)
             .where(User.user_id == target_user_id, User.coins >= amount)
-            .values(coins=User.coins - amount)
-        ).rowcount
+            .values(coins=User.coins - amount),
+        )
         if rowcount == 0:
             coins_now = int(
                 session.query(User.coins).filter(User.user_id == target_user_id).scalar() or 0

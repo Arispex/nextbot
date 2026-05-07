@@ -9,6 +9,7 @@ from nonebot.log import logger
 from sqlalchemy import (
     Boolean,
     DateTime,
+    Executable,
     Float,
     Integer,
     String,
@@ -393,6 +394,18 @@ def init_db() -> None:
 def get_session() -> Session:
     _, factory = _ensure_engine_and_factory()
     return factory()
+
+
+def execute_rowcount(session: Session, stmt: Executable) -> int:
+    """执行 INSERT/UPDATE/DELETE 并返回 rowcount。
+
+    封装类型转换：session.execute() 在类型 stub 中返回 Result[Any]，
+    但实际 INSERT/UPDATE/DELETE 返回 CursorResult，这里通过 getattr
+    让 pyright 接受 .rowcount 属性，同时对非 CursorResult（如 SELECT）
+    回退为 0，避免崩溃。
+    """
+    result = session.execute(stmt)
+    return int(getattr(result, "rowcount", 0))
 
 
 def ensure_default_groups() -> None:

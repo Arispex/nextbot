@@ -9,7 +9,7 @@ from nonebot.params import CommandArg
 from sqlalchemy import or_ as sa_or, update
 
 from nextbot.command_config import command_control, get_current_param, raise_command_usage
-from nextbot.db import User, get_session
+from nextbot.db import User, execute_rowcount, get_session
 from nextbot.message_parser import parse_command_args_with_fallback, resolve_user_id_arg_with_fallback
 from nextbot.permissions import require_permission
 from nextbot.time_utils import db_now_utc_naive
@@ -273,7 +273,8 @@ async def handle_rob(bot: Bot, event: Event, arg: Message = CommandArg()) -> Non
             amount = min(amount, victim_coins)
 
             # 1) 先扣 victim：要求 coins >= amount AND rob_protected = False
-            v_rows = session.execute(
+            v_rows = execute_rowcount(
+                session,
                 update(User)
                 .where(
                     User.user_id == target_user_id,
@@ -283,8 +284,8 @@ async def handle_rob(bot: Bot, event: Event, arg: Message = CommandArg()) -> Non
                 .values(
                     coins=User.coins - amount,
                     rob_total_loss=User.rob_total_loss + amount,
-                )
-            ).rowcount
+                ),
+            )
             if v_rows == 0:
                 # victim 状态发生变更（金币不足 / 开启保护）
                 # 不需要回滚（还没改任何东西），重新拉一个清晰文案
@@ -296,7 +297,8 @@ async def handle_rob(bot: Bot, event: Event, arg: Message = CommandArg()) -> Non
                 return
 
             # 2) 加 attacker：同时校验 attacker 冷却 + 保护
-            a_rows = session.execute(
+            a_rows = execute_rowcount(
+                session,
                 update(User)
                 .where(*attacker_where_clauses())
                 .values(
@@ -305,8 +307,8 @@ async def handle_rob(bot: Bot, event: Event, arg: Message = CommandArg()) -> Non
                     rob_success_count=User.rob_success_count + 1,
                     rob_total_gain=User.rob_total_gain + amount,
                     last_rob_time=now,
-                )
-            ).rowcount
+                ),
+            )
             if a_rows == 0:
                 # 回滚 victim 扣款
                 session.execute(
@@ -326,7 +328,8 @@ async def handle_rob(bot: Bot, event: Event, arg: Message = CommandArg()) -> Non
             amount = max(1, robber_coins * counter_steal_percent // 100)
 
             # 扣 attacker：同时校验金币足够 + 冷却 + 保护
-            a_rows = session.execute(
+            a_rows = execute_rowcount(
+                session,
                 update(User)
                 .where(
                     *attacker_where_clauses(),
@@ -337,8 +340,8 @@ async def handle_rob(bot: Bot, event: Event, arg: Message = CommandArg()) -> Non
                     rob_total_count=User.rob_total_count + 1,
                     rob_total_penalty=User.rob_total_penalty + amount,
                     last_rob_time=now,
-                )
-            ).rowcount
+                ),
+            )
             if a_rows == 0:
                 # 并发：attacker 金币 / 冷却 / 保护状态变更，整次 counter 取消
                 # 不能回退到 "钳制为 0"，因为后续 victim 还要 +amount，会凭空产生金币
@@ -359,7 +362,8 @@ async def handle_rob(bot: Bot, event: Event, arg: Message = CommandArg()) -> Non
             result_type = "police"
             amount = max(1, robber_coins * police_penalty_percent // 100)
 
-            a_rows = session.execute(
+            a_rows = execute_rowcount(
+                session,
                 update(User)
                 .where(
                     *attacker_where_clauses(),
@@ -370,10 +374,11 @@ async def handle_rob(bot: Bot, event: Event, arg: Message = CommandArg()) -> Non
                     rob_total_count=User.rob_total_count + 1,
                     rob_total_penalty=User.rob_total_penalty + amount,
                     last_rob_time=now,
-                )
-            ).rowcount
+                ),
+            )
             if a_rows == 0:
-                a_rows_fallback = session.execute(
+                a_rows_fallback = execute_rowcount(
+                    session,
                     update(User)
                     .where(
                         *attacker_where_clauses(),
@@ -384,8 +389,8 @@ async def handle_rob(bot: Bot, event: Event, arg: Message = CommandArg()) -> Non
                         rob_total_count=User.rob_total_count + 1,
                         rob_total_penalty=User.rob_total_penalty + User.coins,
                         last_rob_time=now,
-                    )
-                ).rowcount
+                    ),
+                )
                 if a_rows_fallback == 0:
                     await bot.send(event, at + " " + reply_failure("抢劫", "冷却中或保护状态变更，已取消"))
                     return
@@ -394,7 +399,8 @@ async def handle_rob(bot: Bot, event: Event, arg: Message = CommandArg()) -> Non
             result_type = "fail"
             amount = max(1, robber_coins * fail_penalty_percent // 100)
 
-            a_rows = session.execute(
+            a_rows = execute_rowcount(
+                session,
                 update(User)
                 .where(
                     *attacker_where_clauses(),
@@ -405,10 +411,11 @@ async def handle_rob(bot: Bot, event: Event, arg: Message = CommandArg()) -> Non
                     rob_total_count=User.rob_total_count + 1,
                     rob_total_penalty=User.rob_total_penalty + amount,
                     last_rob_time=now,
-                )
-            ).rowcount
+                ),
+            )
             if a_rows == 0:
-                a_rows_fallback = session.execute(
+                a_rows_fallback = execute_rowcount(
+                    session,
                     update(User)
                     .where(
                         *attacker_where_clauses(),
@@ -419,8 +426,8 @@ async def handle_rob(bot: Bot, event: Event, arg: Message = CommandArg()) -> Non
                         rob_total_count=User.rob_total_count + 1,
                         rob_total_penalty=User.rob_total_penalty + User.coins,
                         last_rob_time=now,
-                    )
-                ).rowcount
+                    ),
+                )
                 if a_rows_fallback == 0:
                     await bot.send(event, at + " " + reply_failure("抢劫", "冷却中或保护状态变更，已取消"))
                     return

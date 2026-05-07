@@ -18,7 +18,7 @@ from nextbot.command_config import (
     get_current_param,
     raise_command_usage,
 )
-from nextbot.db import RedPacket, RedPacketClaim, User, get_session
+from nextbot.db import RedPacket, RedPacketClaim, User, execute_rowcount, get_session
 from nextbot.message_parser import parse_command_args_with_fallback
 from nextbot.permissions import require_permission
 from nextbot.plugins.economy import MAX_COINS_AMOUNT
@@ -94,8 +94,7 @@ def _claim_slot_atomic(session, packet_id: int, draw_amount: int) -> bool:
             remaining_amount=RedPacket.remaining_amount - draw_amount,
         )
     )
-    result = session.execute(stmt)
-    return result.rowcount > 0
+    return execute_rowcount(session, stmt) > 0
 
 
 @send_matcher.handle()
@@ -191,11 +190,12 @@ async def handle_send(bot: Bot, event: Event, arg: Message = CommandArg()) -> No
 
         # 原子条件 UPDATE：扣 sender 余额（带 coins ≥ total_amount 条件）
         # 并发被抢走时 rowcount=0，回退"金币不足"
-        rowcount = session.execute(
+        rowcount = execute_rowcount(
+            session,
             sa_update(User)
             .where(User.user_id == user_id, User.coins >= total_amount)
-            .values(coins=User.coins - total_amount)
-        ).rowcount
+            .values(coins=User.coins - total_amount),
+        )
         if rowcount == 0:
             sender_coins_now = int(
                 session.query(User.coins).filter(User.user_id == user_id).scalar() or 0
@@ -441,8 +441,7 @@ async def handle_withdraw(bot: Bot, event: Event, arg: Message = CommandArg()) -
             .where(RedPacket.status == "active")
             .values(status="withdrawn", closed_at=db_now_utc_naive())
         )
-        result = session.execute(stmt)
-        if result.rowcount == 0:
+        if execute_rowcount(session, stmt) == 0:
             session.rollback()
             await bot.send(event, at + " " + reply_failure("收回红包", "该红包已关闭"))
             return

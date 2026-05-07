@@ -9,7 +9,7 @@ from nonebot.params import CommandArg
 from sqlalchemy import update
 
 from nextbot.command_config import command_control, get_current_param, raise_command_usage
-from nextbot.db import User, get_session
+from nextbot.db import User, execute_rowcount, get_session
 from nextbot.message_parser import parse_command_args_with_fallback
 from nextbot.permissions import require_permission
 from nextbot.plugins.economy import MAX_COINS_AMOUNT
@@ -156,11 +156,12 @@ async def handle_dice(bot: Bot, event: Event, arg: Message = CommandArg()) -> No
             return
 
         # 原子条件 UPDATE：扣押金。并发时第二条 rowcount=0 → 金币不足。
-        rowcount = session.execute(
+        rowcount = execute_rowcount(
+            session,
             update(User)
             .where(User.user_id == user_id, User.coins >= cost)
-            .values(coins=User.coins - cost)
-        ).rowcount
+            .values(coins=User.coins - cost),
+        )
         if rowcount == 0:
             coins_now = int(
                 session.query(User.coins).filter(User.user_id == user_id).scalar() or 0
