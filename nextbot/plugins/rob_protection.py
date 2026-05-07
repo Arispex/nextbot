@@ -3,11 +3,13 @@ from nonebot.adapters import Bot, Event, Message
 from nonebot.adapters.onebot.v11 import MessageSegment as OBV11MessageSegment
 from nonebot.log import logger
 from nonebot.params import CommandArg
+from sqlalchemy import update
 
 from nextbot.command_config import command_control, get_current_param, raise_command_usage
 from nextbot.db import User, get_session
 from nextbot.message_parser import parse_command_args_with_fallback
 from nextbot.permissions import require_permission
+from nextbot.plugins.economy import MAX_COINS_AMOUNT
 from nextbot.text_utils import reply_block, reply_failure, reply_success
 
 rob_protection_matcher = on_command("切换抢劫保护")
@@ -15,6 +17,14 @@ rob_protection_matcher = on_command("切换抢劫保护")
 
 _ENABLE_TOKENS = {"开启", "开", "on"}
 _DISABLE_TOKENS = {"关闭", "关", "off"}
+
+
+def _safe_param_int(key: str, default: int, min_value: int = 0) -> int:
+    try:
+        value = int(get_current_param(key, default))
+    except (TypeError, ValueError):
+        return default
+    return max(min_value, value)
 
 
 @rob_protection_matcher.handle()
@@ -56,7 +66,13 @@ async def handle_toggle_rob_protection(
     else:
         raise_command_usage()
 
-    cost = max(0, int(get_current_param("toggle_cost", 200)))
+    cost = _safe_param_int("toggle_cost", 200, min_value=0)
+    if cost > MAX_COINS_AMOUNT:
+        await bot.send(
+            event,
+            at + " " + reply_failure("切换抢劫保护", f"数量过大（最多 {MAX_COINS_AMOUNT}）"),
+        )
+        return
 
     user_id = event.get_user_id()
     session = get_session()
@@ -66,26 +82,52 @@ async def handle_toggle_rob_protection(
             await bot.send(event, at + " " + reply_failure("切换抢劫保护", "请先注册账号"))
             return
 
-        if bool(user.rob_protected) == target:
-            await bot.send(event, at + " " + reply_failure("切换抢劫保护", "已处于该状态"))
-            return
-
-        coins = int(user.coins or 0)
-        if coins < cost:
+        # 原子条件 UPDATE：互斥旧状态 + 余额校验 + 扣费 + 切换。
+        # 并发时第二条 rowcount=0，由 SQL 层兜底。
+        rowcount = session.execute(
+            update(User)
+            .where(
+                User.user_id == user_id,
+                User.coins >= cost,
+                User.rob_protected.is_(not target),
+            )
+            .values(
+                coins=User.coins - cost,
+                rob_protected=target,
+            )
+        ).rowcount
+        if rowcount == 0:
+            # 拉最新状态判定具体原因，保持原有错误文案
+            latest = session.query(User).filter(User.user_id == user_id).first()
+            if latest is None:
+                await bot.send(event, at + " " + reply_failure("切换抢劫保护", "请先注册账号"))
+                return
+            if bool(latest.rob_protected) == target:
+                await bot.send(event, at + " " + reply_failure("切换抢劫保护", "已处于该状态"))
+                return
+            latest_coins = int(latest.coins or 0)
             await bot.send(
                 event,
                 at + " " + reply_failure(
-                    "切换抢劫保护", f"金币不足，需 {cost}，当前 {coins}"
+                    "切换抢劫保护", f"金币不足，需 {cost}，当前 {latest_coins}"
                 ),
             )
             return
-
-        user.coins = coins - cost
-        user.rob_protected = target
         session.commit()
 
-        name = str(user.name)
-        current_coins = int(user.coins)
+        current_coins = int(
+            session.query(User.coins).filter(User.user_id == user_id).scalar() or 0
+        )
+        name = str(
+            session.query(User.name).filter(User.user_id == user_id).scalar() or ""
+        )
+    except Exception:  # noqa: BLE001
+        logger.exception(f"切换抢劫保护处理异常：user_id={user_id}")
+        try:
+            await bot.send(event, at + " " + reply_failure("切换抢劫保护", "处理失败，请稍后重试"))
+        except Exception:  # noqa: BLE001
+            pass
+        return
     finally:
         session.close()
 

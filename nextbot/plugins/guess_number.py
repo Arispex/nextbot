@@ -6,11 +6,13 @@ from nonebot.adapters import Bot, Event, Message
 from nonebot.adapters.onebot.v11 import MessageSegment as OBV11MessageSegment
 from nonebot.log import logger
 from nonebot.params import CommandArg
+from sqlalchemy import update
 
 from nextbot.command_config import command_control, get_current_param, raise_command_usage
 from nextbot.db import User, get_session
 from nextbot.message_parser import parse_command_args_with_fallback
 from nextbot.permissions import require_permission
+from nextbot.plugins.economy import MAX_COINS_AMOUNT
 from nextbot.time_utils import db_now_utc_naive
 from nextbot.text_utils import EMOJI_COIN, EMOJI_GAME, EMOJI_TARGET, reply_block, reply_failure
 
@@ -18,6 +20,14 @@ guess_matcher = on_command("猜数字")
 
 # 用内存记录冷却，重启清零
 _cooldown_map: dict[str, datetime] = {}
+
+
+def _safe_param_int(key: str, default: int, min_value: int = 0) -> int:
+    try:
+        value = int(get_current_param(key, default))
+    except (TypeError, ValueError):
+        return default
+    return max(min_value, value)
 
 
 @guess_matcher.handle()
@@ -119,7 +129,7 @@ async def handle_guess_number(bot: Bot, event: Event, arg: Message = CommandArg(
     if len(args) != 2:
         raise_command_usage()
 
-    range_max = max(10, int(get_current_param("range_max", 100)))
+    range_max = max(10, _safe_param_int("range_max", 100, min_value=10))
 
     try:
         guess = int(args[0])
@@ -139,19 +149,25 @@ async def handle_guess_number(bot: Bot, event: Event, arg: Message = CommandArg(
         await bot.send(event, at + " " + reply_failure("猜数字", "投入金币必须为正整数"))
         return
 
-    min_cost = max(1, int(get_current_param("min_cost", 10)))
-    max_cost = max(0, int(get_current_param("max_cost", 0)))
+    min_cost = max(1, _safe_param_int("min_cost", 10, min_value=1))
+    max_cost = _safe_param_int("max_cost", 0, min_value=0)
     if cost < min_cost:
         await bot.send(event, at + " " + reply_failure("猜数字", f"最低投入 {min_cost} 金币"))
         return
     if max_cost > 0 and cost > max_cost:
         await bot.send(event, at + " " + reply_failure("猜数字", f"最高投入 {max_cost} 金币"))
         return
+    if cost > MAX_COINS_AMOUNT:
+        await bot.send(
+            event,
+            at + " " + reply_failure("猜数字", f"数量过大（最多 {MAX_COINS_AMOUNT}）"),
+        )
+        return
 
     user_id = event.get_user_id()
 
     # 冷却检查
-    cooldown_seconds = max(0, int(get_current_param("cooldown_seconds", 30)))
+    cooldown_seconds = _safe_param_int("cooldown_seconds", 30, min_value=0)
     now = db_now_utc_naive()
     if cooldown_seconds > 0:
         last_time = _cooldown_map.get(user_id)
@@ -170,9 +186,17 @@ async def handle_guess_number(bot: Bot, event: Event, arg: Message = CommandArg(
             await bot.send(event, at + " " + reply_failure("猜数字", "请先注册账号"))
             return
 
-        coins = int(user.coins or 0)
-        if coins < cost:
-            await bot.send(event, at + " " + reply_failure("猜数字", f"金币不足（当前 {coins}）"))
+        # 原子条件 UPDATE：扣押金。并发时第二条 rowcount=0 → 金币不足。
+        rowcount = session.execute(
+            update(User)
+            .where(User.user_id == user_id, User.coins >= cost)
+            .values(coins=User.coins - cost)
+        ).rowcount
+        if rowcount == 0:
+            coins_now = int(
+                session.query(User.coins).filter(User.user_id == user_id).scalar() or 0
+            )
+            await bot.send(event, at + " " + reply_failure("猜数字", f"金币不足（当前 {coins_now}）"))
             return
 
         # 生成答案
@@ -180,12 +204,12 @@ async def handle_guess_number(bot: Bot, event: Event, arg: Message = CommandArg(
         diff = abs(guess - answer)
 
         # 判定结果
-        exact_multiplier = max(1, int(get_current_param("exact_multiplier", 10)))
-        near_range = max(1, int(get_current_param("near_range", 5)))
-        near_multiplier = max(1, int(get_current_param("near_multiplier", 5)))
-        close_range = max(1, int(get_current_param("close_range", 10)))
-        close_multiplier = max(1, int(get_current_param("close_multiplier", 2)))
-        far_range = max(1, int(get_current_param("far_range", 25)))
+        exact_multiplier = max(1, _safe_param_int("exact_multiplier", 10, min_value=1))
+        near_range = max(1, _safe_param_int("near_range", 5, min_value=1))
+        near_multiplier = max(1, _safe_param_int("near_multiplier", 5, min_value=1))
+        close_range = max(1, _safe_param_int("close_range", 10, min_value=1))
+        close_multiplier = max(1, _safe_param_int("close_multiplier", 2, min_value=1))
+        far_range = max(1, _safe_param_int("far_range", 25, min_value=1))
 
         if diff == 0:
             result_type = "命中"
@@ -204,16 +228,61 @@ async def handle_guess_number(bot: Bot, event: Event, arg: Message = CommandArg(
             payout = 0
 
         net = payout - cost
-        user.coins = coins + net
-        user.guess_total_count = int(user.guess_total_count or 0) + 1
+
+        # 累加 payout（如果 > 0）+ 统计字段，全部用条件 UPDATE
         if net > 0:
-            user.guess_win_count = int(user.guess_win_count or 0) + 1
-            user.guess_total_gain = int(user.guess_total_gain or 0) + net
+            session.execute(
+                update(User)
+                .where(User.user_id == user_id)
+                .values(
+                    coins=User.coins + payout,
+                    guess_total_count=User.guess_total_count + 1,
+                    guess_win_count=User.guess_win_count + 1,
+                    guess_total_gain=User.guess_total_gain + net,
+                )
+            )
         elif net < 0:
-            user.guess_total_loss = int(user.guess_total_loss or 0) + abs(net)
+            if payout > 0:
+                session.execute(
+                    update(User)
+                    .where(User.user_id == user_id)
+                    .values(
+                        coins=User.coins + payout,
+                        guess_total_count=User.guess_total_count + 1,
+                        guess_total_loss=User.guess_total_loss + abs(net),
+                    )
+                )
+            else:
+                session.execute(
+                    update(User)
+                    .where(User.user_id == user_id)
+                    .values(
+                        guess_total_count=User.guess_total_count + 1,
+                        guess_total_loss=User.guess_total_loss + abs(net),
+                    )
+                )
+        else:
+            # net == 0：payout == cost，把押金原数加回，仅累计场次
+            session.execute(
+                update(User)
+                .where(User.user_id == user_id)
+                .values(
+                    coins=User.coins + payout,
+                    guess_total_count=User.guess_total_count + 1,
+                )
+            )
         session.commit()
 
-        final_coins = int(user.coins)
+        final_coins = int(
+            session.query(User.coins).filter(User.user_id == user_id).scalar() or 0
+        )
+    except Exception:  # noqa: BLE001
+        logger.exception(f"猜数字处理异常：user_id={user_id}")
+        try:
+            await bot.send(event, at + " " + reply_failure("猜数字", "处理失败，请稍后重试"))
+        except Exception:  # noqa: BLE001
+            pass
+        return
     finally:
         session.close()
 

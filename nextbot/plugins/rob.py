@@ -1,11 +1,12 @@
 import random
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from nonebot import on_command
 from nonebot.adapters import Bot, Event, Message
 from nonebot.adapters.onebot.v11 import MessageSegment as OBV11MessageSegment
 from nonebot.log import logger
 from nonebot.params import CommandArg
+from sqlalchemy import or_ as sa_or, update
 
 from nextbot.command_config import command_control, get_current_param, raise_command_usage
 from nextbot.db import User, get_session
@@ -15,6 +16,14 @@ from nextbot.time_utils import db_now_utc_naive
 from nextbot.text_utils import reply_failure
 
 rob_matcher = on_command("抢劫")
+
+
+def _safe_param_int(key: str, default: int, min_value: int = 0) -> int:
+    try:
+        value = int(get_current_param(key, default))
+    except (TypeError, ValueError):
+        return default
+    return max(min_value, value)
 
 
 @rob_matcher.handle()
@@ -136,6 +145,14 @@ rob_matcher = on_command("抢劫")
 @require_permission("economy.rob")
 async def handle_rob(bot: Bot, event: Event, arg: Message = CommandArg()) -> None:
     at = OBV11MessageSegment.at(int(event.get_user_id()))
+    robber_id = event.get_user_id()
+
+    # M-3.3：自抢短路。如果第一个参数是数字 ID 且等于发起者，立即拒绝，
+    # 避免先做一次按名字 lookup 的 SQL。按名字 / @ 的自抢仍由后面的 robber_id == target_user_id 兜底。
+    early_args = parse_command_args_with_fallback(event, arg, "抢劫")
+    if early_args and early_args[0].isdigit() and early_args[0] == robber_id:
+        await bot.send(event, at + " " + reply_failure("抢劫", "不能抢劫自己"))
+        return
 
     target_user_id, parse_error = resolve_user_id_arg_with_fallback(
         event, arg, "抢劫", arg_index=0,
@@ -155,23 +172,22 @@ async def handle_rob(bot: Bot, event: Event, arg: Message = CommandArg()) -> Non
     if len(args) != 1:
         raise_command_usage()
 
-    robber_id = event.get_user_id()
     if robber_id == target_user_id:
         await bot.send(event, at + " " + reply_failure("抢劫", "不能抢劫自己"))
         return
 
-    cooldown_minutes = max(0, int(get_current_param("cooldown_minutes", 60)))
-    min_steal_percent = max(1, min(int(get_current_param("min_steal_percent", 5)), 100))
-    max_steal_percent = max(min_steal_percent, min(int(get_current_param("max_steal_percent", 10)), 100))
-    crit_multiplier = max(1, int(get_current_param("crit_multiplier", 2)))
-    fail_penalty_percent = max(0, min(int(get_current_param("fail_penalty_percent", 10)), 100))
-    counter_steal_percent = max(0, min(int(get_current_param("counter_steal_percent", 10)), 100))
-    police_penalty_percent = max(0, min(int(get_current_param("police_penalty_percent", 20)), 100))
-    success_rate = max(0, min(int(get_current_param("success_rate", 50)), 100))
-    crit_rate = max(0, min(int(get_current_param("crit_rate", 10)), 100))
-    counter_rate = max(0, min(int(get_current_param("counter_rate", 20)), 100))
-    police_rate = max(0, min(int(get_current_param("police_rate", 10)), 100))
-    min_coins_to_rob = max(1, int(get_current_param("min_coins_to_rob", 1)))
+    cooldown_minutes = _safe_param_int("cooldown_minutes", 60, min_value=0)
+    min_steal_percent = max(1, min(_safe_param_int("min_steal_percent", 5, min_value=1), 100))
+    max_steal_percent = max(min_steal_percent, min(_safe_param_int("max_steal_percent", 10, min_value=1), 100))
+    crit_multiplier = max(1, _safe_param_int("crit_multiplier", 2, min_value=1))
+    fail_penalty_percent = max(0, min(_safe_param_int("fail_penalty_percent", 10, min_value=0), 100))
+    counter_steal_percent = max(0, min(_safe_param_int("counter_steal_percent", 10, min_value=0), 100))
+    police_penalty_percent = max(0, min(_safe_param_int("police_penalty_percent", 20, min_value=0), 100))
+    success_rate = max(0, min(_safe_param_int("success_rate", 50, min_value=0), 100))
+    crit_rate = max(0, min(_safe_param_int("crit_rate", 10, min_value=0), 100))
+    counter_rate = max(0, min(_safe_param_int("counter_rate", 20, min_value=0), 100))
+    police_rate = max(0, min(_safe_param_int("police_rate", 10, min_value=0), 100))
+    min_coins_to_rob = max(1, _safe_param_int("min_coins_to_rob", 1, min_value=1))
 
     session = get_session()
     try:
@@ -185,7 +201,7 @@ async def handle_rob(bot: Bot, event: Event, arg: Message = CommandArg()) -> Non
             await bot.send(event, at + " " + reply_failure("抢劫", "对方未注册账号"))
             return
 
-        # 冷却检查
+        # 冷却检查（应用层提前给文案；真正强制冷却由下面 UPDATE WHERE 兜底）
         now = db_now_utc_naive()
         if cooldown_minutes > 0 and robber.last_rob_time is not None:
             elapsed = now - robber.last_rob_time
@@ -199,7 +215,7 @@ async def handle_rob(bot: Bot, event: Event, arg: Message = CommandArg()) -> Non
                 )
                 return
 
-        # 金币检查
+        # 金币检查（基于 stale 余额；并发钳制由后面的条件 UPDATE 兜底）
         robber_coins = int(robber.coins or 0)
         victim_coins = int(victim.coins or 0)
         if victim_coins <= 0:
@@ -225,10 +241,22 @@ async def handle_rob(bot: Bot, event: Event, arg: Message = CommandArg()) -> Non
 
         # 抽签决定结果
         roll = random.randint(1, 100)
-        # 区间: [1, success_rate] 成功, (success_rate, success_rate+counter_rate] 反被抢,
-        #        (success_rate+counter_rate, success_rate+counter_rate+police_rate] 警察, 剩余 普通失败
         result_type: str
         amount: int = 0
+
+        # attacker 的冷却 / 保护条件，所有路径都必须校验
+        cutoff = now - timedelta(minutes=cooldown_minutes) if cooldown_minutes > 0 else None
+        attacker_cooldown_filter = (
+            sa_or(User.last_rob_time.is_(None), User.last_rob_time < cutoff)
+            if cutoff is not None
+            else None
+        )
+
+        def attacker_where_clauses() -> list:
+            clauses: list = [User.user_id == robber_id, User.rob_protected.is_(False)]
+            if attacker_cooldown_filter is not None:
+                clauses.append(attacker_cooldown_filter)
+            return clauses
 
         if roll <= success_rate:
             # 成功，判断是否大成功
@@ -241,44 +269,177 @@ async def handle_rob(bot: Bot, event: Event, arg: Message = CommandArg()) -> Non
             else:
                 result_type = "success"
                 amount = base_amount
-            # 不能超过对方实际金币
+            # 不能超过对方实际金币（基于 stale，并发钳制由 UPDATE WHERE 兜底）
             amount = min(amount, victim_coins)
 
-            robber.coins = robber_coins + amount
-            victim.coins = victim_coins - amount
-            robber.rob_total_count = int(robber.rob_total_count or 0) + 1
-            robber.rob_success_count = int(robber.rob_success_count or 0) + 1
-            robber.rob_total_gain = int(robber.rob_total_gain or 0) + amount
-            victim.rob_total_loss = int(victim.rob_total_loss or 0) + amount
+            # 1) 先扣 victim：要求 coins >= amount AND rob_protected = False
+            v_rows = session.execute(
+                update(User)
+                .where(
+                    User.user_id == target_user_id,
+                    User.coins >= amount,
+                    User.rob_protected.is_(False),
+                )
+                .values(
+                    coins=User.coins - amount,
+                    rob_total_loss=User.rob_total_loss + amount,
+                )
+            ).rowcount
+            if v_rows == 0:
+                # victim 状态发生变更（金币不足 / 开启保护）
+                # 不需要回滚（还没改任何东西），重新拉一个清晰文案
+                latest_victim = session.query(User).filter(User.user_id == target_user_id).first()
+                if latest_victim is not None and bool(latest_victim.rob_protected):
+                    await bot.send(event, at + " " + reply_failure("抢劫", "对方处于保护状态，无法抢劫"))
+                else:
+                    await bot.send(event, at + " " + reply_failure("抢劫", "对方身无分文"))
+                return
+
+            # 2) 加 attacker：同时校验 attacker 冷却 + 保护
+            a_rows = session.execute(
+                update(User)
+                .where(*attacker_where_clauses())
+                .values(
+                    coins=User.coins + amount,
+                    rob_total_count=User.rob_total_count + 1,
+                    rob_success_count=User.rob_success_count + 1,
+                    rob_total_gain=User.rob_total_gain + amount,
+                    last_rob_time=now,
+                )
+            ).rowcount
+            if a_rows == 0:
+                # 回滚 victim 扣款
+                session.execute(
+                    update(User)
+                    .where(User.user_id == target_user_id)
+                    .values(
+                        coins=User.coins + amount,
+                        rob_total_loss=User.rob_total_loss - amount,
+                    )
+                )
+                session.commit()
+                await bot.send(event, at + " " + reply_failure("抢劫", "冷却中或保护状态变更，已取消"))
+                return
 
         elif roll <= success_rate + counter_rate:
             result_type = "counter"
             amount = max(1, robber_coins * counter_steal_percent // 100)
-            robber.coins = robber_coins - amount
-            victim.coins = victim_coins + amount
-            robber.rob_total_count = int(robber.rob_total_count or 0) + 1
-            robber.rob_total_penalty = int(robber.rob_total_penalty or 0) + amount
-            victim.rob_total_gain = int(victim.rob_total_gain or 0) + amount
+
+            # 扣 attacker：同时校验金币足够 + 冷却 + 保护
+            a_rows = session.execute(
+                update(User)
+                .where(
+                    *attacker_where_clauses(),
+                    User.coins >= amount,
+                )
+                .values(
+                    coins=User.coins - amount,
+                    rob_total_count=User.rob_total_count + 1,
+                    rob_total_penalty=User.rob_total_penalty + amount,
+                    last_rob_time=now,
+                )
+            ).rowcount
+            if a_rows == 0:
+                # 并发：attacker 金币 / 冷却 / 保护状态变更，整次 counter 取消
+                # 不能回退到 "钳制为 0"，因为后续 victim 还要 +amount，会凭空产生金币
+                await bot.send(event, at + " " + reply_failure("抢劫", "金币不足以承担反被抢的损失，已取消"))
+                return
+
+            # 加 victim（与 amount 一致，attacker 已经原子扣了完整 amount，金币守恒）
+            session.execute(
+                update(User)
+                .where(User.user_id == target_user_id)
+                .values(
+                    coins=User.coins + amount,
+                    rob_total_gain=User.rob_total_gain + amount,
+                )
+            )
 
         elif roll <= success_rate + counter_rate + police_rate:
             result_type = "police"
             amount = max(1, robber_coins * police_penalty_percent // 100)
-            robber.coins = robber_coins - amount
-            robber.rob_total_count = int(robber.rob_total_count or 0) + 1
-            robber.rob_total_penalty = int(robber.rob_total_penalty or 0) + amount
+
+            a_rows = session.execute(
+                update(User)
+                .where(
+                    *attacker_where_clauses(),
+                    User.coins >= amount,
+                )
+                .values(
+                    coins=User.coins - amount,
+                    rob_total_count=User.rob_total_count + 1,
+                    rob_total_penalty=User.rob_total_penalty + amount,
+                    last_rob_time=now,
+                )
+            ).rowcount
+            if a_rows == 0:
+                a_rows_fallback = session.execute(
+                    update(User)
+                    .where(
+                        *attacker_where_clauses(),
+                        User.coins > 0,
+                    )
+                    .values(
+                        coins=0,
+                        rob_total_count=User.rob_total_count + 1,
+                        rob_total_penalty=User.rob_total_penalty + User.coins,
+                        last_rob_time=now,
+                    )
+                ).rowcount
+                if a_rows_fallback == 0:
+                    await bot.send(event, at + " " + reply_failure("抢劫", "冷却中或保护状态变更，已取消"))
+                    return
 
         else:
             result_type = "fail"
             amount = max(1, robber_coins * fail_penalty_percent // 100)
-            robber.coins = robber_coins - amount
-            robber.rob_total_count = int(robber.rob_total_count or 0) + 1
-            robber.rob_total_penalty = int(robber.rob_total_penalty or 0) + amount
 
-        robber.last_rob_time = now
+            a_rows = session.execute(
+                update(User)
+                .where(
+                    *attacker_where_clauses(),
+                    User.coins >= amount,
+                )
+                .values(
+                    coins=User.coins - amount,
+                    rob_total_count=User.rob_total_count + 1,
+                    rob_total_penalty=User.rob_total_penalty + amount,
+                    last_rob_time=now,
+                )
+            ).rowcount
+            if a_rows == 0:
+                a_rows_fallback = session.execute(
+                    update(User)
+                    .where(
+                        *attacker_where_clauses(),
+                        User.coins > 0,
+                    )
+                    .values(
+                        coins=0,
+                        rob_total_count=User.rob_total_count + 1,
+                        rob_total_penalty=User.rob_total_penalty + User.coins,
+                        last_rob_time=now,
+                    )
+                ).rowcount
+                if a_rows_fallback == 0:
+                    await bot.send(event, at + " " + reply_failure("抢劫", "冷却中或保护状态变更，已取消"))
+                    return
+
         session.commit()
 
-        robber_name = str(robber.name)
-        victim_name = str(victim.name)
+        robber_name = str(
+            session.query(User.name).filter(User.user_id == robber_id).scalar() or ""
+        )
+        victim_name = str(
+            session.query(User.name).filter(User.user_id == target_user_id).scalar() or ""
+        )
+    except Exception:  # noqa: BLE001
+        logger.exception(f"抢劫处理异常：robber_id={robber_id} target_id={target_user_id}")
+        try:
+            await bot.send(event, at + " " + reply_failure("抢劫", "处理失败，请稍后重试"))
+        except Exception:  # noqa: BLE001
+            pass
+        return
     finally:
         session.close()
 
