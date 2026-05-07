@@ -39,6 +39,7 @@ my_inventory_matcher = on_command("我的背包")
 progress_matcher = on_command("进度")
 my_map_matcher = on_command("我的地图")
 user_map_matcher = on_command("用户地图")
+explored_map_matcher = on_command("查看地图")
 
 INVENTORY_SCREENSHOT_OPTIONS = ScreenshotOptions(
     viewport_width=2000,
@@ -798,6 +799,89 @@ async def handle_user_map(bot: Bot, event: Event, arg: Message = CommandArg()):
             await bot.send(event, at + image)
             return
         await bot.send(event, f"✅ 地图生成成功，文件：{screenshot_path}")
+
+
+@explored_map_matcher.handle()
+@command_control(
+    command_key="player_query.map.explored",
+    display_name="查看地图",
+    permission="player_query.map.explored",
+    description="查看所有玩家共同探索过的区域地图",
+    usage="查看地图 <服务器 ID>",
+    category="玩家查询",
+)
+@require_permission("player_query.map.explored")
+async def handle_explored_map(bot: Bot, event: Event, arg: Message = CommandArg()):
+    # API 已直接返回最终的 PNG base64，无需走 page+screenshot 渲染。
+    args = parse_command_args_with_fallback(event, arg, "查看地图")
+    if len(args) != 1:
+        raise_command_usage()
+
+    try:
+        server_id = int(args[0])
+    except ValueError:
+        raise_command_usage()
+
+    requester_user_id = event.get_user_id()
+    session = get_session()
+    try:
+        server = session.query(Server).filter(Server.id == server_id).first()
+    finally:
+        session.close()
+
+    if server is None:
+        await bot.send(event, reply_failure("查询", "服务器不存在"))
+        return
+
+    logger.info(
+        f"查看地图请求：server_id={server.id} requester_user_id={requester_user_id}"
+    )
+
+    try:
+        response = await request_server_api(
+            server,
+            "/nextbot/world/explored-map-image",
+            timeout=30.0,
+        )
+    except TShockRequestError:
+        await bot.send(event, reply_failure("查询", "无法连接服务器"))
+        return
+
+    if not is_success(response):
+        await bot.send(event, reply_failure("查询", f"{get_error_reason(response)}"))
+        return
+
+    b64_string = str(response.payload.get("base64") or "").strip()
+    if not b64_string:
+        await bot.send(event, reply_failure("查询", "返回数据格式错误"))
+        return
+
+    try:
+        png_bytes = base64.b64decode(b64_string, validate=True)
+    except (binascii.Error, ValueError):
+        await bot.send(event, reply_failure("查询", "返回数据格式错误"))
+        return
+
+    async with temp_screenshot_path(
+        f"explored-map-{server.id}"
+    ) as screenshot_path:
+        try:
+            screenshot_path.write_bytes(png_bytes)
+        except OSError:
+            await bot.send(event, reply_failure("查询", "保存图片失败"))
+            return
+
+        logger.info(
+            f"查看地图发送成功：server_id={server.id} requester_user_id={requester_user_id} file={screenshot_path}"
+        )
+
+        if bot.adapter.get_name() == "OneBot V11":
+            # 同消息内 @ 发起人 + 图片，与 我的地图 / 用户地图 一致
+            at = OBV11MessageSegment.at(int(requester_user_id))
+            image = OBV11MessageSegment.image(file=f"base64://{b64_string}")
+            await bot.send(event, at + image)
+            return
+        await bot.send(event, f"✅ 探索地图生成成功，文件：{screenshot_path}")
 
 
 @progress_matcher.handle()
