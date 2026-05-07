@@ -137,3 +137,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 99: 经济系统命令审计与修复
+
+**Date**: 2026-05-07
+**Task**: 经济系统命令审计与修复
+**Branch**: `main`
+
+### Summary
+
+对 经济系统 4 个命令做安全/性能审计，sub-agent 初审 + 主代理二次复查后保留 2 必修 + 3 应修 + 4 建议 + 1 文案改动。修复：转账并发金币凭空产生 / 签到并发 UserSignRecord 双写 / user_sign_record 加唯一约束 + 启动迁移 / signed_today 字段彻底废弃（删 ORM 字段 + 删 signin_reset.py + 启动 DROP COLUMN）/ add/remove lost-update / amount 上界 / 解析风格统一 / get_session 全局单例 / 异常兜底 / 签到回复'获得金币'→'基础奖励'。修复后再次审计验证 经济系统 命令已无新增缺陷与漏洞，行为与文案完全一致（除 F-Obs.3 用户明确要的文案）。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `0206834` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
