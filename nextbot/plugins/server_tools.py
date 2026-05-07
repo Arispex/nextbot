@@ -25,7 +25,7 @@ from nextbot.text_utils import EMOJI_SERVER, reply_block, reply_failure, reply_s
 
 
 execute_matcher = on_command("执行")
-map_image_matcher = on_command("查看地图")
+map_image_matcher = on_command("全亮地图")
 download_map_matcher = on_command("下载地图")
 
 
@@ -134,17 +134,17 @@ async def handle_execute(
 @map_image_matcher.handle()
 @command_control(
     command_key="server_tools.map_image",
-    display_name="查看地图",
+    display_name="全亮地图",
     permission="server_tools.map_image",
     description="生成当前世界地图图片",
-    usage="查看地图 <服务器 ID>",
+    usage="全亮地图 <服务器 ID>",
     category="服务器工具",
 )
 @require_permission("server_tools.map_image")
 async def handle_map_image(
     bot: Bot, event: Event, arg: Message = CommandArg()
 ):
-    args = parse_command_args_with_fallback(event, arg, "查看地图")
+    args = parse_command_args_with_fallback(event, arg, "全亮地图")
     if len(args) != 1:
         raise_command_usage()
 
