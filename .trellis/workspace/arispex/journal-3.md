@@ -303,3 +303,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 104: 仓库系统命令审计与修复
+
+**Date**: 2026-05-07
+**Task**: 仓库系统命令审计与修复
+**Branch**: `main`
+
+### Summary
+
+对 仓库系统 8 个命令做安全/性能审计（1700 行最大审计目标），sub-agent 初审 + 主代理二次复查后保留 3 必修 + 5 应修 + 6 建议（跳过 quantity 上界 / ratio 上限 / cache 共 3 项观察 / 用户明确指示项）。修复：回收金币 lost-update（条件 UPDATE）/ 领取双重一致性（DB-TShock 补偿日志，无完美解只 logger.error CRITICAL + 用户提示）/ 8 handler 异常兜底 / value 上界 + refund cap / 多格领取失败明细 / WarehouseItem 索引迁移 / unicode 名字折叠 / 多 session 合并 / _find_empty_slots 性能。第二轮 check 通过；又补 3 个非阻塞优化（execute_rowcount + 全失败 reply_failure + 调用方传 session）。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8d5ba4d` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
