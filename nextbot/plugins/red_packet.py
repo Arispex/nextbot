@@ -13,10 +13,16 @@ from nonebot.params import CommandArg
 from sqlalchemy import update as sa_update
 from sqlalchemy.exc import IntegrityError
 
-from nextbot.command_config import command_control, get_current_param, raise_command_usage
+from nextbot.command_config import (
+    command_control,
+    get_current_param,
+    raise_command_usage,
+)
 from nextbot.db import RedPacket, RedPacketClaim, User, get_session
 from nextbot.message_parser import parse_command_args_with_fallback
 from nextbot.permissions import require_permission
+from nextbot.plugins.economy import MAX_COINS_AMOUNT
+from nextbot.screenshot_temp import temp_screenshot_path
 from nextbot.text_utils import (
     EMOJI_CHART,
     EMOJI_COIN,
@@ -27,7 +33,6 @@ from nextbot.text_utils import (
     reply_failure,
     reply_success,
 )
-from nextbot.screenshot_temp import temp_screenshot_path
 from nextbot.time_utils import db_now_utc_naive, format_beijing_datetime
 from server.screenshot import RenderScreenshotError, ScreenshotOptions, screenshot_url
 from server.web_server import create_red_packet_all_page, create_red_packet_own_page
@@ -69,6 +74,10 @@ def _draw_lucky(remaining_amount: int, remaining_count: int) -> int:
     high = max(1, int(avg * 2))
     high = min(high, remaining_amount - (remaining_count - 1))
     if high < 1:
+        logger.warning(
+            f"_draw_lucky 边界异常：remaining_amount={remaining_amount}，"
+            f"remaining_count={remaining_count}，high={high}"
+        )
         return 1
     return random.randint(1, high)
 
@@ -146,6 +155,12 @@ async def handle_send(bot: Bot, event: Event, arg: Message = CommandArg()) -> No
     if total_amount <= 0 or count <= 0:
         await bot.send(event, at + " " + reply_failure("发红包", "总金额和个数必须为正整数"))
         return
+    if total_amount > MAX_COINS_AMOUNT:
+        await bot.send(
+            event,
+            at + " " + reply_failure("发红包", f"金额过大（最多 {MAX_COINS_AMOUNT}）"),
+        )
+        return
 
     max_count = max(1, int(get_current_param("max_count", 100)))
     min_amount_per_slot = max(1, int(get_current_param("min_amount_per_slot", 1)))
@@ -161,6 +176,7 @@ async def handle_send(bot: Bot, event: Event, arg: Message = CommandArg()) -> No
         return
 
     user_id = event.get_user_id()
+    send_success = False
     session = get_session()
     try:
         existing = session.query(RedPacket).filter(RedPacket.name == name).first()
@@ -172,15 +188,24 @@ async def handle_send(bot: Bot, event: Event, arg: Message = CommandArg()) -> No
         if sender is None:
             await bot.send(event, at + " " + reply_failure("发红包", "请先注册账号"))
             return
-        sender_coins = int(sender.coins or 0)
-        if sender_coins < total_amount:
+
+        # 原子条件 UPDATE：扣 sender 余额（带 coins ≥ total_amount 条件）
+        # 并发被抢走时 rowcount=0，回退"金币不足"
+        rowcount = session.execute(
+            sa_update(User)
+            .where(User.user_id == user_id, User.coins >= total_amount)
+            .values(coins=User.coins - total_amount)
+        ).rowcount
+        if rowcount == 0:
+            sender_coins_now = int(
+                session.query(User.coins).filter(User.user_id == user_id).scalar() or 0
+            )
             await bot.send(
                 event,
-                at + " " + reply_failure("发红包", f"金币不足（当前 {sender_coins}，需 {total_amount}）"),
+                at + " " + reply_failure("发红包", f"金币不足（当前 {sender_coins_now}，需 {total_amount}）"),
             )
             return
 
-        sender.coins = sender_coins - total_amount
         packet = RedPacket(
             name=name,
             sender_user_id=user_id,
@@ -192,9 +217,28 @@ async def handle_send(bot: Bot, event: Event, arg: Message = CommandArg()) -> No
             status="active",
         )
         session.add(packet)
-        session.commit()
+        try:
+            session.commit()
+        except IntegrityError:
+            # 名称撞 UNIQUE 等约束冲突：rollback 自动撤销之前的扣款 UPDATE
+            # （SQLAlchemy 2.0 + autocommit=False 事务原子性保证）
+            session.rollback()
+            await bot.send(event, at + " " + reply_failure("发红包", "红包名称已被使用过，请换一个"))
+            return
+
+        send_success = True
+    except Exception:  # noqa: BLE001
+        logger.exception(f"发红包处理异常：user_id={user_id}")
+        try:
+            await bot.send(event, at + " " + reply_failure("发红包", "处理失败，请稍后重试"))
+        except Exception:  # noqa: BLE001
+            pass
+        return
     finally:
         session.close()
+
+    if not send_success:
+        return
 
     logger.info(
         f"发红包成功：user_id={user_id}，name={name}，type={type_en}，"
@@ -236,6 +280,13 @@ async def handle_grab(bot: Bot, event: Event, arg: Message = CommandArg()) -> No
 
     user_id = event.get_user_id()
 
+    grab_success = False
+    packet_name = ""
+    packet_type = ""
+    packet_total_amount = 0
+    packet_total_count = 0
+    draw_amount = 0
+    taken_amount = 0
     session = get_session()
     try:
         packet = session.query(RedPacket).filter(RedPacket.name == name).first()
@@ -298,7 +349,12 @@ async def handle_grab(bot: Bot, event: Event, arg: Message = CommandArg()) -> No
             session.rollback()
             await bot.send(event, at + " " + reply_failure("抢红包", "请先注册账号"))
             return
-        grabber.coins = int(grabber.coins or 0) + draw_amount
+        # 原子条件 UPDATE：加 grabber 余额（避免 lost-update）
+        session.execute(
+            sa_update(User)
+            .where(User.user_id == user_id)
+            .values(coins=User.coins + draw_amount)
+        )
 
         refreshed_packet = session.query(RedPacket).filter(RedPacket.id == packet_id).first()
         if refreshed_packet is not None and int(refreshed_packet.remaining_count) == 0:
@@ -309,8 +365,19 @@ async def handle_grab(bot: Bot, event: Event, arg: Message = CommandArg()) -> No
         taken_amount = packet_total_amount - (
             int(refreshed_packet.remaining_amount) if refreshed_packet is not None else 0
         )
+        grab_success = True
+    except Exception:  # noqa: BLE001
+        logger.exception(f"抢红包处理异常：user_id={user_id}")
+        try:
+            await bot.send(event, at + " " + reply_failure("抢红包", "处理失败，请稍后重试"))
+        except Exception:  # noqa: BLE001
+            pass
+        return
     finally:
         session.close()
+
+    if not grab_success:
+        return
 
     type_zh = _TYPE_EN_TO_ZH.get(packet_type, packet_type)
     logger.info(
@@ -352,6 +419,8 @@ async def handle_withdraw(bot: Bot, event: Event, arg: Message = CommandArg()) -
 
     user_id = event.get_user_id()
 
+    withdraw_success = False
+    refund_amount = 0
     session = get_session()
     try:
         packet = session.query(RedPacket).filter(RedPacket.name == name).first()
@@ -386,10 +455,26 @@ async def handle_withdraw(bot: Bot, event: Event, arg: Message = CommandArg()) -
             session.rollback()
             await bot.send(event, at + " " + reply_failure("收回红包", "请先注册账号"))
             return
-        sender.coins = int(sender.coins or 0) + refund_amount
+        # 原子条件 UPDATE：退回 sender 余额（避免 lost-update）
+        session.execute(
+            sa_update(User)
+            .where(User.user_id == user_id)
+            .values(coins=User.coins + refund_amount)
+        )
         session.commit()
+        withdraw_success = True
+    except Exception:  # noqa: BLE001
+        logger.exception(f"收回红包处理异常：user_id={user_id}")
+        try:
+            await bot.send(event, at + " " + reply_failure("收回红包", "处理失败，请稍后重试"))
+        except Exception:  # noqa: BLE001
+            pass
+        return
     finally:
         session.close()
+
+    if not withdraw_success:
+        return
 
     logger.info(
         f"收回红包成功：user_id={user_id}，name={name}，refund_amount={refund_amount}"
@@ -473,57 +558,65 @@ async def handle_list_own(bot: Bot, event: Event, arg: Message = CommandArg()) -
     limit = max(1, min(int(get_current_param("limit", 10)), 50))
     user_id = event.get_user_id()
 
-    session = get_session()
     try:
-        total = (
-            session.query(RedPacket)
-            .filter(RedPacket.sender_user_id == user_id)
-            .count()
-        )
-        total_pages = max(1, math.ceil(total / limit)) if total > 0 else 1
-        if total > 0 and page > total_pages:
-            await bot.send(event, reply_failure("查询", f"超出总页数（共 {total_pages} 页）"))
-            return
-        offset = (page - 1) * limit
-        packets = (
-            session.query(RedPacket)
-            .filter(RedPacket.sender_user_id == user_id)
-            .order_by(RedPacket.created_at.desc())
-            .offset(offset)
-            .limit(limit)
-            .all()
-        )
-    finally:
-        session.close()
+        session = get_session()
+        try:
+            total = (
+                session.query(RedPacket)
+                .filter(RedPacket.sender_user_id == user_id)
+                .count()
+            )
+            total_pages = max(1, math.ceil(total / limit)) if total > 0 else 1
+            if total > 0 and page > total_pages:
+                await bot.send(event, reply_failure("查询", f"超出总页数（共 {total_pages} 页）"))
+                return
+            offset = (page - 1) * limit
+            packets = (
+                session.query(RedPacket)
+                .filter(RedPacket.sender_user_id == user_id)
+                .order_by(RedPacket.created_at.desc())
+                .offset(offset)
+                .limit(limit)
+                .all()
+            )
+        finally:
+            session.close()
 
-    entries: list[dict[str, object]] = []
-    for i, packet in enumerate(packets):
-        type_zh = _TYPE_EN_TO_ZH.get(str(packet.type), str(packet.type))
-        status_zh = _STATUS_ZH.get(str(packet.status), str(packet.status))
-        taken = int(packet.total_amount) - int(packet.remaining_amount)
-        taken_count = int(packet.total_count) - int(packet.remaining_count)
-        created = format_beijing_datetime(packet.created_at) if packet.created_at else ""
-        entries.append(
-            {
-                "index": offset + i + 1,
-                "name": str(packet.name),
-                "type_zh": type_zh,
-                "total_amount": int(packet.total_amount),
-                "taken": taken,
-                "total_count": int(packet.total_count),
-                "taken_count": taken_count,
-                "status_zh": status_zh,
-                "created": created,
-            }
-        )
+        entries: list[dict[str, object]] = []
+        for i, packet in enumerate(packets):
+            type_zh = _TYPE_EN_TO_ZH.get(str(packet.type), str(packet.type))
+            status_zh = _STATUS_ZH.get(str(packet.status), str(packet.status))
+            taken = int(packet.total_amount) - int(packet.remaining_amount)
+            taken_count = int(packet.total_count) - int(packet.remaining_count)
+            created = format_beijing_datetime(packet.created_at) if packet.created_at else ""
+            entries.append(
+                {
+                    "index": offset + i + 1,
+                    "name": str(packet.name),
+                    "type_zh": type_zh,
+                    "total_amount": int(packet.total_amount),
+                    "taken": taken,
+                    "total_count": int(packet.total_count),
+                    "taken_count": taken_count,
+                    "status_zh": status_zh,
+                    "created": created,
+                }
+            )
 
-    page_url = create_red_packet_own_page(
-        page=page, total_pages=total_pages, entries=entries,
-    )
-    logger.info(
-        f"我的红包渲染地址：user_id={user_id} page={page}/{total_pages} total={total} internal_url={page_url}"
-    )
-    await _send_red_packet_image(bot, event, page_url=page_url, file_prefix="red-packet-own")
+        page_url = create_red_packet_own_page(
+            page=page, total_pages=total_pages, entries=entries,
+        )
+        logger.info(
+            f"我的红包渲染地址：user_id={user_id} page={page}/{total_pages} total={total} internal_url={page_url}"
+        )
+        await _send_red_packet_image(bot, event, page_url=page_url, file_prefix="red-packet-own")
+    except Exception:  # noqa: BLE001
+        logger.exception(f"我的红包处理异常：user_id={user_id}")
+        try:
+            await bot.send(event, reply_failure("查询", "处理失败，请稍后重试"))
+        except Exception:  # noqa: BLE001
+            pass
+        return
 
 
 @list_all_matcher.handle()
@@ -564,58 +657,67 @@ async def handle_list_all(bot: Bot, event: Event, arg: Message = CommandArg()) -
             return
 
     limit = max(1, min(int(get_current_param("limit", 10)), 50))
+    user_id = event.get_user_id()
 
-    session = get_session()
     try:
-        total = (
-            session.query(RedPacket)
-            .filter(RedPacket.status == "active")
-            .count()
-        )
-        total_pages = max(1, math.ceil(total / limit)) if total > 0 else 1
-        if total > 0 and page > total_pages:
-            await bot.send(event, reply_failure("查询", f"超出总页数（共 {total_pages} 页）"))
-            return
-        offset = (page - 1) * limit
-        packets = (
-            session.query(RedPacket)
-            .filter(RedPacket.status == "active")
-            .order_by(RedPacket.created_at.desc())
-            .offset(offset)
-            .limit(limit)
-            .all()
-        )
-        sender_ids = {p.sender_user_id for p in packets}
-        senders = (
-            session.query(User).filter(User.user_id.in_(sender_ids)).all()
-            if sender_ids
-            else []
-        )
-        name_map = {u.user_id: u.name for u in senders}
-    finally:
-        session.close()
+        session = get_session()
+        try:
+            total = (
+                session.query(RedPacket)
+                .filter(RedPacket.status == "active")
+                .count()
+            )
+            total_pages = max(1, math.ceil(total / limit)) if total > 0 else 1
+            if total > 0 and page > total_pages:
+                await bot.send(event, reply_failure("查询", f"超出总页数（共 {total_pages} 页）"))
+                return
+            offset = (page - 1) * limit
+            packets = (
+                session.query(RedPacket)
+                .filter(RedPacket.status == "active")
+                .order_by(RedPacket.created_at.desc())
+                .offset(offset)
+                .limit(limit)
+                .all()
+            )
+            sender_ids = {p.sender_user_id for p in packets}
+            senders = (
+                session.query(User).filter(User.user_id.in_(sender_ids)).all()
+                if sender_ids
+                else []
+            )
+            name_map = {u.user_id: u.name for u in senders}
+        finally:
+            session.close()
 
-    entries: list[dict[str, object]] = []
-    for i, packet in enumerate(packets):
-        type_zh = _TYPE_EN_TO_ZH.get(str(packet.type), str(packet.type))
-        entries.append(
-            {
-                "index": offset + i + 1,
-                "name": str(packet.name),
-                "sender_name": name_map.get(packet.sender_user_id, "未知"),
-                "sender_user_id": str(packet.sender_user_id),
-                "type_zh": type_zh,
-                "remaining_amount": int(packet.remaining_amount),
-                "total_amount": int(packet.total_amount),
-                "remaining_count": int(packet.remaining_count),
-                "total_count": int(packet.total_count),
-            }
-        )
+        entries: list[dict[str, object]] = []
+        for i, packet in enumerate(packets):
+            type_zh = _TYPE_EN_TO_ZH.get(str(packet.type), str(packet.type))
+            entries.append(
+                {
+                    "index": offset + i + 1,
+                    "name": str(packet.name),
+                    "sender_name": name_map.get(packet.sender_user_id, "未知"),
+                    "sender_user_id": str(packet.sender_user_id),
+                    "type_zh": type_zh,
+                    "remaining_amount": int(packet.remaining_amount),
+                    "total_amount": int(packet.total_amount),
+                    "remaining_count": int(packet.remaining_count),
+                    "total_count": int(packet.total_count),
+                }
+            )
 
-    page_url = create_red_packet_all_page(
-        page=page, total_pages=total_pages, entries=entries,
-    )
-    logger.info(
-        f"红包列表渲染地址：page={page}/{total_pages} total={total} internal_url={page_url}"
-    )
-    await _send_red_packet_image(bot, event, page_url=page_url, file_prefix="red-packet-all")
+        page_url = create_red_packet_all_page(
+            page=page, total_pages=total_pages, entries=entries,
+        )
+        logger.info(
+            f"红包列表渲染地址：page={page}/{total_pages} total={total} internal_url={page_url}"
+        )
+        await _send_red_packet_image(bot, event, page_url=page_url, file_prefix="red-packet-all")
+    except Exception:  # noqa: BLE001
+        logger.exception(f"红包列表处理异常：user_id={user_id}")
+        try:
+            await bot.send(event, reply_failure("查询", "处理失败，请稍后重试"))
+        except Exception:  # noqa: BLE001
+            pass
+        return
