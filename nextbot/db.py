@@ -387,6 +387,7 @@ def init_db() -> None:
     ensure_shop_schema()
     ensure_lottery_schema()
     ensure_user_name_unique_schema()
+    ensure_warehouse_fk_schema()
     ensure_default_groups()
     ensure_default_stats()
 
@@ -774,6 +775,25 @@ def ensure_user_name_unique_schema() -> None:
                 ))
             except Exception:  # noqa: BLE001
                 pass
+
+
+def ensure_warehouse_fk_schema() -> None:
+    """启动时确保 warehouse_item.user_id 上有索引。
+
+    SQLite 不支持给已有列动态添加 FK 约束，但加索引可提升按 user_id
+    过滤的查询性能，并保持与 ORM 层 index=True 注解一致。失败仅
+    logger.warning 不阻断启动。
+    """
+    engine = get_engine()
+    with engine.begin() as conn:
+        try:
+            conn.execute(sa_text(
+                'CREATE INDEX IF NOT EXISTS "ix_warehouse_item_user_id" '
+                'ON "warehouse_item" (user_id)'
+            ))
+            logger.info("warehouse_item.user_id 索引已就绪")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"warehouse_item.user_id 索引创建失败: {exc}")
 
 
 def ensure_red_packet_schema() -> None:

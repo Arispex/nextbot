@@ -2,24 +2,41 @@ from __future__ import annotations
 
 import base64
 import json
+import unicodedata
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from nonebot import on_command
-from sqlalchemy.exc import IntegrityError
 from nonebot.adapters import Bot, Event, Message
 from nonebot.adapters.onebot.v11 import MessageSegment as OBV11MessageSegment
 from nonebot.log import logger
 from nonebot.params import CommandArg
+from sqlalchemy import update
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
-from nextbot.command_config import command_control, get_current_param, raise_command_usage
-from nextbot.db import WAREHOUSE_CAPACITY, Server, User, WarehouseItem, get_session
+from nextbot.command_config import (
+    CommandUsageError,
+    command_control,
+    get_current_param,
+    raise_command_usage,
+)
+from nextbot.db import (
+    WAREHOUSE_CAPACITY,
+    Server,
+    User,
+    WarehouseItem,
+    execute_rowcount,
+    get_session,
+)
 from nextbot.message_parser import (
     parse_command_args_with_fallback,
     resolve_user_id_arg_with_fallback,
 )
 from nextbot.permissions import require_permission
+from nextbot.plugins.economy import MAX_COINS_AMOUNT
 from nextbot.progression import PROGRESSION_KEY_TO_ZH, TIER_OPTIONS, parse_tier
+from nextbot.screenshot_temp import temp_screenshot_path
 from nextbot.text_utils import (
     EMOJI_CHART,
     EMOJI_COIN,
@@ -31,9 +48,13 @@ from nextbot.text_utils import (
     reply_failure,
     reply_success,
 )
-from nextbot.screenshot_temp import temp_screenshot_path
 from nextbot.time_utils import db_now_utc_naive
-from nextbot.tshock_api import TShockRequestError, get_error_reason, is_success, request_server_api
+from nextbot.tshock_api import (
+    TShockRequestError,
+    get_error_reason,
+    is_success,
+    request_server_api,
+)
 from nextbot.warehouse_lock import warehouse_lock
 from server.screenshot import RenderScreenshotError, ScreenshotOptions, screenshot_url
 from server.web_server import create_warehouse_page
@@ -151,28 +172,34 @@ def _build_tier_options_lines(per_line: int = 4) -> list[str]:
     return ["、".join(names[i:i + per_line]) for i in range(0, len(names), per_line)]
 
 
-def _load_user(user_id: str) -> User | None:
-    session = get_session()
-    try:
+def _load_user(user_id: str, *, session: Session | None = None) -> User | None:
+    if session is not None:
         return session.query(User).filter(User.user_id == user_id).first()
-    finally:
-        session.close()
-
-
-def _load_user_by_name(name: str) -> User | None:
-    session = get_session()
+    own_session = get_session()
     try:
+        return own_session.query(User).filter(User.user_id == user_id).first()
+    finally:
+        own_session.close()
+
+
+def _load_user_by_name(name: str, *, session: Session | None = None) -> User | None:
+    if session is not None:
         return session.query(User).filter(User.name == name).first()
-    finally:
-        session.close()
-
-
-def _load_server(server_id: int) -> Server | None:
-    session = get_session()
+    own_session = get_session()
     try:
-        return session.query(Server).filter(Server.id == server_id).first()
+        return own_session.query(User).filter(User.name == name).first()
     finally:
-        session.close()
+        own_session.close()
+
+
+def _load_server(server_id: int, *, session: Session | None = None) -> Server | None:
+    if session is not None:
+        return session.query(Server).filter(Server.id == server_id).first()
+    own_session = get_session()
+    try:
+        return own_session.query(Server).filter(Server.id == server_id).first()
+    finally:
+        own_session.close()
 
 
 def _find_first_empty_slot(session, user_id: str) -> int | None:
@@ -184,6 +211,35 @@ def _find_first_empty_slot(session, user_id: str) -> int | None:
         (i for i in range(1, WAREHOUSE_CAPACITY + 1) if i not in occupied),
         None,
     )
+
+
+def _find_empty_slots(session, user_id: str, count: int) -> list[int]:
+    """一次返回最多 count 个空格子号（升序）。
+
+    用于多格赠送批量找空位，避免 _find_first_empty_slot N² 重复全扫。
+    若空格数不足 count，返回的列表长度小于 count。
+    """
+    if count <= 0:
+        return []
+    occupied = {
+        int(s) for (s,) in session.query(WarehouseItem.slot_index)
+        .filter(WarehouseItem.user_id == user_id).all()
+    }
+    result: list[int] = []
+    for i in range(1, WAREHOUSE_CAPACITY + 1):
+        if i not in occupied:
+            result.append(i)
+            if len(result) >= count:
+                break
+    return result
+
+
+def _normalize_player_name(name: str) -> str:
+    """unicode 标准化 + 大小写折叠，用于跨平台玩家名比对。
+
+    NFKC 折叠全角/半角差异，casefold() 比 lower() 对 unicode 更健壮。
+    """
+    return unicodedata.normalize("NFKC", str(name)).strip().casefold()
 
 
 @asynccontextmanager
@@ -275,22 +331,32 @@ async def handle_list_self(bot: Bot, event: Event, arg: Message = CommandArg()) 
         raise_command_usage()
 
     user_id = event.get_user_id()
-    user = _load_user(user_id)
-    if user is None:
-        at = OBV11MessageSegment.at(int(user_id))
-        await bot.send(event, at + " " + reply_failure("查询", "未注册账号"))
-        return
+    at = OBV11MessageSegment.at(int(user_id))
+    try:
+        user = _load_user(user_id)
+        if user is None:
+            await bot.send(event, at + " " + reply_failure("查询", "未注册账号"))
+            return
 
-    slots = _load_warehouse_slots(user_id)
-    page_url = create_warehouse_page(
-        owner_user_id=user_id,
-        owner_user_name=str(user.name),
-        slots=slots,
-    )
-    logger.info(
-        f"我的仓库渲染：user_id={user_id} used={len(slots)} internal_url={page_url}"
-    )
-    await _send_warehouse_image(bot, event, page_url=page_url, file_prefix="warehouse-self")
+        slots = _load_warehouse_slots(user_id)
+        page_url = create_warehouse_page(
+            owner_user_id=user_id,
+            owner_user_name=str(user.name),
+            slots=slots,
+        )
+        logger.info(
+            f"我的仓库渲染：user_id={user_id} used={len(slots)} internal_url={page_url}"
+        )
+        await _send_warehouse_image(bot, event, page_url=page_url, file_prefix="warehouse-self")
+    except CommandUsageError:
+        raise
+    except Exception:
+        logger.exception(f"我的仓库处理异常：user_id={user_id}")
+        try:
+            await bot.send(event, at + " " + reply_failure("查询", "处理失败，请稍后重试"))
+        except Exception:
+            pass
+        return
 
 
 @list_user_matcher.handle()
@@ -322,21 +388,34 @@ async def handle_list_user(bot: Bot, event: Event, arg: Message = CommandArg()) 
     if len(args) != 1:
         raise_command_usage()
 
-    user = _load_user(target_user_id)
-    if user is None:
-        await bot.send(event, reply_failure("查询", "未找到该用户"))
-        return
+    caller_user_id = event.get_user_id()
+    try:
+        user = _load_user(target_user_id)
+        if user is None:
+            await bot.send(event, reply_failure("查询", "未找到该用户"))
+            return
 
-    slots = _load_warehouse_slots(target_user_id)
-    page_url = create_warehouse_page(
-        owner_user_id=target_user_id,
-        owner_user_name=str(user.name),
-        slots=slots,
-    )
-    logger.info(
-        f"用户仓库渲染：user_id={target_user_id} used={len(slots)} internal_url={page_url}"
-    )
-    await _send_warehouse_image(bot, event, page_url=page_url, file_prefix="warehouse-user")
+        slots = _load_warehouse_slots(target_user_id)
+        page_url = create_warehouse_page(
+            owner_user_id=target_user_id,
+            owner_user_name=str(user.name),
+            slots=slots,
+        )
+        logger.info(
+            f"用户仓库渲染：user_id={target_user_id} used={len(slots)} internal_url={page_url}"
+        )
+        await _send_warehouse_image(bot, event, page_url=page_url, file_prefix="warehouse-user")
+    except CommandUsageError:
+        raise
+    except Exception:
+        logger.exception(
+            f"用户仓库处理异常：caller_id={caller_user_id} target_id={target_user_id}"
+        )
+        try:
+            await bot.send(event, reply_failure("查询", "处理失败，请稍后重试"))
+        except Exception:
+            pass
+        return
 
 
 @add_matcher.handle()
@@ -416,88 +495,105 @@ async def handle_add(bot: Bot, event: Event, arg: Message = CommandArg()) -> Non
     if value < 0:
         await bot.send(event, at + " " + reply_failure("添加", "价值必须为非负整数"))
         return
-
-    user = _load_user(target_user_id)
-    if user is None:
-        await bot.send(event, at + " " + reply_failure("添加", "未找到该用户"))
+    # W-3.2：单价上界，防止 admin 误输大值后玩家回收绕过 economy 金币上限
+    if value > MAX_COINS_AMOUNT:
+        await bot.send(
+            event,
+            at + " " + reply_failure("添加", f"价值过大（最多 {MAX_COINS_AMOUNT}）"),
+        )
         return
 
-    async with warehouse_lock(target_user_id):
-        session = get_session()
-        try:
-            free_slot = _find_first_empty_slot(session, target_user_id)
-            if free_slot is None:
-                await bot.send(
-                    event,
-                    at + "\n" + reply_block(
-                        reply_failure("添加", "仓库已满"),
-                        [
-                            f"{EMOJI_USER} 用户：{user.name}（{target_user_id}）",
-                            f"{EMOJI_CHART} 已使用：{WAREHOUSE_CAPACITY} / {WAREHOUSE_CAPACITY}",
-                            "💡 提示：可让用户使用「丢弃仓库物品」或管理员使用「删除仓库物品」释放格子",
-                        ],
-                    ),
-                )
-                return
+    try:
+        user = _load_user(target_user_id)
+        if user is None:
+            await bot.send(event, at + " " + reply_failure("添加", "未找到该用户"))
+            return
 
-            session.add(
-                WarehouseItem(
-                    user_id=target_user_id,
-                    slot_index=free_slot,
-                    item_id=item_id,
-                    prefix_id=prefix_id,
-                    quantity=quantity,
-                    min_tier=tier_key,
-                    value=value,
-                    created_at=db_now_utc_naive(),
-                )
-            )
+        async with warehouse_lock(target_user_id):
+            session = get_session()
             try:
-                session.commit()
-            except IntegrityError:
-                # Defensive: with the per-user lock above, two concurrent adds
-                # for the same user can't both pick the same slot. This guard
-                # only triggers if some other path (e.g. WebUI bypassing the
-                # lock) inserts in the meantime — surface a friendly error.
-                session.rollback()
-                logger.warning(
-                    f"添加仓库物品冲突：target={target_user_id} slot={free_slot}"
-                )
-                await bot.send(
-                    event,
-                    at + " " + reply_failure(
-                        "添加", "格子被占用，请稍后重试或使用 WebUI 手动指定空格",
-                    ),
-                )
-                return
-            used_after = (
-                session.query(WarehouseItem)
-                .filter(WarehouseItem.user_id == target_user_id)
-                .count()
-            )
-        finally:
-            session.close()
+                free_slot = _find_first_empty_slot(session, target_user_id)
+                if free_slot is None:
+                    await bot.send(
+                        event,
+                        at + "\n" + reply_block(
+                            reply_failure("添加", "仓库已满"),
+                            [
+                                f"{EMOJI_USER} 用户：{user.name}（{target_user_id}）",
+                                f"{EMOJI_CHART} 已使用：{WAREHOUSE_CAPACITY} / {WAREHOUSE_CAPACITY}",
+                                "💡 提示：可让用户使用「丢弃仓库物品」或管理员使用「删除仓库物品」释放格子",
+                            ],
+                        ),
+                    )
+                    return
 
-    logger.info(
-        f"添加仓库物品成功：target={target_user_id} slot={free_slot} item={item_id} "
-        f"prefix={prefix_id} qty={quantity} tier={tier_key} value={value}"
-    )
-    tier_zh = PROGRESSION_KEY_TO_ZH.get(tier_key, tier_key)
-    item_label = _format_item_label(item_id, prefix_id, quantity)
-    await bot.send(
-        event,
-        at + "\n" + reply_block(
-            reply_success("添加"),
-            [
-                f"🎁 物品：{item_label}",
-                f"{EMOJI_USER} 用户：{user.name}（{target_user_id}）",
-                f"{EMOJI_WAREHOUSE} 格子：#{free_slot}",
-                f"{EMOJI_TARGET} 最低进度：{tier_zh}",
-                f"{EMOJI_COIN} 单价：{value} 金币",
-                f"{EMOJI_CHART} 已使用：{used_after} / {WAREHOUSE_CAPACITY}",
-            ],
-        ),
-    )
+                session.add(
+                    WarehouseItem(
+                        user_id=target_user_id,
+                        slot_index=free_slot,
+                        item_id=item_id,
+                        prefix_id=prefix_id,
+                        quantity=quantity,
+                        min_tier=tier_key,
+                        value=value,
+                        created_at=db_now_utc_naive(),
+                    )
+                )
+                try:
+                    session.commit()
+                except IntegrityError:
+                    # Defensive: with the per-user lock above, two concurrent adds
+                    # for the same user can't both pick the same slot. This guard
+                    # only triggers if some other path (e.g. WebUI bypassing the
+                    # lock) inserts in the meantime — surface a friendly error.
+                    session.rollback()
+                    logger.warning(
+                        f"添加仓库物品冲突：target={target_user_id} slot={free_slot}"
+                    )
+                    await bot.send(
+                        event,
+                        at + " " + reply_failure(
+                            "添加", "格子被占用，请稍后重试或使用 WebUI 手动指定空格",
+                        ),
+                    )
+                    return
+                used_after = (
+                    session.query(WarehouseItem)
+                    .filter(WarehouseItem.user_id == target_user_id)
+                    .count()
+                )
+            finally:
+                session.close()
+
+        logger.info(
+            f"添加仓库物品成功：target={target_user_id} slot={free_slot} item={item_id} "
+            f"prefix={prefix_id} qty={quantity} tier={tier_key} value={value}"
+        )
+        tier_zh = PROGRESSION_KEY_TO_ZH.get(tier_key, tier_key)
+        item_label = _format_item_label(item_id, prefix_id, quantity)
+        await bot.send(
+            event,
+            at + "\n" + reply_block(
+                reply_success("添加"),
+                [
+                    f"🎁 物品：{item_label}",
+                    f"{EMOJI_USER} 用户：{user.name}（{target_user_id}）",
+                    f"{EMOJI_WAREHOUSE} 格子：#{free_slot}",
+                    f"{EMOJI_TARGET} 最低进度：{tier_zh}",
+                    f"{EMOJI_COIN} 单价：{value} 金币",
+                    f"{EMOJI_CHART} 已使用：{used_after} / {WAREHOUSE_CAPACITY}",
+                ],
+            ),
+        )
+    except CommandUsageError:
+        raise
+    except Exception:
+        logger.exception(f"添加仓库物品处理异常：target_id={target_user_id}")
+        try:
+            await bot.send(event, at + " " + reply_failure("添加", "处理失败，请稍后重试"))
+        except Exception:
+            pass
+        return
 
 
 @remove_matcher.handle()
@@ -551,14 +647,24 @@ async def handle_remove(bot: Bot, event: Event, arg: Message = CommandArg()) -> 
             await bot.send(event, at + " " + reply_failure("删除", "数量必须为正整数"))
             return
 
-    target_user = _load_user(target_user_id)
-    target_name = str(target_user.name) if target_user is not None else "未知用户"
+    try:
+        target_user = _load_user(target_user_id)
+        target_name = str(target_user.name) if target_user is not None else "未知用户"
 
-    async with warehouse_lock(target_user_id):
-        if is_single:
-            await _remove_single(bot, event, at, target_user_id, target_name, slot_indexes[0], quantity_arg)
-        else:
-            await _remove_many(bot, event, at, target_user_id, target_name, slot_indexes)
+        async with warehouse_lock(target_user_id):
+            if is_single:
+                await _remove_single(bot, event, at, target_user_id, target_name, slot_indexes[0], quantity_arg)
+            else:
+                await _remove_many(bot, event, at, target_user_id, target_name, slot_indexes)
+    except CommandUsageError:
+        raise
+    except Exception:
+        logger.exception(f"删除仓库物品处理异常：target_id={target_user_id}")
+        try:
+            await bot.send(event, at + " " + reply_failure("删除", "处理失败，请稍后重试"))
+        except Exception:
+            pass
+        return
 
 
 async def _remove_single(
@@ -597,7 +703,11 @@ async def _remove_single(
         else:
             item.quantity = current_qty - remove_qty
             remaining = int(item.quantity)
-        session.commit()
+        try:
+            session.commit()
+        except Exception:
+            session.rollback()
+            raise
         used_after = (
             session.query(WarehouseItem)
             .filter(WarehouseItem.user_id == target_user_id)
@@ -655,7 +765,11 @@ async def _remove_many(
         if processed == 0:
             await bot.send(event, at + " " + reply_failure("删除", "未找到任何可删除的格子"))
             return
-        session.commit()
+        try:
+            session.commit()
+        except Exception:
+            session.rollback()
+            raise
         used_after = (
             session.query(WarehouseItem)
             .filter(WarehouseItem.user_id == target_user_id)
@@ -723,16 +837,26 @@ async def handle_drop(bot: Bot, event: Event, arg: Message = CommandArg()) -> No
             await bot.send(event, at + " " + reply_failure("丢弃", "数量必须为正整数"))
             return
 
-    user = _load_user(user_id)
-    if user is None:
-        await bot.send(event, at + " " + reply_failure("丢弃", "未注册账号"))
-        return
+    try:
+        user = _load_user(user_id)
+        if user is None:
+            await bot.send(event, at + " " + reply_failure("丢弃", "未注册账号"))
+            return
 
-    async with warehouse_lock(user_id):
-        if is_single:
-            await _drop_single(bot, event, at, user_id, slot_indexes[0], quantity_arg)
-        else:
-            await _drop_many(bot, event, at, user_id, slot_indexes)
+        async with warehouse_lock(user_id):
+            if is_single:
+                await _drop_single(bot, event, at, user_id, slot_indexes[0], quantity_arg)
+            else:
+                await _drop_many(bot, event, at, user_id, slot_indexes)
+    except CommandUsageError:
+        raise
+    except Exception:
+        logger.exception(f"丢弃仓库物品处理异常：user_id={user_id}")
+        try:
+            await bot.send(event, at + " " + reply_failure("丢弃", "处理失败，请稍后重试"))
+        except Exception:
+            pass
+        return
 
 
 async def _drop_single(
@@ -771,7 +895,11 @@ async def _drop_single(
         else:
             item.quantity = current_qty - drop_qty
             remaining = int(item.quantity)
-        session.commit()
+        try:
+            session.commit()
+        except Exception:
+            session.rollback()
+            raise
         used_after = (
             session.query(WarehouseItem)
             .filter(WarehouseItem.user_id == user_id)
@@ -828,7 +956,11 @@ async def _drop_many(
         if processed == 0:
             await bot.send(event, at + " " + reply_failure("丢弃", "未找到任何可丢弃的格子"))
             return
-        session.commit()
+        try:
+            session.commit()
+        except Exception:
+            session.rollback()
+            raise
         used_after = (
             session.query(WarehouseItem)
             .filter(WarehouseItem.user_id == user_id)
@@ -905,17 +1037,32 @@ async def handle_recycle(bot: Bot, event: Event, arg: Message = CommandArg()) ->
             await bot.send(event, at + " " + reply_failure("回收", "数量必须为正整数"))
             return
 
-    if _load_user(user_id) is None:
-        await bot.send(event, at + " " + reply_failure("回收", "未注册账号"))
+    try:
+        # W-Common.3：handler 共享 session 做只读预校验，避免 _load_user 单独开关
+        precheck_session = get_session()
+        try:
+            if _load_user(user_id, session=precheck_session) is None:
+                await bot.send(event, at + " " + reply_failure("回收", "未注册账号"))
+                return
+        finally:
+            precheck_session.close()
+
+        ratio = max(0.0, float(get_current_param("recycle_ratio", 0.5)))
+
+        async with warehouse_lock(user_id):
+            if is_single:
+                await _recycle_single(bot, event, at, user_id, slot_indexes[0], quantity_arg, ratio)
+            else:
+                await _recycle_many(bot, event, at, user_id, slot_indexes, ratio)
+    except CommandUsageError:
+        raise
+    except Exception:
+        logger.exception(f"回收仓库物品处理异常：user_id={user_id}")
+        try:
+            await bot.send(event, at + " " + reply_failure("回收", "处理失败，请稍后重试"))
+        except Exception:
+            pass
         return
-
-    ratio = max(0.0, float(get_current_param("recycle_ratio", 0.5)))
-
-    async with warehouse_lock(user_id):
-        if is_single:
-            await _recycle_single(bot, event, at, user_id, slot_indexes[0], quantity_arg, ratio)
-        else:
-            await _recycle_many(bot, event, at, user_id, slot_indexes, ratio)
 
 
 async def _recycle_single(
@@ -925,6 +1072,9 @@ async def _recycle_single(
     session = get_session()
     try:
         user = session.query(User).filter(User.user_id == user_id).first()
+        if user is None:
+            await bot.send(event, at + " " + reply_failure("回收", "未注册账号"))
+            return
         item = (
             session.query(WarehouseItem)
             .filter(
@@ -950,7 +1100,9 @@ async def _recycle_single(
             return
 
         recycle_qty = quantity_arg if quantity_arg is not None else current_qty
+        # W-3.2：refund 上界兜底，防止单价过大溢出
         refund = int(unit_value * recycle_qty * ratio)
+        refund = min(refund, MAX_COINS_AMOUNT)
         item_id = int(item.item_id)
         prefix_id = int(item.prefix_id)
 
@@ -960,9 +1112,27 @@ async def _recycle_single(
         else:
             item.quantity = current_qty - recycle_qty
             remaining = int(item.quantity)
-        user.coins = int(user.coins or 0) + refund
-        coins_after = int(user.coins)
-        session.commit()
+        # W-6.1：原子条件 UPDATE 加金币，避免 lost-update（与 economy F-2.1 同模板）
+        # NEW-9：execute_rowcount 加防御校验，rowcount != 1 仅记录日志
+        rowcount = execute_rowcount(
+            session,
+            update(User)
+            .where(User.user_id == user_id)
+            .values(coins=User.coins + refund),
+        )
+        if rowcount != 1:
+            logger.error(
+                f"[CRITICAL] 回收金币 UPDATE rowcount={rowcount} 不为 1："
+                f"user_id={user_id} refund={refund}"
+            )
+        try:
+            session.commit()
+        except Exception:
+            session.rollback()
+            raise
+        coins_after = int(
+            session.query(User.coins).filter(User.user_id == user_id).scalar() or 0
+        )
         used_after = (
             session.query(WarehouseItem)
             .filter(WarehouseItem.user_id == user_id)
@@ -1003,6 +1173,9 @@ async def _recycle_many(
     session = get_session()
     try:
         user = session.query(User).filter(User.user_id == user_id).first()
+        if user is None:
+            await bot.send(event, at + " " + reply_failure("回收", "未注册账号"))
+            return
         items = (
             session.query(WarehouseItem)
             .filter(
@@ -1031,9 +1204,29 @@ async def _recycle_many(
         if processed == 0:
             await bot.send(event, at + " " + reply_failure("回收", "未找到任何可回收的格子"))
             return
-        user.coins = int(user.coins or 0) + total_refund
-        coins_after = int(user.coins)
-        session.commit()
+        # W-3.2：refund 上界兜底
+        total_refund = min(total_refund, MAX_COINS_AMOUNT)
+        # W-6.1：原子条件 UPDATE 加金币，避免 lost-update
+        # NEW-9：execute_rowcount 加防御校验，rowcount != 1 仅记录日志
+        rowcount = execute_rowcount(
+            session,
+            update(User)
+            .where(User.user_id == user_id)
+            .values(coins=User.coins + total_refund),
+        )
+        if rowcount != 1:
+            logger.error(
+                f"[CRITICAL] 批量回收金币 UPDATE rowcount={rowcount} 不为 1："
+                f"user_id={user_id} refund={total_refund}"
+            )
+        try:
+            session.commit()
+        except Exception:
+            session.rollback()
+            raise
+        coins_after = int(
+            session.query(User.coins).filter(User.user_id == user_id).scalar() or 0
+        )
         used_after = (
             session.query(WarehouseItem)
             .filter(WarehouseItem.user_id == user_id)
@@ -1094,13 +1287,14 @@ async def _check_player_online(
     players = resp.payload.get("players")
     if not isinstance(players, list):
         return None, "返回数据格式错误"
-    name_lower = player_name.lower()
+    # W-7.4：unicode NFKC + casefold，跨全角/半角 / 大小写折叠匹配
+    target = _normalize_player_name(player_name)
     for p in players:
         if isinstance(p, dict):
-            nickname = str(p.get("nickname", "")).strip()
+            nickname = str(p.get("nickname", ""))
         else:
-            nickname = str(p).strip()
-        if nickname.lower() == name_lower:
+            nickname = str(p)
+        if _normalize_player_name(nickname) == target:
             return True, ""
     return False, ""
 
@@ -1185,42 +1379,57 @@ async def handle_claim(bot: Bot, event: Event, arg: Message = CommandArg()) -> N
             await bot.send(event, at + " " + reply_failure("领取", "数量必须为正整数"))
             return
 
-    user = _load_user(user_id)
-    if user is None:
-        await bot.send(event, at + " " + reply_failure("领取", "未注册账号"))
-        return
+    try:
+        # W-Common.3：handler 共享 session 给只读预校验，避免 user/server 各自开关
+        precheck_session = get_session()
+        try:
+            user = _load_user(user_id, session=precheck_session)
+            if user is None:
+                await bot.send(event, at + " " + reply_failure("领取", "未注册账号"))
+                return
 
-    server = _load_server(server_id)
-    if server is None:
-        await bot.send(event, at + " " + reply_failure("领取", "服务器不存在"))
-        return
+            server = _load_server(server_id, session=precheck_session)
+            if server is None:
+                await bot.send(event, at + " " + reply_failure("领取", "服务器不存在"))
+                return
 
-    player_name = str(user.name)
-    online, reason = await _check_player_online(server, player_name)
-    if online is None:
-        await bot.send(event, at + " " + reply_failure("领取", reason))
-        return
-    if not online:
-        await bot.send(event, at + " " + reply_failure("领取", "未在该服务器在线，请先加入游戏"))
-        return
+            player_name = str(user.name)
+        finally:
+            precheck_session.close()
+        online, reason = await _check_player_online(server, player_name)
+        if online is None:
+            await bot.send(event, at + " " + reply_failure("领取", reason))
+            return
+        if not online:
+            await bot.send(event, at + " " + reply_failure("领取", "未在该服务器在线，请先加入游戏"))
+            return
 
-    progress, reason = await _load_world_progress(server)
-    if progress is None:
-        await bot.send(event, at + " " + reply_failure("领取", reason))
-        return
+        progress, reason = await _load_world_progress(server)
+        if progress is None:
+            await bot.send(event, at + " " + reply_failure("领取", reason))
+            return
 
-    server_label = f"{server.id}.{server.name}"
-    async with warehouse_lock(user_id):
-        if is_single:
-            await _claim_single(
-                bot, event, at, user_id, player_name,
-                server, server_label, slot_indexes[0], quantity_arg, progress,
-            )
-        else:
-            await _claim_many(
-                bot, event, at, user_id, player_name,
-                server, server_label, slot_indexes, progress,
-            )
+        server_label = f"{server.id}.{server.name}"
+        async with warehouse_lock(user_id):
+            if is_single:
+                await _claim_single(
+                    bot, event, at, user_id, player_name,
+                    server, server_label, slot_indexes[0], quantity_arg, progress,
+                )
+            else:
+                await _claim_many(
+                    bot, event, at, user_id, player_name,
+                    server, server_label, slot_indexes, progress,
+                )
+    except CommandUsageError:
+        raise
+    except Exception:
+        logger.exception(f"领取仓库物品处理异常：user_id={user_id}")
+        try:
+            await bot.send(event, at + " " + reply_failure("领取", "处理失败，请稍后重试"))
+        except Exception:
+            pass
+        return
 
 
 async def _claim_single(
@@ -1283,7 +1492,24 @@ async def _claim_single(
         else:
             item.quantity = current_qty - claim_qty
             remaining = int(item.quantity)
-        session.commit()
+        # W-7.1：give 已成功，commit 失败时记录补偿日志（DB-API 双重一致性窗口）
+        try:
+            session.commit()
+        except Exception as exc:
+            session.rollback()
+            logger.error(
+                f"[CRITICAL] 领取已发放但 DB 未确认 commit："
+                f"user_id={user_id} server_id={server.id} slot={slot_index} "
+                f"item={item_id} prefix={prefix_id} qty={claim_qty} err={exc!r}"
+            )
+            try:
+                await bot.send(
+                    event,
+                    at + " " + reply_failure("领取", "已发放但未确认到账，请联系管理员"),
+                )
+            except Exception:
+                pass
+            return
         used_after = (
             session.query(WarehouseItem)
             .filter(WarehouseItem.user_id == user_id)
@@ -1335,7 +1561,10 @@ async def _claim_many(
 
         skipped_empty = 0
         skipped_progress = 0
-        skipped_give_failed = 0
+        # W-7.3：保留每个失败槽位的原因（slot_index, reason），最终回复展示明细
+        failed_details: list[tuple[int, str]] = []
+        # W-7.2：give 已发但 commit 失败的槽位（原因不向用户透出，但记录到日志）
+        unconfirmed_slots: list[int] = []
         processed = 0
         total_qty = 0
 
@@ -1352,20 +1581,35 @@ async def _claim_many(
                 skipped_progress += 1
                 continue
             slot_qty = int(it.quantity)
-            ok, _ = await _issue_give_command(
+            slot_item_id = int(it.item_id)
+            slot_prefix_id = int(it.prefix_id)
+            ok, reason = await _issue_give_command(
                 server, player_name=player_name,
-                item_id=int(it.item_id), prefix_id=int(it.prefix_id),
+                item_id=slot_item_id, prefix_id=slot_prefix_id,
                 quantity=slot_qty,
             )
             if not ok:
-                skipped_give_failed += 1
+                failed_details.append((s, reason))
                 continue
             session.delete(it)
-            session.commit()
+            # W-7.2：give 已成功，commit 失败时单独记录补偿日志
+            try:
+                session.commit()
+            except Exception as exc:
+                session.rollback()
+                logger.error(
+                    f"[CRITICAL] 领取已发放但 DB 未确认 commit："
+                    f"user_id={user_id} server_id={server.id} slot={s} "
+                    f"item={slot_item_id} prefix={slot_prefix_id} qty={slot_qty} "
+                    f"err={exc!r}"
+                )
+                unconfirmed_slots.append(s)
+                continue
             total_qty += slot_qty
             processed += 1
 
-        if processed == 0:
+        if processed == 0 and not unconfirmed_slots:
+            # 全部失败/跳过：保留原文案
             await bot.send(event, at + " " + reply_failure("领取", "未找到任何可领取的格子"))
             return
 
@@ -1377,11 +1621,12 @@ async def _claim_many(
     finally:
         session.close()
 
+    skipped_give_failed = len(failed_details)
     logger.info(
         f"批量领取仓库物品：user_id={user_id} server_id={server.id} "
         f"processed={processed} skipped_empty={skipped_empty} "
         f"skipped_progress={skipped_progress} skipped_give_failed={skipped_give_failed} "
-        f"total_qty={total_qty}"
+        f"unconfirmed={len(unconfirmed_slots)} total_qty={total_qty}"
     )
     process_line = f"{EMOJI_WAREHOUSE} 处理格子：{processed} 个"
     skip_parts: list[str] = []
@@ -1394,6 +1639,37 @@ async def _claim_many(
     if skip_parts:
         process_line = f"{EMOJI_WAREHOUSE} 处理格子：{processed} 个（跳过 {'、'.join(skip_parts)}）"
 
+    # W-7.3：失败明细（最多 10 条）
+    detail_lines: list[str] = []
+    if failed_details:
+        detail_lines.append("跳过明细：")
+        for slot_idx, reason in failed_details[:10]:
+            detail_lines.append(f"  #{slot_idx}：{reason}")
+        if len(failed_details) > 10:
+            detail_lines.append(f"  ...还有 {len(failed_details) - 10} 个")
+    if unconfirmed_slots:
+        detail_lines.append(
+            f"⚠️ 已发放但未确认到账的格子：{len(unconfirmed_slots)} 个，请联系管理员"
+        )
+
+    # NEW-10：processed=0 且仅有 unconfirmed_slots 时，所有 commit 未确认 → 明确为失败
+    if processed == 0 and unconfirmed_slots:
+        await bot.send(
+            event,
+            at + "\n" + reply_block(
+                reply_failure("领取", "全部未确认到账，请联系管理员"),
+                [
+                    f"{EMOJI_SERVER} 服务器：{server_label}",
+                    f"{EMOJI_USER} 玩家：{player_name}",
+                    process_line,
+                    f"未确认明细：{len(unconfirmed_slots)} 个",
+                    f"{EMOJI_CHART} 已使用：{used_after} / {WAREHOUSE_CAPACITY}",
+                    *detail_lines,
+                ],
+            ),
+        )
+        return
+
     await bot.send(
         event,
         at + "\n" + reply_block(
@@ -1404,6 +1680,7 @@ async def _claim_many(
                 process_line,
                 f"🎁 共领取：{total_qty} 件物品",
                 f"{EMOJI_CHART} 已使用：{used_after} / {WAREHOUSE_CAPACITY}",
+                *detail_lines,
             ],
         ),
     )
@@ -1465,27 +1742,39 @@ async def handle_gift(bot: Bot, event: Event, arg: Message = CommandArg()) -> No
             await bot.send(event, at + " " + reply_failure("赠送", "数量必须为正整数"))
             return
 
-    if _load_user(sender_id) is None:
-        await bot.send(event, at + " " + reply_failure("赠送", "请先注册账号"))
-        return
+    try:
+        if _load_user(sender_id) is None:
+            await bot.send(event, at + " " + reply_failure("赠送", "请先注册账号"))
+            return
 
-    target_user = _load_user(target_user_id)
-    if target_user is None:
-        await bot.send(event, at + " " + reply_failure("赠送", "未找到该用户"))
-        return
+        target_user = _load_user(target_user_id)
+        if target_user is None:
+            await bot.send(event, at + " " + reply_failure("赠送", "未找到该用户"))
+            return
 
-    target_name = str(target_user.name)
-    async with _acquire_two_warehouse_locks(sender_id, target_user_id):
-        if is_single:
-            await _gift_single(
-                bot, event, at, sender_id,
-                target_user_id, target_name, slot_indexes[0], quantity_arg,
-            )
-        else:
-            await _gift_many(
-                bot, event, at, sender_id,
-                target_user_id, target_name, slot_indexes,
-            )
+        target_name = str(target_user.name)
+        async with _acquire_two_warehouse_locks(sender_id, target_user_id):
+            if is_single:
+                await _gift_single(
+                    bot, event, at, sender_id,
+                    target_user_id, target_name, slot_indexes[0], quantity_arg,
+                )
+            else:
+                await _gift_many(
+                    bot, event, at, sender_id,
+                    target_user_id, target_name, slot_indexes,
+                )
+    except CommandUsageError:
+        raise
+    except Exception:
+        logger.exception(
+            f"赠送仓库物品处理异常：sender_id={sender_id} target_id={target_user_id}"
+        )
+        try:
+            await bot.send(event, at + " " + reply_failure("赠送", "处理失败，请稍后重试"))
+        except Exception:
+            pass
+        return
 
 
 async def _gift_single(
@@ -1562,6 +1851,9 @@ async def _gift_single(
                 at + " " + reply_failure("赠送", "对方格子被占用，请稍后重试"),
             )
             return
+        except Exception:
+            session.rollback()
+            raise
         used_after = (
             session.query(WarehouseItem)
             .filter(WarehouseItem.user_id == sender_id)
@@ -1617,6 +1909,12 @@ async def _gift_many(
         processed = 0
         total_qty = 0
 
+        # W-3.4 + W-8.1：先按需要预取空位，避免每次循环全扫 occupied，
+        # 同时支持 target 满后立即不再扫描。
+        need_count = sum(1 for s in slot_indexes if item_map.get(s) is not None)
+        empty_slot_pool = _find_empty_slots(session, target_user_id, need_count)
+        empty_iter = iter(empty_slot_pool)
+
         # Per-slot commit so a crash mid-loop never leaves the recipient with the
         # new row while the sender's row is still present (or vice versa).
         for s in slot_indexes:
@@ -1624,7 +1922,7 @@ async def _gift_many(
             if it is None:
                 skipped_empty += 1
                 continue
-            target_slot = _find_first_empty_slot(session, target_user_id)
+            target_slot = next(empty_iter, None)
             if target_slot is None:
                 skipped_full += 1
                 continue
@@ -1655,6 +1953,9 @@ async def _gift_many(
                 )
                 skipped_conflict += 1
                 continue
+            except Exception:
+                session.rollback()
+                raise
             total_qty += slot_qty
             processed += 1
 
