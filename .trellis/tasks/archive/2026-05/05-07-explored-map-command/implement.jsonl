@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "项目质量基线"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "API 错误透传规范"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "日志格式"}
+{"file": ".trellis/tasks/05-07-explored-map-command/prd.md", "reason": "本任务 PRD —— 完整规格 + 镜像 我的地图 模式"}
