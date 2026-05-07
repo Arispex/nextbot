@@ -236,3 +236,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 102: 小游戏系统命令审计与修复
+
+**Date**: 2026-05-07
+**Task**: 小游戏系统命令审计与修复
+**Branch**: `main`
+
+### Summary
+
+对 小游戏系统 4 个命令做安全/性能审计，sub-agent 初审 + 主代理二次复查后保留 4 必修 + 2 应修 + 2 建议（跳过 _cooldown_map 持久化和 3 项观察）。修复：4 个命令全部改为原子条件 UPDATE（猜数字 / 掷骰子 lost-update / 抢劫多 attacker 凭空 + 产生 / 切换抢劫保护双扣）；3 处加 MAX_COINS_AMOUNT 上界；4 处加异常兜底 + _safe_param_int helper；抢劫自抢命令短路。第二轮 check 发现首轮 implement 在 rob.py counter 分支引入 fallback 漏洞，立即派第三轮 implement 删除 fallback 改为直接 return，最终 check 通过。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `fe11241` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
