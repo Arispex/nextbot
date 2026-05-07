@@ -170,3 +170,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 100: 查看地图 命令改名 全亮地图
+
+**Date**: 2026-05-07
+**Task**: 查看地图 命令改名 全亮地图
+**Branch**: `main`
+
+### Summary
+
+把 server_tools.py 里的 查看地图 命令重命名为 全亮地图，避免与 我的地图 / 用户地图 混淆。仅 4 处用户可见命令名替换；command_key 与 permission 保留 server_tools.map_image 不变，既有权限分组配置无影响。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ee6b320` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
