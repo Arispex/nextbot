@@ -269,3 +269,37 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 103: 红包系统审计修复 + rowcount 类型告警统一
+
+**Date**: 2026-05-07
+**Task**: 红包系统审计修复 + rowcount 类型告警统一
+**Branch**: `main`
+
+### Summary
+
+（1）红包系统 5 个命令审计：3 必修 + 3 应修 + 2 建议（lost-update / IntegrityError 兜底 / total_amount 上界 / 异常兜底）。修复中 R-1.2 IntegrityError 分支误加二次 UPDATE 凭空 + total_amount，二审发现后立即派 implement 删除二次 UPDATE，最终通过。（2）抽 nextbot/db.py:execute_rowcount(session, stmt) -> int helper，6 个 plugin 文件 16 处 .rowcount 调用统一接入，修复 basedpyright 的 Result[Any].rowcount 类型告警。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `6ca05b8` | (see git log) |
+| `ec42714` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
