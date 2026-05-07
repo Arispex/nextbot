@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-3.md`
-- **Total Sessions**: 100
+- **Total Sessions**: 101
 - **Last Active**: 2026-05-07
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-3.md` | ~205 | Active |
+| `journal-3.md` | ~238 | Active |
 | `journal-2.md` | ~1973 | Archived |
 | `journal-1.md` | ~1999 | Archived |
 <!-- @@@/auto:active-documents -->
@@ -31,6 +31,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 101 | 2026-05-07 | 新增 查看地图 命令 玩家共同探索地图 | `b8ae9aa` | `main` |
 | 100 | 2026-05-07 | 查看地图 命令改名 全亮地图 | `ee6b320` | `main` |
 | 99 | 2026-05-07 | 经济系统命令审计与修复 | `0206834` | `main` |
 | 98 | 2026-05-06 | 用户系统命令审计与修复 | `011aa68` | `main` |

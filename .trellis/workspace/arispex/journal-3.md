@@ -203,3 +203,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 101: 新增 查看地图 命令 玩家共同探索地图
+
+**Date**: 2026-05-07
+**Task**: 新增 查看地图 命令 玩家共同探索地图
+**Branch**: `main`
+
+### Summary
+
+新增 查看地图 <服务器 ID> 命令，玩家查询分类，调后端 /nextbot/world/explored-map-image API 返回全玩家探索区域并集地图。镜像 我的地图 模式：单服务器 ID 参数，OneBot V11 同消息 @ 发起人 + 图片。新增权限 player_query.map.explored 默认加入 guest 组。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `b8ae9aa` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
