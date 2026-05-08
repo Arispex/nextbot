@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import math
+import unicodedata
 from pathlib import Path
 
 from nonebot import on_command
@@ -9,8 +10,13 @@ from nonebot.adapters import Bot, Event, Message
 from nonebot.adapters.onebot.v11 import MessageSegment as OBV11MessageSegment
 from nonebot.log import logger
 from nonebot.params import CommandArg
+from sqlalchemy import func, update
 
-from nextbot.command_config import command_control, get_current_param, raise_command_usage
+from nextbot.command_config import (
+    command_control,
+    get_current_param,
+    raise_command_usage,
+)
 from nextbot.db import (
     WAREHOUSE_CAPACITY,
     Server,
@@ -18,11 +24,14 @@ from nextbot.db import (
     ShopItem,
     User,
     WarehouseItem,
+    execute_rowcount,
     get_session,
 )
 from nextbot.message_parser import parse_command_args_with_fallback
 from nextbot.permissions import require_permission
+from nextbot.plugins.economy import MAX_COINS_AMOUNT
 from nextbot.progression import PROGRESSION_KEY_TO_ZH
+from nextbot.screenshot_temp import temp_screenshot_path
 from nextbot.text_utils import (
     EMOJI_COIN,
     EMOJI_SERVER,
@@ -34,9 +43,13 @@ from nextbot.text_utils import (
     reply_failure,
     reply_success,
 )
-from nextbot.screenshot_temp import temp_screenshot_path
 from nextbot.time_utils import db_now_utc_naive
-from nextbot.tshock_api import TShockRequestError, get_error_reason, is_success, request_server_api
+from nextbot.tshock_api import (
+    TShockRequestError,
+    get_error_reason,
+    is_success,
+    request_server_api,
+)
 from nextbot.warehouse_lock import warehouse_lock
 from server.screenshot import RenderScreenshotError, ScreenshotOptions, screenshot_url
 from server.web_server import create_shop_list_page, create_shop_view_page
@@ -44,6 +57,31 @@ from server.web_server import create_shop_list_page, create_shop_view_page
 shop_list_matcher = on_command("商店列表")
 shop_view_matcher = on_command("查看商店")
 shop_buy_matcher = on_command("购买商品")
+
+# 单笔购买上限：防御 buy_count 性能炸弹（购买商品 1 1 1000000 → 100 万次循环）
+MAX_BUY_COUNT = 9999
+# 单笔物品总数量上限：与 warehouse 共享建议常量
+MAX_ITEM_QUANTITY = 9999
+
+
+def _safe_param_int(
+    key: str, default: int, min_value: int = 0, max_value: int | None = None,
+) -> int:
+    """容错读取 int 参数。"""
+    try:
+        value = int(get_current_param(key, default))
+    except (TypeError, ValueError):
+        value = default
+    value = max(min_value, value)
+    if max_value is not None:
+        value = min(max_value, value)
+    return value
+
+
+def _normalize_player_name(name: str) -> str:
+    """unicode NFKC + casefold 折叠，用于跨全角/半角 + 大小写比对。"""
+    return unicodedata.normalize("NFKC", str(name)).strip().casefold()
+
 
 SHOP_VIEW_SCREENSHOT_OPTIONS = ScreenshotOptions(
     viewport_width=1200,
@@ -105,13 +143,14 @@ async def _check_player_online(server: Server, player_name: str) -> tuple[bool |
     players = resp.payload.get("players")
     if not isinstance(players, list):
         return None, "返回数据格式错误"
-    name_lower = player_name.lower()
+    # S-2.2：unicode NFKC + casefold，跨全角/半角 + 大小写折叠匹配
+    target = _normalize_player_name(player_name)
     for p in players:
         if isinstance(p, dict):
-            nickname = str(p.get("nickname", "")).strip()
+            nickname = str(p.get("nickname", ""))
         else:
-            nickname = str(p).strip()
-        if nickname.lower() == name_lower:
+            nickname = str(p)
+        if _normalize_player_name(nickname) == target:
             return True, ""
     return False, ""
 
@@ -151,87 +190,115 @@ def _find_first_empty_slot(session, user_id: str) -> int | None:
 )
 @require_permission("shop.list")
 async def handle_shop_list(bot: Bot, event: Event, arg: Message = CommandArg()) -> None:
-    args = parse_command_args_with_fallback(event, arg, "商店列表")
-    if len(args) > 1:
-        raise_command_usage()
-
-    page = 1
-    if args:
-        try:
-            page = int(args[0])
-        except ValueError:
-            await bot.send(event, reply_failure("查询", "页数必须为正整数"))
-            return
-        if page <= 0:
-            await bot.send(event, reply_failure("查询", "页数必须为正整数"))
-            return
-
-    limit = max(1, min(int(get_current_param("limit", 10)), 50))
-
-    session = get_session()
+    user_id = event.get_user_id()
     try:
-        shops = (
-            session.query(Shop)
-            .filter(Shop.enabled.is_(True))
-            .order_by(Shop.sort_order.asc(), Shop.id.asc())
-            .all()
-        )
-        all_entries: list[dict[str, object]] = []
-        for shop in shops:
-            count = (
-                session.query(ShopItem)
-                .filter(ShopItem.shop_id == shop.id, ShopItem.enabled.is_(True))
+        args = parse_command_args_with_fallback(event, arg, "商店列表")
+        if len(args) > 1:
+            raise_command_usage()
+
+        page = 1
+        if args:
+            try:
+                page = int(args[0])
+            except ValueError:
+                await bot.send(event, reply_failure("查询", "页数必须为正整数"))
+                return
+            if page <= 0:
+                await bot.send(event, reply_failure("查询", "页数必须为正整数"))
+                return
+
+        # S-Common.4：_safe_param_int 替代 int(get_current_param(...))
+        limit = _safe_param_int("limit", 10, min_value=1, max_value=50)
+
+        session = get_session()
+        try:
+            # S-3.2：单次 LEFT JOIN + 分页推到 SQL 端，避免全量取后切片 + N+1 count
+            total = (
+                session.query(Shop)
+                .filter(Shop.enabled.is_(True))
                 .count()
             )
-            all_entries.append({
-                "shop_id": int(shop.id),
-                "name": str(shop.name),
-                "description": str(shop.description or ""),
-                "item_count": int(count),
-            })
-    finally:
-        session.close()
-
-    total = len(all_entries)
-    if total == 0:
-        await bot.send(event, reply_failure("查询", "暂无可用商店"))
-        return
-
-    total_pages = max(1, math.ceil(total / limit))
-    if page > total_pages:
-        await bot.send(event, reply_failure("查询", f"超出总页数（共 {total_pages} 页）"))
-        return
-    offset = (page - 1) * limit
-    render_entries = all_entries[offset:offset + limit]
-
-    page_url = create_shop_list_page(
-        entries=render_entries,
-        page=page,
-        total_pages=total_pages,
-        total=total,
-    )
-    logger.info(
-        f"商店列表渲染地址：page={page}/{total_pages} total={total} "
-        f"item_count={len(render_entries)} internal_url={page_url}"
-    )
-
-    async with temp_screenshot_path("shop-list") as screenshot_path:
-        try:
-            await screenshot_url(page_url, screenshot_path, options=SHOP_LIST_SCREENSHOT_OPTIONS)
-        except RenderScreenshotError as exc:
-            await bot.send(event, reply_failure("查询", str(exc)))
-            return
-
-        if bot.adapter.get_name() == "OneBot V11":
-            try:
-                image_uri = _to_base64_image_uri(screenshot_path)
-            except OSError:
-                await bot.send(event, reply_failure("查询", "读取截图文件失败"))
+            if total == 0:
+                await bot.send(event, reply_failure("查询", "暂无可用商店"))
                 return
-            await bot.send(event, OBV11MessageSegment.image(file=image_uri))
-            return
 
-        await bot.send(event, f"✅ 截图成功，文件：{screenshot_path}")
+            total_pages = max(1, math.ceil(total / limit))
+            if page > total_pages:
+                await bot.send(
+                    event, reply_failure("查询", f"超出总页数（共 {total_pages} 页）"),
+                )
+                return
+            offset = (page - 1) * limit
+
+            item_count_subquery = (
+                session.query(
+                    ShopItem.shop_id,
+                    func.count(ShopItem.id).label("item_count"),
+                )
+                .filter(ShopItem.enabled.is_(True))
+                .group_by(ShopItem.shop_id)
+                .subquery()
+            )
+            shops_with_count = (
+                session.query(
+                    Shop, func.coalesce(item_count_subquery.c.item_count, 0),
+                )
+                .outerjoin(item_count_subquery, Shop.id == item_count_subquery.c.shop_id)
+                .filter(Shop.enabled.is_(True))
+                .order_by(Shop.sort_order.asc(), Shop.id.asc())
+                .offset(offset)
+                .limit(limit)
+                .all()
+            )
+            render_entries: list[dict[str, object]] = [
+                {
+                    "shop_id": int(s.id),
+                    "name": str(s.name),
+                    "description": str(s.description or ""),
+                    "item_count": int(cnt),
+                }
+                for s, cnt in shops_with_count
+            ]
+        finally:
+            session.close()
+
+        page_url = create_shop_list_page(
+            entries=render_entries,
+            page=page,
+            total_pages=total_pages,
+            total=total,
+        )
+        logger.info(
+            f"商店列表渲染地址：page={page}/{total_pages} total={total} "
+            f"item_count={len(render_entries)} internal_url={page_url}"
+        )
+
+        async with temp_screenshot_path("shop-list") as screenshot_path:
+            try:
+                await screenshot_url(
+                    page_url, screenshot_path, options=SHOP_LIST_SCREENSHOT_OPTIONS,
+                )
+            except RenderScreenshotError as exc:
+                await bot.send(event, reply_failure("查询", str(exc)))
+                return
+
+            if bot.adapter.get_name() == "OneBot V11":
+                try:
+                    image_uri = _to_base64_image_uri(screenshot_path)
+                except OSError:
+                    await bot.send(event, reply_failure("查询", "读取截图文件失败"))
+                    return
+                await bot.send(event, OBV11MessageSegment.image(file=image_uri))
+                return
+
+            await bot.send(event, f"✅ 截图成功，文件：{screenshot_path}")
+    except Exception:  # noqa: BLE001
+        logger.exception(f"商店列表处理异常：user_id={user_id}")
+        try:
+            await bot.send(event, reply_failure("查询", "处理失败，请稍后重试"))
+        except Exception:  # noqa: BLE001
+            pass
+        return
 
 
 @shop_view_matcher.handle()
@@ -256,121 +323,149 @@ async def handle_shop_list(bot: Bot, event: Event, arg: Message = CommandArg()) 
 )
 @require_permission("shop.view")
 async def handle_shop_view(bot: Bot, event: Event, arg: Message = CommandArg()) -> None:
-    args = parse_command_args_with_fallback(event, arg, "查看商店")
-    if not (1 <= len(args) <= 2):
-        raise_command_usage()
-    selector = args[0].strip()
-    if not selector:
-        raise_command_usage()
-
-    page = 1
-    if len(args) == 2:
-        try:
-            page = int(args[1])
-        except ValueError:
-            await bot.send(event, reply_failure("查询", "页数必须为正整数"))
-            return
-        if page <= 0:
-            await bot.send(event, reply_failure("查询", "页数必须为正整数"))
-            return
-
-    limit = max(1, min(int(get_current_param("limit", 20)), 100))
-
     user_id = event.get_user_id()
-    session = get_session()
     try:
-        shop = _load_shop_by_selector(session, selector)
-        if shop is None:
-            await bot.send(event, reply_failure("查询", f"未找到商店「{selector}」"))
-            return
-        if not shop.enabled:
-            await bot.send(event, reply_failure("查询", "该商店未上架"))
-            return
-        items = _list_active_items(session, int(shop.id))
-        user = session.query(User).filter(User.user_id == user_id).first()
-        user_name = str(user.name) if user is not None else "未注册用户"
-        user_coins = int(user.coins) if user is not None else 0
-        shop_id = int(shop.id)
-        shop_name = str(shop.name)
-        shop_desc = str(shop.description or "")
+        args = parse_command_args_with_fallback(event, arg, "查看商店")
+        if not (1 <= len(args) <= 2):
+            raise_command_usage()
+        selector = args[0].strip()
+        if not selector:
+            raise_command_usage()
 
-        server_label_map: dict[int, str] = {
-            int(s.id): str(s.name) for s in session.query(Server).all()
-        }
-        all_entries = []
-        for it in items:
-            entry = {
-                "shop_item_id": int(it.id),
-                "name": str(it.name),
-                "description": str(it.description or ""),
-                "kind": str(it.kind),
-                "price": int(it.price),
-            }
-            if it.kind == "item":
-                entry.update({
-                    "item_id": int(it.item_id or 0),
-                    "prefix_id": int(it.prefix_id or 0),
-                    "quantity": int(it.quantity or 1),
-                    "min_tier": str(it.min_tier or "none"),
-                    "is_mystery": bool(getattr(it, "is_mystery", False)),
-                })
-            else:
-                entry["target_server_id"] = (
-                    int(it.target_server_id) if it.target_server_id is not None else None
-                )
-                if it.target_server_id is None:
-                    entry["target_server_label"] = "全部服务器"
-                else:
-                    entry["target_server_label"] = server_label_map.get(
-                        int(it.target_server_id), f"#{int(it.target_server_id)}"
-                    )
-                show_command = bool(getattr(it, "show_command", False))
-                entry["command_template"] = str(it.command_template or "") if show_command else ""
-            all_entries.append(entry)
-    finally:
-        session.close()
-
-    total = len(all_entries)
-    total_pages = max(1, math.ceil(total / limit)) if total > 0 else 1
-    if total > 0 and page > total_pages:
-        await bot.send(event, reply_failure("查询", f"超出总页数（共 {total_pages} 页）"))
-        return
-    offset = (page - 1) * limit
-    render_items = all_entries[offset:offset + limit]
-
-    page_url = create_shop_view_page(
-        shop_id=shop_id,
-        shop_name=shop_name,
-        shop_description=shop_desc,
-        user_user_id=user_id,
-        user_user_name=user_name,
-        user_coins=user_coins,
-        items=render_items,
-        page=page,
-        total_pages=total_pages,
-        total=total,
-    )
-    logger.info(
-        f"商店详情渲染地址：shop_id={shop_id} page={page}/{total_pages} "
-        f"total={total} item_count={len(render_items)} internal_url={page_url}"
-    )
-    async with temp_screenshot_path(f"shop-{shop_id}") as screenshot_path:
-        try:
-            await screenshot_url(page_url, screenshot_path, options=SHOP_VIEW_SCREENSHOT_OPTIONS)
-        except RenderScreenshotError as exc:
-            await bot.send(event, reply_failure("查询", str(exc)))
-            return
-
-        if bot.adapter.get_name() == "OneBot V11":
+        page = 1
+        if len(args) == 2:
             try:
-                image_uri = _to_base64_image_uri(screenshot_path)
-            except OSError:
-                await bot.send(event, reply_failure("查询", "读取截图文件失败"))
+                page = int(args[1])
+            except ValueError:
+                await bot.send(event, reply_failure("查询", "页数必须为正整数"))
                 return
-            await bot.send(event, OBV11MessageSegment.image(file=image_uri))
-            return
+            if page <= 0:
+                await bot.send(event, reply_failure("查询", "页数必须为正整数"))
+                return
 
-        await bot.send(event, f"✅ 截图成功，文件：{screenshot_path}")
+        # S-Common.4：_safe_param_int 替代 int(get_current_param(...))
+        limit = _safe_param_int("limit", 20, min_value=1, max_value=100)
+
+        session = get_session()
+        try:
+            shop = _load_shop_by_selector(session, selector)
+            if shop is None:
+                await bot.send(event, reply_failure("查询", f"未找到商店「{selector}」"))
+                return
+            if not shop.enabled:
+                await bot.send(event, reply_failure("查询", "该商店未上架"))
+                return
+            shop_id = int(shop.id)
+            shop_name = str(shop.name)
+            shop_desc = str(shop.description or "")
+
+            user = session.query(User).filter(User.user_id == user_id).first()
+            user_name = str(user.name) if user is not None else "未注册用户"
+            user_coins = int(user.coins) if user is not None else 0
+
+            # S-3.2：分页推到 SQL 端，避免全量取后切片
+            total = (
+                session.query(ShopItem)
+                .filter(ShopItem.shop_id == shop_id, ShopItem.enabled.is_(True))
+                .count()
+            )
+            total_pages = max(1, math.ceil(total / limit)) if total > 0 else 1
+            if total > 0 and page > total_pages:
+                await bot.send(
+                    event, reply_failure("查询", f"超出总页数（共 {total_pages} 页）"),
+                )
+                return
+            offset = (page - 1) * limit
+
+            page_items = (
+                session.query(ShopItem)
+                .filter(ShopItem.shop_id == shop_id, ShopItem.enabled.is_(True))
+                .order_by(ShopItem.sort_order.asc(), ShopItem.id.asc())
+                .offset(offset)
+                .limit(limit)
+                .all()
+            )
+
+            server_label_map: dict[int, str] = {
+                int(s.id): str(s.name) for s in session.query(Server).all()
+            }
+            render_items: list[dict[str, object]] = []
+            for it in page_items:
+                entry: dict[str, object] = {
+                    "shop_item_id": int(it.id),
+                    "name": str(it.name),
+                    "description": str(it.description or ""),
+                    "kind": str(it.kind),
+                    "price": int(it.price),
+                }
+                if it.kind == "item":
+                    entry.update({
+                        "item_id": int(it.item_id or 0),
+                        "prefix_id": int(it.prefix_id or 0),
+                        "quantity": int(it.quantity or 1),
+                        "min_tier": str(it.min_tier or "none"),
+                        "is_mystery": bool(getattr(it, "is_mystery", False)),
+                    })
+                else:
+                    entry["target_server_id"] = (
+                        int(it.target_server_id) if it.target_server_id is not None else None
+                    )
+                    if it.target_server_id is None:
+                        entry["target_server_label"] = "全部服务器"
+                    else:
+                        entry["target_server_label"] = server_label_map.get(
+                            int(it.target_server_id), f"#{int(it.target_server_id)}"
+                        )
+                    show_command = bool(getattr(it, "show_command", False))
+                    entry["command_template"] = (
+                        str(it.command_template or "") if show_command else ""
+                    )
+                render_items.append(entry)
+        finally:
+            session.close()
+
+        page_url = create_shop_view_page(
+            shop_id=shop_id,
+            shop_name=shop_name,
+            shop_description=shop_desc,
+            user_user_id=user_id,
+            user_user_name=user_name,
+            user_coins=user_coins,
+            items=render_items,
+            page=page,
+            total_pages=total_pages,
+            total=total,
+        )
+        logger.info(
+            f"商店详情渲染地址：shop_id={shop_id} page={page}/{total_pages} "
+            f"total={total} item_count={len(render_items)} internal_url={page_url}"
+        )
+        async with temp_screenshot_path(f"shop-{shop_id}") as screenshot_path:
+            try:
+                await screenshot_url(
+                    page_url, screenshot_path, options=SHOP_VIEW_SCREENSHOT_OPTIONS,
+                )
+            except RenderScreenshotError as exc:
+                await bot.send(event, reply_failure("查询", str(exc)))
+                return
+
+            if bot.adapter.get_name() == "OneBot V11":
+                try:
+                    image_uri = _to_base64_image_uri(screenshot_path)
+                except OSError:
+                    await bot.send(event, reply_failure("查询", "读取截图文件失败"))
+                    return
+                await bot.send(event, OBV11MessageSegment.image(file=image_uri))
+                return
+
+            await bot.send(event, f"✅ 截图成功，文件：{screenshot_path}")
+    except Exception:  # noqa: BLE001
+        logger.exception(f"查看商店处理异常：user_id={user_id}")
+        try:
+            await bot.send(event, reply_failure("查询", "处理失败，请稍后重试"))
+        except Exception:  # noqa: BLE001
+            pass
+        return
 
 
 @shop_buy_matcher.handle()
@@ -387,83 +482,109 @@ async def handle_shop_buy(bot: Bot, event: Event, arg: Message = CommandArg()) -
     user_id = event.get_user_id()
     at = OBV11MessageSegment.at(int(user_id))
 
-    args = parse_command_args_with_fallback(event, arg, "购买商品")
-    if not (2 <= len(args) <= 3):
-        raise_command_usage()
-
     try:
-        shop_id = int(args[0])
-        shop_item_id = int(args[1])
-        buy_count = int(args[2]) if len(args) == 3 else 1
-    except ValueError:
-        await bot.send(event, at + " " + reply_failure("购买", "商店 ID、商品 ID、数量必须为正整数"))
-        return
-    if shop_id < 1 or shop_item_id < 1 or buy_count < 1:
-        await bot.send(event, at + " " + reply_failure("购买", "商店 ID、商品 ID、数量必须为正整数"))
-        return
+        args = parse_command_args_with_fallback(event, arg, "购买商品")
+        if not (2 <= len(args) <= 3):
+            raise_command_usage()
 
-    # First pass: load shop, validate, pick the target item by shop_item_id
-    session = get_session()
-    try:
-        shop = session.query(Shop).filter(Shop.id == shop_id).first()
-        if shop is None or not shop.enabled:
-            await bot.send(event, at + " " + reply_failure("购买", "商店不存在或未上架"))
-            return
-        target = (
-            session.query(ShopItem)
-            .filter(
-                ShopItem.id == shop_item_id,
-                ShopItem.shop_id == shop_id,
-                ShopItem.enabled.is_(True),
+        try:
+            shop_id = int(args[0])
+            shop_item_id = int(args[1])
+            buy_count = int(args[2]) if len(args) == 3 else 1
+        except ValueError:
+            await bot.send(
+                event, at + " " + reply_failure("购买", "商店 ID、商品 ID、数量必须为正整数"),
             )
-            .first()
-        )
-        if target is None:
-            await bot.send(event, at + " " + reply_failure("购买", "商品不存在或未上架"))
             return
-        target_id = int(target.id)
-        target_name = str(target.name)
-        target_kind = str(target.kind)
-        target_price = int(target.price)
-        target_item_id = int(target.item_id or 0)
-        target_prefix_id = int(target.prefix_id or 0)
-        target_quantity_per_pack = int(target.quantity or 1)
-        target_min_tier = str(target.min_tier or "none")
-        raw_actual = getattr(target, "actual_value", None)
-        target_actual_value = int(raw_actual) if raw_actual is not None else None
-        target_server_id = (
-            int(target.target_server_id) if target.target_server_id is not None else None
-        )
-        target_command_template = str(target.command_template or "")
-        target_require_online = bool(getattr(target, "require_online", False))
-        shop_name = str(shop.name)
-    finally:
-        session.close()
+        if shop_id < 1 or shop_item_id < 1 or buy_count < 1:
+            await bot.send(
+                event, at + " " + reply_failure("购买", "商店 ID、商品 ID、数量必须为正整数"),
+            )
+            return
+        # S-Common.2：buy_count 上界，防御性能炸弹（buy_count=1000000 → 100 万次循环）
+        if buy_count > MAX_BUY_COUNT:
+            await bot.send(
+                event,
+                at + " " + reply_failure("购买", f"购买数量过大（最多 {MAX_BUY_COUNT}）"),
+            )
+            return
 
-    total_price = target_price * buy_count
+        # First pass: load shop, validate, pick the target item by shop_item_id
+        session = get_session()
+        try:
+            shop = session.query(Shop).filter(Shop.id == shop_id).first()
+            if shop is None or not shop.enabled:
+                await bot.send(event, at + " " + reply_failure("购买", "商店不存在或未上架"))
+                return
+            target = (
+                session.query(ShopItem)
+                .filter(
+                    ShopItem.id == shop_item_id,
+                    ShopItem.shop_id == shop_id,
+                    ShopItem.enabled.is_(True),
+                )
+                .first()
+            )
+            if target is None:
+                await bot.send(event, at + " " + reply_failure("购买", "商品不存在或未上架"))
+                return
+            target_id = int(target.id)
+            target_name = str(target.name)
+            target_kind = str(target.kind)
+            target_price = int(target.price)
+            target_item_id = int(target.item_id or 0)
+            target_prefix_id = int(target.prefix_id or 0)
+            target_quantity_per_pack = int(target.quantity or 1)
+            target_min_tier = str(target.min_tier or "none")
+            raw_actual = getattr(target, "actual_value", None)
+            target_actual_value = int(raw_actual) if raw_actual is not None else None
+            target_server_id = (
+                int(target.target_server_id) if target.target_server_id is not None else None
+            )
+            target_command_template = str(target.command_template or "")
+            target_require_online = bool(getattr(target, "require_online", False))
+            shop_name = str(shop.name)
+        finally:
+            session.close()
 
-    if target_kind == "item":
-        await _buy_item(
-            bot=bot, event=event, at=at, user_id=user_id,
-            shop_id=shop_id, shop_name=shop_name,
-            target_id=target_id, target_name=target_name,
-            unit_price=target_price, total_price=total_price,
-            buy_count=buy_count,
-            item_id=target_item_id, prefix_id=target_prefix_id,
-            quantity_per_pack=target_quantity_per_pack, min_tier=target_min_tier,
-            actual_value=target_actual_value,
-        )
-    else:
-        await _buy_command(
-            bot=bot, event=event, at=at, user_id=user_id,
-            shop_id=shop_id, shop_name=shop_name,
-            target_id=target_id, target_name=target_name,
-            unit_price=target_price, total_price=total_price,
-            buy_count=buy_count,
-            target_server_id=target_server_id,
-            command_template=target_command_template,
-            require_online=target_require_online,
-        )
+        total_price = target_price * buy_count
+        # S-Common.2：总价上界，与 economy MAX_COINS_AMOUNT 一致
+        if total_price > MAX_COINS_AMOUNT:
+            await bot.send(
+                event,
+                at + " " + reply_failure("购买", f"总金额过大（最多 {MAX_COINS_AMOUNT}）"),
+            )
+            return
+
+        if target_kind == "item":
+            await _buy_item(
+                bot=bot, event=event, at=at, user_id=user_id,
+                shop_id=shop_id, shop_name=shop_name,
+                target_id=target_id, target_name=target_name,
+                unit_price=target_price, total_price=total_price,
+                buy_count=buy_count,
+                item_id=target_item_id, prefix_id=target_prefix_id,
+                quantity_per_pack=target_quantity_per_pack, min_tier=target_min_tier,
+                actual_value=target_actual_value,
+            )
+        else:
+            await _buy_command(
+                bot=bot, event=event, at=at, user_id=user_id,
+                shop_id=shop_id, shop_name=shop_name,
+                target_id=target_id, target_name=target_name,
+                unit_price=target_price, total_price=total_price,
+                buy_count=buy_count,
+                target_server_id=target_server_id,
+                command_template=target_command_template,
+                require_online=target_require_online,
+            )
+    except Exception:  # noqa: BLE001
+        logger.exception(f"购买商品处理异常：user_id={user_id}")
+        try:
+            await bot.send(event, at + " " + reply_failure("购买", "处理失败，请稍后重试"))
+        except Exception:  # noqa: BLE001
+            pass
+        return
 
 
 async def _buy_item(
@@ -476,6 +597,14 @@ async def _buy_item(
     actual_value: int | None,
 ) -> None:
     total_quantity = quantity_per_pack * buy_count
+    # S-Obs.1：单笔总数量上界，防御 admin 配 quantity=999999 + buy_count 极大
+    if total_quantity > MAX_ITEM_QUANTITY:
+        await bot.send(
+            event,
+            at + " " + reply_failure("购买", f"单笔总数量过大（最多 {MAX_ITEM_QUANTITY}）"),
+        )
+        return
+
     async with warehouse_lock(user_id):
         session = get_session()
         try:
@@ -483,23 +612,54 @@ async def _buy_item(
             if user is None:
                 await bot.send(event, at + " " + reply_failure("购买", "请先注册账号"))
                 return
-            coins = int(user.coins or 0)
-            if coins < total_price:
+
+            # S-3.1：第二段重读 ShopItem + Shop，校验 enabled，拦截 TOCTOU
+            target_item = (
+                session.query(ShopItem).filter(ShopItem.id == target_id).first()
+            )
+            if target_item is None or not target_item.enabled:
                 await bot.send(
-                    event,
-                    at + " " + reply_failure("购买", f"金币不足（需要 {total_price}，当前 {coins}）"),
+                    event, at + " " + reply_failure("购买", "商品已下架，请刷新后重试"),
                 )
                 return
+            shop_now = session.query(Shop).filter(Shop.id == shop_id).first()
+            if shop_now is None or not shop_now.enabled:
+                await bot.send(
+                    event, at + " " + reply_failure("购买", "商店已下架，请刷新后重试"),
+                )
+                return
+
             empty_slot = _find_first_empty_slot(session, user_id)
             if empty_slot is None:
                 await bot.send(event, at + " " + reply_failure("购买", "仓库已满，请先释放格子"))
                 return
 
-            user.coins = coins - total_price
+            # S-Common.3：actual_value cap，防止绕过 economy MAX_COINS_AMOUNT 限额
             if actual_value is not None:
-                unit_value = max(0, int(actual_value))
+                unit_value = max(0, min(int(actual_value), MAX_COINS_AMOUNT))
             else:
                 unit_value = unit_price // quantity_per_pack if quantity_per_pack > 0 else 0
+
+            # S-1.1：原子条件 UPDATE 扣金币（与 economy F-2.1 同模板），
+            # 拦截与转账 / 抢红包 / 签到等并发的 lost-update。
+            rowcount = execute_rowcount(
+                session,
+                update(User)
+                .where(User.user_id == user_id, User.coins >= total_price)
+                .values(coins=User.coins - total_price),
+            )
+            if rowcount == 0:
+                coins_now = int(
+                    session.query(User.coins).filter(User.user_id == user_id).scalar() or 0
+                )
+                await bot.send(
+                    event,
+                    at + " " + reply_failure(
+                        "购买", f"金币不足（需要 {total_price}，当前 {coins_now}）",
+                    ),
+                )
+                return
+
             new_item = WarehouseItem(
                 user_id=user_id,
                 slot_index=empty_slot,
@@ -512,7 +672,9 @@ async def _buy_item(
             )
             session.add(new_item)
             session.commit()
-            final_coins = int(user.coins)
+            final_coins = int(
+                session.query(User.coins).filter(User.user_id == user_id).scalar() or 0
+            )
         finally:
             session.close()
 
@@ -604,23 +766,47 @@ async def _buy_command(
     else:
         online_servers = list(servers)
 
-    # Charge coins now (commit), then execute commands
+    # Charge coins now (atomic UPDATE), then execute commands
     session = get_session()
     try:
         user = session.query(User).filter(User.user_id == user_id).first()
         if user is None:
             await bot.send(event, at + " " + reply_failure("购买", "用户记录已变更，请重试"))
             return
-        coins = int(user.coins or 0)
-        if coins < total_price:
+
+        # S-3.1：第二段重读 ShopItem，校验 enabled，拦截 TOCTOU 下架
+        target_item = (
+            session.query(ShopItem).filter(ShopItem.id == target_id).first()
+        )
+        if target_item is None or not target_item.enabled:
             await bot.send(
-                event,
-                at + " " + reply_failure("购买", f"金币不足（需要 {total_price}，当前 {coins}）"),
+                event, at + " " + reply_failure("购买", "商品已下架，请刷新后重试"),
             )
             return
-        user.coins = coins - total_price
+
+        # S-1.2：原子条件 UPDATE 扣金币（与 economy F-2.1 同模板），
+        # 拦截与转账 / 抢红包 / 签到等并发的 lost-update。
+        rowcount = execute_rowcount(
+            session,
+            update(User)
+            .where(User.user_id == user_id, User.coins >= total_price)
+            .values(coins=User.coins - total_price),
+        )
+        if rowcount == 0:
+            coins_now = int(
+                session.query(User.coins).filter(User.user_id == user_id).scalar() or 0
+            )
+            await bot.send(
+                event,
+                at + " " + reply_failure(
+                    "购买", f"金币不足（需要 {total_price}，当前 {coins_now}）",
+                ),
+            )
+            return
         session.commit()
-        final_coins = int(user.coins)
+        final_coins = int(
+            session.query(User.coins).filter(User.user_id == user_id).scalar() or 0
+        )
     finally:
         session.close()
 
@@ -634,14 +820,39 @@ async def _buy_command(
 
     success_count = sum(1 for _, ok, _ in exec_results if ok)
     fail_count = len(exec_results) - success_count
+    total_count = len(exec_results)
 
-    lines = [
-        f"{EMOJI_SHOP} 商店：{shop_name}（ID {shop_id}）",
-        f"⚙️ 商品：{target_name} ×{buy_count}",
-        f"{EMOJI_USER} 玩家：{player_name}",
-        f"{EMOJI_COIN} 花费：{total_price} 金币（单价 {unit_price}）",
-        f"{EMOJI_SERVER} 执行结果：成功 {success_count} / 失败 {fail_count}（共 {len(online_servers)} 服）",
-    ]
+    # S-2.1：金币已扣 + 全部 TShock 调用失败 → 记录 CRITICAL 日志，
+    # 在用户回复中加入显著告警引导联系管理员退款。
+    all_failed = success_count == 0 and total_count > 0
+    if all_failed:
+        logger.error(
+            f"[CRITICAL] 商店指令购买全部失败但金币已扣："
+            f"user_id={user_id} shop_id={shop_id} item={target_name} "
+            f"shop_item_id={target_id} total_price={total_price} buy_count={buy_count} "
+            f"servers={[int(s.id) for s, _, _ in exec_results]}"
+        )
+
+    # S-2.2：全失败时切到 reply_failure 标题，避免「显示成功但实际全失败」的歧义。
+    if all_failed:
+        head = reply_failure("购买", "所有服务器执行失败")
+        lines = [
+            "⚠️ 已扣金币但所有服务器执行失败，请联系管理员退款",
+            f"{EMOJI_SHOP} 商店：{shop_name}（ID {shop_id}）",
+            f"⚙️ 商品：{target_name} ×{buy_count}",
+            f"{EMOJI_USER} 玩家：{player_name}",
+            f"{EMOJI_COIN} 花费：{total_price} 金币（单价 {unit_price}）",
+            f"{EMOJI_SERVER} 执行结果：成功 {success_count} / 失败 {fail_count}（共 {len(online_servers)} 服）",
+        ]
+    else:
+        head = reply_success("购买")
+        lines = [
+            f"{EMOJI_SHOP} 商店：{shop_name}（ID {shop_id}）",
+            f"⚙️ 商品：{target_name} ×{buy_count}",
+            f"{EMOJI_USER} 玩家：{player_name}",
+            f"{EMOJI_COIN} 花费：{total_price} 金币（单价 {unit_price}）",
+            f"{EMOJI_SERVER} 执行结果：成功 {success_count} / 失败 {fail_count}（共 {len(online_servers)} 服）",
+        ]
     for srv, ok, reason in exec_results:
         mark = "✅" if ok else "❌"
         suffix = "" if ok else f"（{reason}）" if reason else "（失败）"
@@ -657,4 +868,4 @@ async def _buy_command(
         f"shop_item_id={target_id} count={buy_count} price={total_price} "
         f"online_servers={len(online_servers)} success={success_count} fail={fail_count}"
     )
-    await bot.send(event, at + "\n" + reply_block(reply_success("购买"), lines))
+    await bot.send(event, at + "\n" + reply_block(head, lines))

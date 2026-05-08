@@ -20,6 +20,12 @@ _CMD_MAX_LEN = 500
 _EXPORT_VERSION = 1
 _EXPORT_KIND = "shops"
 _IMPORT_MODES = {"merge", "replace_all"}
+# 与 nextbot.plugins.economy.MAX_COINS_AMOUNT 保持一致；
+# 不直接 import 经济插件以避免加载时触发 nonebot 副作用。
+_MAX_COINS_AMOUNT = 100_000_000
+# 与 nextbot.plugins.shop.MAX_ITEM_QUANTITY 保持一致；
+# 限制单件商品的发放数量，防止 admin 误配大数耗尽仓库 / TShock。
+_MAX_ITEM_QUANTITY = 9999
 
 
 def _validation_error_response(details: list[dict[str, str]]) -> JSONResponse:
@@ -137,6 +143,12 @@ def _validate_shop_item_payload(
         price = -1
     if price < 0:
         details.append({"field": "price", "message": "单价必须为非负整数"})
+    elif price > _MAX_COINS_AMOUNT:
+        # S-Common.2：单价上界，避免与 buy_count 相乘溢出 MAX_COINS_AMOUNT
+        details.append({
+            "field": "price",
+            "message": f"单价过大（最多 {_MAX_COINS_AMOUNT}）",
+        })
 
     try:
         sort_order = int(data.get("sort_order", 0))
@@ -178,12 +190,18 @@ def _validate_shop_item_payload(
             quantity = 0
         if quantity < 1:
             details.append({"field": "quantity", "message": "数量必须为正整数"})
+        elif quantity > _MAX_ITEM_QUANTITY:
+            # S-Common.4：quantity 上界，与 shop.MAX_ITEM_QUANTITY 对齐
+            details.append({
+                "field": "quantity",
+                "message": f"数量过大（最多 {_MAX_ITEM_QUANTITY}）",
+            })
 
         min_tier = str(data.get("min_tier", "none")).strip() or "none"
         if min_tier not in PROGRESSION_KEY_TO_ZH:
             details.append({"field": "min_tier", "message": "进度要求不在已知列表中"})
 
-        raw_actual = data.get("actual_value", None)
+        raw_actual = data.get("actual_value")
         if raw_actual is None or (isinstance(raw_actual, str) and raw_actual.strip() == ""):
             actual_value = None
         else:
@@ -193,11 +211,18 @@ def _validate_shop_item_payload(
                 actual_value = -1
             if actual_value is not None and actual_value < 0:
                 details.append({"field": "actual_value", "message": "实际单价必须为非负整数"})
+            elif actual_value is not None and actual_value > _MAX_COINS_AMOUNT:
+                # S-Common.3：actual_value 上界，防止 admin 误配大数 → 玩家
+                # 通过仓库回收绕过 economy MAX_COINS_AMOUNT 限额。
+                details.append({
+                    "field": "actual_value",
+                    "message": f"实际单价过大（最多 {_MAX_COINS_AMOUNT}）",
+                })
 
         is_mystery = bool(data.get("is_mystery", False))
 
     if kind == "command":
-        raw_target = data.get("target_server_id", None)
+        raw_target = data.get("target_server_id")
         if raw_target is None or (isinstance(raw_target, str) and raw_target.strip() == ""):
             target_server_id = None
         else:
