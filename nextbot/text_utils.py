@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from nonebot.adapters import Event
+
 # 状态 emoji（固定语义）
 STATUS_SUCCESS = "✅"
 STATUS_FAILURE = "❌"
@@ -74,3 +79,18 @@ def reply_list(
     hint: str | None = None,
 ) -> str:
     return reply_block(f"{title_emoji} {title}", items, hint=hint)
+
+
+def at_prefix(event: "Event", content: Any, *, sep: str = " ") -> Any:
+    """在 reply 内容前面拼上 @<发送者> 前缀。
+
+    sep 默认是单空格（用于行内 reply_failure / reply_success 等单行回复）；
+    多行 reply_block 输出建议传 sep="\\n" 以让正文从下一行开始。
+
+    放在这里而不是 server_tools.py 里是因为同样的拼装模式分散在 ≥ 8 处 handler，
+    集中后调整 separator / 适配器都只需改一处。OBV11 import 延迟到调用时，避免
+    text_utils 在测试或非 OBV11 环境下被强制依赖 OneBot 包。
+    """
+    from nonebot.adapters.onebot.v11 import MessageSegment as OBV11MessageSegment
+
+    return OBV11MessageSegment.at(int(event.get_user_id())) + sep + content

@@ -109,6 +109,13 @@ class Server(Base):
     restapi_port: Mapped[str] = mapped_column(String, nullable=False)
     token: Mapped[str] = mapped_column(String, nullable=False)
 
+    def __repr__(self) -> str:  # pragma: no cover - 仅用于日志 / traceback
+        # 显式屏蔽 token，避免任何 logger.info(server) / repr(server) / traceback 把凭证写到日志或上报
+        return (
+            f"<Server id={self.id} name={self.name!r} ip={self.ip!r} "
+            f"game_port={self.game_port!r} restapi_port={self.restapi_port!r} token=***>"
+        )
+
 
 class User(Base):
     __tablename__ = "user"

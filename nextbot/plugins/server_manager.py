@@ -1,20 +1,31 @@
 from nonebot import on_command
 from nonebot.adapters import Bot, Event, Message
-from nonebot.adapters.onebot.v11 import MessageSegment as OBV11MessageSegment
 from nonebot.log import logger
 from nonebot.params import CommandArg
+from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 
 from nextbot.command_config import command_control, raise_command_usage
 from nextbot.db import Server, get_session
 from nextbot.message_parser import parse_command_args_with_fallback
 from nextbot.permissions import require_permission
+from nextbot.server_validation import (
+    ServerPayloadValidationError,
+    validate_server_payload,
+)
 from nextbot.tshock_api import (
     TShockRequestError,
     get_error_reason,
     is_success,
     request_server_api,
 )
-from nextbot.text_utils import EMOJI_SERVER, reply_block, reply_failure, reply_success
+from nextbot.text_utils import (
+    EMOJI_SERVER,
+    at_prefix,
+    reply_block,
+    reply_failure,
+    reply_success,
+)
 
 add_matcher = on_command("添加服务器")
 delete_matcher = on_command("删除服务器")
@@ -38,36 +49,68 @@ async def handle_add_server(
     if len(args) != 5:
         raise_command_usage()
 
-    at = OBV11MessageSegment.at(int(event.get_user_id()))
-    name, ip, game_port, restapi_port, token = args
+    raw_name, raw_ip, raw_game_port, raw_restapi_port, raw_token = args
+
+    # SM-1.3 / SM-1.5：复用 webui 的校验，确保 bot 端不再写入空字段 / 非法端口 / 含换行的脏行
+    try:
+        validated = validate_server_payload(
+            raw_name, raw_ip, raw_game_port, raw_restapi_port, raw_token
+        )
+    except ServerPayloadValidationError as exc:
+        logger.warning(
+            f"添加服务器失败：field={exc.field or ''} reason={exc.reason}"
+        )
+        await bot.send(event, at_prefix(event, reply_failure("添加", exc.reason)))
+        return
+
     session = get_session()
     try:
-        count = session.query(Server).count()
+        # SM-1.1：与 webui_servers.py:208 保持一致，避免 count() 在历史 / 并发 gap 情况下撞已有 id
+        max_id = int(session.query(func.max(Server.id)).scalar() or 0)
+        new_id = max_id + 1
         server = Server(
-            id=count + 1,
-            name=name,
-            ip=ip,
-            game_port=game_port,
-            restapi_port=restapi_port,
-            token=token,
+            id=new_id,
+            name=validated.name,
+            ip=validated.ip,
+            game_port=validated.game_port,
+            restapi_port=validated.restapi_port,
+            token=validated.token,
         )
         session.add(server)
-        session.commit()
+        try:
+            session.commit()
+        except IntegrityError:
+            # SM-1.2 / SM-3.1：并发 add 撞 UNIQUE 时显式回滚 + 友好提示，避免抛 traceback 到 nonebot
+            session.rollback()
+            logger.warning(
+                f"添加服务器失败：name={validated.name} reason=ID 分配冲突 attempted_id={new_id}"
+            )
+            await bot.send(
+                event,
+                at_prefix(event, reply_failure("添加", "ID 分配冲突，请重试")),
+            )
+            return
     finally:
         session.close()
 
     logger.info(
-        f"添加服务器成功：ID={count + 1} name={name} ip={ip} game_port={game_port} restapi_port={restapi_port}"
+        f"添加服务器成功：server_id={new_id} name={validated.name} "
+        f"ip={validated.ip} game_port={validated.game_port} "
+        f"restapi_port={validated.restapi_port}"
     )
     await bot.send(
         event,
-        at + "\n" + reply_block(
-            reply_success("添加"),
-            [
-                f"🆔 服务器 ID：{count + 1}",
-                f"{EMOJI_SERVER} 名称：{name}",
-                f"🌐 地址：{ip}:{game_port}",
-            ],
+        at_prefix(
+            event,
+            reply_block(
+                reply_success("添加"),
+                [
+                    f"🆔 服务器 ID：{new_id}",
+                    f"{EMOJI_SERVER} 名称：{validated.name}",
+                    f"🌐 地址：{validated.ip}:{validated.game_port}",
+                ],
+            ),
+            sep="\n",
         ),
     )
 
@@ -94,12 +137,11 @@ async def handle_delete_server(
     except ValueError:
         raise_command_usage()
 
-    at = OBV11MessageSegment.at(int(event.get_user_id()))
     session = get_session()
     try:
         server = session.query(Server).filter(Server.id == target_id).first()
         if server is None:
-            await bot.send(event, at + " " + reply_failure("删除", "服务器不存在"))
+            await bot.send(event, at_prefix(event, reply_failure("删除", "服务器不存在")))
             return
 
         deleted_id = server.id
@@ -114,15 +156,19 @@ async def handle_delete_server(
     finally:
         session.close()
 
-    logger.info(f"删除服务器成功：ID={deleted_id}")
+    logger.info(f"删除服务器成功：server_id={deleted_id}")
     await bot.send(
         event,
-        at + "\n" + reply_block(
-            reply_success("删除"),
-            [
-                f"🆔 服务器 ID：{deleted_id}",
-                f"{EMOJI_SERVER} 名称：{deleted_name}",
-            ],
+        at_prefix(
+            event,
+            reply_block(
+                reply_success("删除"),
+                [
+                    f"🆔 服务器 ID：{deleted_id}",
+                    f"{EMOJI_SERVER} 名称：{deleted_name}",
+                ],
+            ),
+            sep="\n",
         ),
     )
 
@@ -188,7 +234,6 @@ async def handle_test_server(
     except ValueError:
         raise_command_usage()
 
-    at = OBV11MessageSegment.at(int(event.get_user_id()))
     session = get_session()
     try:
         server = session.query(Server).filter(Server.id == target_id).first()
@@ -196,27 +241,27 @@ async def handle_test_server(
         session.close()
 
     if server is None:
-        await bot.send(event, at + " " + reply_failure("测试", "服务器不存在"))
+        await bot.send(event, at_prefix(event, reply_failure("测试", "服务器不存在")))
         return
 
     try:
         response = await request_server_api(server, "/tokentest")
     except TShockRequestError:
         logger.info(
-            f"测试连通性失败：id={target_id} ip={server.ip} port={server.restapi_port}"
+            f"测试连通性失败：server_id={target_id} ip={server.ip} port={server.restapi_port}"
         )
-        await bot.send(event, at + " " + reply_failure("测试", "无法连接服务器"))
+        await bot.send(event, at_prefix(event, reply_failure("测试", "无法连接服务器")))
         return
 
     status_code = response.http_status
     status_value = response.api_status
     logger.info(
-        f"测试连通性完成：id={target_id} http={status_code} status={status_value}"
+        f"测试连通性完成：server_id={target_id} http={status_code} status={status_value}"
     )
 
     if is_success(response):
-        await bot.send(event, at + " " + reply_success("测试", "一切正常"))
+        await bot.send(event, at_prefix(event, reply_success("测试", "一切正常")))
         return
 
     reason = get_error_reason(response)
-    await bot.send(event, at + " " + reply_failure("测试", f"{reason}"))
+    await bot.send(event, at_prefix(event, reply_failure("测试", reason)))

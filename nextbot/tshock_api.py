@@ -50,7 +50,7 @@ async def request_server_api(
     path: str,
     params: dict[str, str] | None = None,
     *,
-    timeout: float = 5.0,
+    timeout: float | httpx.Timeout = 5.0,
     include_token: bool = True,
 ) -> TShockResponse:
     request_path = path if path.startswith("/") else f"/{path}"
@@ -60,9 +60,21 @@ async def request_server_api(
     if include_token and "token" not in query:
         query["token"] = server.token
 
+    # 当传入 float 时，把它当作 read 超时（最常见的瓶颈），其他维度使用合理默认；
+    # 这样调用方可以简单传 `timeout=300.0` 让大对象下载不被 connect/write 默认值卡死
+    if isinstance(timeout, httpx.Timeout):
+        effective_timeout: httpx.Timeout = timeout
+    else:
+        effective_timeout = httpx.Timeout(
+            connect=5.0,
+            read=float(timeout),
+            write=10.0,
+            pool=5.0,
+        )
+
     url = f"http://{server.ip}:{server.restapi_port}{safe_path}"
     try:
-        async with httpx.AsyncClient(timeout=timeout) as client:
+        async with httpx.AsyncClient(timeout=effective_timeout) as client:
             response = await client.get(url, params=query)
     except httpx.RequestError as exc:
         raise TShockRequestError from exc

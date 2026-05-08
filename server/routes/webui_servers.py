@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import re
-from dataclasses import dataclass
 from typing import Any
 
 from fastapi import APIRouter, Request
@@ -10,6 +8,11 @@ from nonebot.log import logger
 from sqlalchemy import func
 
 from nextbot.db import Server, get_session
+from nextbot.server_validation import (
+    ServerPayloadValidationError,
+    ValidatedServerPayload,
+    validate_server_payload_dict,
+)
 from nextbot.tshock_api import (
     TShockRequestError,
     get_error_reason,
@@ -26,23 +29,6 @@ from server.routes import (
 
 router = APIRouter()
 
-_NAME_PATTERN = re.compile(r"^[A-Za-z0-9\u4e00-\u9fff ._-]{1,32}$")
-
-
-@dataclass(frozen=True)
-class ValidatedServerPayload:
-    name: str
-    ip: str
-    game_port: str
-    restapi_port: str
-    token: str
-
-
-class ServerPayloadValidationError(ValueError):
-    def __init__(self, message: str, *, field: str | None = None):
-        super().__init__(message)
-        self.field = field
-
 
 def _serialize_server(server: Server) -> dict[str, Any]:
     return {
@@ -55,92 +41,17 @@ def _serialize_server(server: Server) -> dict[str, Any]:
     }
 
 
-def _require_field(payload: dict[str, Any], key: str) -> Any:
-    if key not in payload:
-        raise ServerPayloadValidationError(f"{key} 为必填项", field=key)
-    return payload.get(key)
-
-
-def _normalize_name(raw_value: Any) -> str:
-    value = str(raw_value).strip()
-    if not value:
-        raise ServerPayloadValidationError("服务器名称不能为空", field="name")
-    if _NAME_PATTERN.fullmatch(value) is None:
-        raise ServerPayloadValidationError(
-            "服务器名称格式错误，仅允许中英文、数字、空格和 -_.，长度 1-32",
-            field="name",
-        )
-    return value
-
-
-def _normalize_host(raw_value: Any) -> str:
-    value = str(raw_value).strip()
-    if not value:
-        raise ServerPayloadValidationError("服务器地址不能为空", field="ip")
-    return value
-
-
-def _normalize_port(raw_value: Any, *, field: str) -> str:
-    if isinstance(raw_value, bool):
-        raise ServerPayloadValidationError("端口必须是 1-65535 的整数", field=field)
-
-    parsed: int
-    if isinstance(raw_value, int):
-        parsed = raw_value
-    elif isinstance(raw_value, float):
-        if not raw_value.is_integer():
-            raise ServerPayloadValidationError("端口必须是整数", field=field)
-        parsed = int(raw_value)
-    elif isinstance(raw_value, str):
-        text = raw_value.strip()
-        if not text:
-            raise ServerPayloadValidationError("端口不能为空", field=field)
-        try:
-            parsed = int(text)
-        except ValueError as exc:
-            raise ServerPayloadValidationError("端口必须是整数", field=field) from exc
-    else:
-        raise ServerPayloadValidationError("端口必须是整数", field=field)
-
-    if not 1 <= parsed <= 65535:
-        raise ServerPayloadValidationError("端口范围必须在 1-65535", field=field)
-    return str(parsed)
-
-
-def _normalize_token(raw_value: Any) -> str:
-    value = str(raw_value).strip()
-    if not value:
-        raise ServerPayloadValidationError("Token 不能为空", field="token")
-    if not 1 <= len(value) <= 128:
-        raise ServerPayloadValidationError("Token 长度必须在 1-128 之间", field="token")
-    return value
-
-
 def _validate_server_payload(payload: dict[str, Any]) -> ValidatedServerPayload:
-    name = _normalize_name(_require_field(payload, "name"))
-    ip = _normalize_host(_require_field(payload, "ip"))
-    game_port = _normalize_port(_require_field(payload, "game_port"), field="game_port")
-    restapi_port = _normalize_port(
-        _require_field(payload, "restapi_port"),
-        field="restapi_port",
-    )
-    token = _normalize_token(_require_field(payload, "token"))
-    return ValidatedServerPayload(
-        name=name,
-        ip=ip,
-        game_port=game_port,
-        restapi_port=restapi_port,
-        token=token,
-    )
+    return validate_server_payload_dict(payload)
 
 
 def _validation_error(exc: ServerPayloadValidationError) -> JSONResponse:
-    logger.warning(f"参数校验失败：field={exc.field or ''}，reason={exc}")
+    logger.warning(f"参数校验失败：field={exc.field or ''}，reason={exc.reason}")
     return api_error(
         status_code=422,
         code="validation_error",
-        message=str(exc),
-        details=[{"field": exc.field, "message": str(exc)}] if exc.field else None,
+        message=exc.reason,
+        details=[{"field": exc.field, "message": exc.reason}] if exc.field else None,
     )
 
 

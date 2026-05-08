@@ -2,7 +2,6 @@ import re
 
 from nonebot import on_command
 from nonebot.adapters import Bot, Event, Message
-from nonebot.adapters.onebot.v11 import MessageSegment as OBV11MessageSegment
 from nonebot.log import logger
 from nonebot.params import CommandArg
 
@@ -16,12 +15,20 @@ from nextbot.tshock_api import (
     is_success,
     request_server_api,
 )
-from nextbot.text_utils import EMOJI_SERVER, reply_block, reply_failure, reply_success
+from nextbot.text_utils import (
+    EMOJI_SERVER,
+    at_prefix,
+    reply_block,
+    reply_failure,
+    reply_success,
+)
 
 
 send_matcher = on_command("发送")
 
 _WHITESPACE_RE = re.compile(r"\s+")
+# ST-4.2：游戏内 /say 单条长度上限，防止 owner / 攻击者刷屏 + 触发 TShock 截断
+_MAX_CONTENT_LENGTH = 200
 
 
 def _parse_send_arg_text(text: str) -> tuple[int, str] | None:
@@ -34,6 +41,9 @@ def _parse_send_arg_text(text: str) -> tuple[int, str] | None:
     try:
         server_id = int(server_id_text)
     except ValueError:
+        return None
+    # ST-5.5：拒绝 server_id <= 0
+    if server_id <= 0:
         return None
     normalized = _WHITESPACE_RE.sub(" ", content).strip()
     if not normalized:
@@ -52,13 +62,18 @@ def _parse_send_arg_text(text: str) -> tuple[int, str] | None:
 )
 @require_permission("server.send")
 async def handle_send(bot: Bot, event: Event, arg: Message = CommandArg()) -> None:
-    at = OBV11MessageSegment.at(int(event.get_user_id()))
     text = parse_command_text_with_fallback(event, arg, "发送")
     parsed = _parse_send_arg_text(text)
     if parsed is None:
         raise_command_usage()
 
     target_id, content = parsed
+
+    # ST-4.2：长度上限（whitespace-collapse 后再判断），超过即拒绝
+    if len(content) > _MAX_CONTENT_LENGTH:
+        await bot.send(event, at_prefix(event, reply_failure("发送", "内容过长")))
+        return
+
     user_id = event.get_user_id()
 
     session = get_session()
@@ -69,39 +84,46 @@ async def handle_send(bot: Bot, event: Event, arg: Message = CommandArg()) -> No
         session.close()
 
     if user is None:
-        await bot.send(event, at + " " + reply_failure("发送", "请先注册账号"))
+        await bot.send(event, at_prefix(event, reply_failure("发送", "请先注册账号")))
         return
     if server is None:
-        await bot.send(event, at + " " + reply_failure("发送", "服务器不存在"))
+        await bot.send(event, at_prefix(event, reply_failure("发送", "服务器不存在")))
         return
 
     raw_cmd = f"/say {user.name}（{user_id}）：{content}"
     logger.info(
-        f"QQ 消息转发到服务器：server_id={target_id}，user_id={user_id}，"
-        f"name={user.name}，content_preview={content[:40]}"
+        f"QQ 消息转发到服务器：server_id={target_id} user_id={user_id} "
+        f"name={user.name} content_preview={content[:40]}"
     )
 
     try:
+        # ST-4.3：把 read 超时拉到 10s，缓解 TShock 主线程被其它命令短暂阻塞时的误报
         response = await request_server_api(
             server,
             "/v3/server/rawcmd",
             params={"cmd": raw_cmd},
+            timeout=10.0,
         )
     except TShockRequestError:
-        await bot.send(event, at + " " + reply_failure("发送", "无法连接服务器"))
+        await bot.send(event, at_prefix(event, reply_failure("发送", "无法连接服务器")))
         return
 
     if not is_success(response):
-        await bot.send(event, at + " " + reply_failure("发送", f"{get_error_reason(response)}"))
+        # ST-4.5：去掉多余 f-string
+        await bot.send(event, at_prefix(event, reply_failure("发送", get_error_reason(response))))
         return
 
     await bot.send(
         event,
-        at + "\n" + reply_block(
-            reply_success("发送"),
-            [
-                f"{EMOJI_SERVER} 服务器：{server.id}.{server.name}",
-                f"💬 内容：{content}",
-            ],
+        at_prefix(
+            event,
+            reply_block(
+                reply_success("发送"),
+                [
+                    f"{EMOJI_SERVER} 服务器：{server.id}.{server.name}",
+                    f"💬 内容：{content}",
+                ],
+            ),
+            sep="\n",
         ),
     )
