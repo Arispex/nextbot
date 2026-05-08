@@ -1,0 +1,5 @@
+{"file": ".trellis/tasks/05-08-player-query-audit/prd.md", "reason": "任务范围与 18 个修复模块清单 + 验收标准"}
+{"file": ".trellis/tasks/05-08-player-query-audit/research/player-query-a-findings.md", "reason": "PQA 14 项审计原始发现（在线/自踢/用户背包/我的背包）"}
+{"file": ".trellis/tasks/05-08-player-query-audit/research/player-query-b-findings.md", "reason": "PQB 33 项审计原始发现（我的地图/用户地图/查看地图/进度）"}
+{"file": ".trellis/tasks/05-08-player-query-audit/research/main-agent-recheck.md", "reason": "主代理复查结论：严重度调整、误判剔除、不修项、归并去重"}
+{"file": ".trellis/spec/backend/index.md", "reason": "项目后端规范索引"}
