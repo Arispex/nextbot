@@ -7,15 +7,25 @@ from nonebot import on_notice
 from nonebot.adapters import Bot
 from nonebot.adapters.onebot.v11 import (
     Bot as OBV11Bot,
+)
+from nonebot.adapters.onebot.v11 import (
     GroupDecreaseNoticeEvent,
     GroupIncreaseNoticeEvent,
+)
+from nonebot.adapters.onebot.v11 import (
     Message as OBV11Message,
+)
+from nonebot.adapters.onebot.v11 import (
     MessageSegment as OBV11MessageSegment,
 )
 from nonebot.log import logger
 
 from nextbot.access_control import get_group_ids, get_owner_ids
-from nextbot.ban_core import apply_ban_to_db, sync_user_to_blacklist
+from nextbot.ban_core import (
+    apply_ban_to_db,
+    format_blacklist_add_lines,
+    sync_user_to_blacklist,
+)
 from nextbot.db import User, get_session
 from nextbot.text_utils import EMOJI_USER, reply_success
 
@@ -177,7 +187,7 @@ async def handle_auto_ban_on_leave(bot: Bot, event: GroupDecreaseNoticeEvent) ->
         )
         return
 
-    sync_lines = await sync_user_to_blacklist(result.user_name, reason)
+    outcomes = await sync_user_to_blacklist(result.user_name, reason)
     logger.info(
         f"退群自动封禁完成：group_id={event.group_id}，user_id={user_id}，"
         f"name={result.user_name}，sub_type={sub_type}"
@@ -191,7 +201,7 @@ async def handle_auto_ban_on_leave(bot: Bot, event: GroupDecreaseNoticeEvent) ->
         f"{EMOJI_USER} 用户：{result.user_name}（{result.user_qq}）",
         f"📋 原因：{reason}",
     ]
-    lines.extend(sync_lines)
+    lines.extend(format_blacklist_add_lines(outcomes))
     try:
         await bot.call_api(
             "send_group_msg", group_id=event.group_id, message="\n".join(lines)

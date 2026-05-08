@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import math
 from pathlib import Path
@@ -8,17 +9,29 @@ from nonebot.adapters.onebot.v11 import MessageSegment as OBV11MessageSegment
 from nonebot.log import logger
 from nonebot.params import CommandArg
 
-from nextbot.access_control import get_owner_ids
-from nextbot.ban_core import apply_ban_to_db, sync_user_to_blacklist
-from nextbot.command_config import command_control, get_current_param, raise_command_usage
-from nextbot.db import Server, User, get_session
-from nextbot.message_parser import parse_command_args_with_fallback, resolve_user_id_arg_with_fallback
+from nextbot.ban_core import (
+    apply_ban_to_db,
+    apply_unban_to_db,
+    format_blacklist_add_lines,
+    format_blacklist_remove_lines,
+    sync_user_blacklist_remove,
+    sync_user_to_blacklist,
+)
+from nextbot.command_config import (
+    command_control,
+    get_current_param,
+    raise_command_usage,
+)
+from nextbot.db import User, get_session
+from nextbot.large_image import MAX_BASE64_BYTES
+from nextbot.message_parser import (
+    parse_command_args_with_fallback,
+    resolve_user_id_arg_with_fallback,
+)
 from nextbot.permissions import require_permission
 from nextbot.screenshot_temp import temp_screenshot_path
-from nextbot.time_utils import db_now_utc_naive
-from nextbot.time_utils import format_beijing_datetime
-from nextbot.tshock_api import TShockRequestError, get_error_reason, is_success, request_server_api
 from nextbot.text_utils import EMOJI_USER, reply_failure, reply_success
+from nextbot.time_utils import format_beijing_datetime
 from server.screenshot import RenderScreenshotError, ScreenshotOptions, screenshot_url
 from server.web_server import create_ban_list_page
 
@@ -32,6 +45,9 @@ BAN_LIST_SCREENSHOT_OPTIONS = ScreenshotOptions(
     full_page=True,
     fit_content_height=True,
 )
+
+# SB-2.2：封禁列表 handler-wide semaphore，防止 guest 高频刷命令导致 Playwright 进程膨胀
+_ban_list_semaphore = asyncio.Semaphore(2)
 
 
 def _to_base64_image_uri(path: Path) -> str:
@@ -51,7 +67,8 @@ def _to_base64_image_uri(path: Path) -> str:
 )
 @require_permission("admin.ban")
 async def handle_ban(bot: Bot, event: Event, arg: Message = CommandArg()) -> None:
-    at = OBV11MessageSegment.at(int(event.get_user_id()))
+    operator_id = event.get_user_id()
+    at = OBV11MessageSegment.at(int(operator_id))
 
     target_user_id, parse_error = resolve_user_id_arg_with_fallback(
         event, arg, "封禁用户", arg_index=0,
@@ -85,19 +102,25 @@ async def handle_ban(bot: Bot, event: Event, arg: Message = CommandArg()) -> Non
         await bot.send(event, at + " " + reply_failure("封禁", f"该用户已被封禁，原因：{result.previous_reason}"))
         return
 
+    # SB-1.5：审计日志补 operator_id，便于未来追溯
     logger.info(
-        f"用户封禁成功：user_id={result.user_qq} name={result.user_name} reason={reason}"
+        f"用户封禁成功：operator_id={operator_id} target_user_id={result.user_qq} "
+        f"target_name={result.user_name} reason={reason}"
     )
+
+    outcomes = await sync_user_to_blacklist(result.user_name, reason)
 
     lines: list[str] = [
         reply_success("封禁"),
         f"{EMOJI_USER} 用户：{result.user_name}（{result.user_qq}）",
         f"📋 原因：{reason}",
     ]
-    lines.extend(await sync_user_to_blacklist(result.user_name, reason))
+    lines.extend(format_blacklist_add_lines(outcomes))
 
+    success_count = sum(1 for o in outcomes if o.ok)
     logger.info(
-        f"封禁用户黑名单同步完成：user_id={result.user_qq} name={result.user_name}"
+        f"封禁用户黑名单同步完成：operator_id={operator_id} target_user_id={result.user_qq} "
+        f"target_name={result.user_name} success={success_count}/{len(outcomes)}"
     )
     await bot.send(event, at + "\n" + "\n".join(lines))
 
@@ -141,31 +164,30 @@ async def handle_ban_list(bot: Bot, event: Event, arg: Message = CommandArg()) -
 
     limit = max(1, min(int(get_current_param("limit", 10)), 50))
 
+    # SB-2.4：count + offset/limit，避免万级封禁数全表 ORM 物化
     session = get_session()
     try:
-        banned_users = (
-            session.query(User)
-            .filter(User.is_banned == True)
-            .order_by(User.banned_at.asc())
-            .all()
+        total = (
+            session.query(User).filter(User.is_banned == True).count()  # noqa: E712
         )
-    finally:
-        session.close()
+        total_pages = max(1, math.ceil(total / limit))
 
-    total = len(banned_users)
-    total_pages = max(1, math.ceil(total / limit))
-
-    if total == 0:
-        page_url = create_ban_list_page(
-            page=1, total_pages=1, entries=[],
-        )
-    else:
-        if page > total_pages:
+        if total > 0 and page > total_pages:
             await bot.send(event, reply_failure("查询", f"超出总页数（共 {total_pages} 页）"))
             return
 
         offset = (page - 1) * limit
-        page_users = banned_users[offset : offset + limit]
+        if total == 0:
+            page_users: list[User] = []
+        else:
+            page_users = (
+                session.query(User)
+                .filter(User.is_banned == True)  # noqa: E712
+                .order_by(User.banned_at.asc())
+                .offset(offset)
+                .limit(limit)
+                .all()
+            )
         entries = [
             {
                 "index": offset + i + 1,
@@ -176,32 +198,54 @@ async def handle_ban_list(bot: Bot, event: Event, arg: Message = CommandArg()) -
             }
             for i, u in enumerate(page_users)
         ]
-        page_url = create_ban_list_page(
-            page=page, total_pages=total_pages, entries=entries,
-        )
+    finally:
+        session.close()
+
+    page_url = create_ban_list_page(
+        page=page if total > 0 else 1,
+        total_pages=total_pages,
+        entries=entries,
+    )
 
     logger.info(
         f"封禁列表渲染地址：page={page}/{total_pages} total={total} internal_url={page_url}"
     )
 
-    async with temp_screenshot_path("ban-list") as screenshot_path:
-        try:
-            await screenshot_url(page_url, screenshot_path, options=BAN_LIST_SCREENSHOT_OPTIONS)
-        except RenderScreenshotError as exc:
-            await bot.send(event, reply_failure("查询", f"{exc}"))
-            return
-
-        logger.info(f"封禁列表截图成功：page={page}/{total_pages} file={screenshot_path}")
-        if bot.adapter.get_name() == "OneBot V11":
+    # SB-2.2：handler-wide semaphore + base64 size 上限防 OOM
+    async with _ban_list_semaphore:
+        async with temp_screenshot_path("ban-list") as screenshot_path:
             try:
-                image_uri = _to_base64_image_uri(screenshot_path)
+                await screenshot_url(page_url, screenshot_path, options=BAN_LIST_SCREENSHOT_OPTIONS)
+            except RenderScreenshotError as exc:
+                await bot.send(event, reply_failure("查询", f"{exc}"))
+                return
+
+            logger.info(f"封禁列表截图成功：page={page}/{total_pages} file={screenshot_path}")
+
+            try:
+                file_size = screenshot_path.stat().st_size
             except OSError:
                 await bot.send(event, reply_failure("查询", "读取截图文件失败"))
                 return
-            await bot.send(event, OBV11MessageSegment.image(file=image_uri))
-            return
 
-        await bot.send(event, f"✅ 截图成功，文件：{screenshot_path}")
+            # base64 编码后体积约为原始字节的 4/3
+            if file_size * 4 // 3 > MAX_BASE64_BYTES:
+                logger.warning(
+                    f"封禁列表截图过大：page={page}/{total_pages} size_bytes={file_size}"
+                )
+                await bot.send(event, reply_failure("查询", "封禁列表过大，请使用更小的页码"))
+                return
+
+            if bot.adapter.get_name() == "OneBot V11":
+                try:
+                    image_uri = _to_base64_image_uri(screenshot_path)
+                except OSError:
+                    await bot.send(event, reply_failure("查询", "读取截图文件失败"))
+                    return
+                await bot.send(event, OBV11MessageSegment.image(file=image_uri))
+                return
+
+            await bot.send(event, f"✅ 截图成功，文件：{screenshot_path}")
 
 
 @unban_matcher.handle()
@@ -215,7 +259,8 @@ async def handle_ban_list(bot: Bot, event: Event, arg: Message = CommandArg()) -
 )
 @require_permission("admin.unban")
 async def handle_unban(bot: Bot, event: Event, arg: Message = CommandArg()) -> None:
-    at = OBV11MessageSegment.at(int(event.get_user_id()))
+    operator_id = event.get_user_id()
+    at = OBV11MessageSegment.at(int(operator_id))
 
     target_user_id, parse_error = resolve_user_id_arg_with_fallback(
         event, arg, "解封用户", arg_index=0,
@@ -235,81 +280,33 @@ async def handle_unban(bot: Bot, event: Event, arg: Message = CommandArg()) -> N
     if len(args) != 1:
         raise_command_usage()
 
-    session = get_session()
-    try:
-        user = session.query(User).filter(User.user_id == target_user_id).first()
-        if user is None:
-            await bot.send(event, at + " " + reply_failure("解封", "未找到该用户"))
-            return
+    # SC-4.6 / SB-3.1 / SB-3.3：解封路径走 ban_core，commit 前 capture name/qq + 条件 UPDATE
+    assert target_user_id is not None  # parse_error 分支已处理 None
+    result = apply_unban_to_db(target_user_id)
+    if result.code == "not_found":
+        await bot.send(event, at + " " + reply_failure("解封", "未找到该用户"))
+        return
+    if result.code == "not_banned":
+        await bot.send(event, at + " " + reply_failure("解封", "该用户未被封禁"))
+        return
 
-        if not user.is_banned:
-            await bot.send(event, at + " " + reply_failure("解封", "该用户未被封禁"))
-            return
+    # SB-3.6：审计日志补 operator_id
+    logger.info(
+        f"用户解封成功：operator_id={operator_id} target_user_id={result.user_qq} "
+        f"target_name={result.user_name}"
+    )
 
-        user.is_banned = False
-        user.banned_at = None
-        user.ban_reason = ""
-        session.commit()
-
-        user_name = user.name
-        user_qq = user.user_id
-    finally:
-        session.close()
-
-    logger.info(f"用户解封成功：user_id={user_qq} name={user_name}")
-
-    session = get_session()
-    try:
-        servers = session.query(Server).order_by(Server.id.asc()).all()
-    finally:
-        session.close()
+    outcomes = await sync_user_blacklist_remove(result.user_name)
 
     lines: list[str] = [
         reply_success("解封"),
-        f"{EMOJI_USER} 用户：{user_name}（{user_qq}）",
+        f"{EMOJI_USER} 用户：{result.user_name}（{result.user_qq}）",
     ]
+    lines.extend(format_blacklist_remove_lines(outcomes))
 
-    if not servers:
-        lines.append("🖥️ 同步服务器黑名单结果：ℹ️ 暂无服务器")
-    else:
-        lines.append("🖥️ 同步服务器黑名单结果：")
-        for server in servers:
-            try:
-                check_response = await request_server_api(
-                    server,
-                    "/nextbot/blacklist",
-                )
-            except TShockRequestError:
-                lines.append(f"{server.id}.{server.name}：❌ 移除失败，无法连接服务器")
-                continue
-
-            if is_success(check_response):
-                entries = check_response.payload.get("entries", [])
-                exists = any(
-                    str(e.get("username", "")).lower() == user_name.lower()
-                    for e in entries
-                    if isinstance(e, dict)
-                )
-                if not exists:
-                    lines.append(f"{server.id}.{server.name}：ℹ️ 不在黑名单中")
-                    continue
-
-            try:
-                response = await request_server_api(
-                    server,
-                    f"/nextbot/blacklist/remove/{user_name}",
-                )
-            except TShockRequestError:
-                lines.append(f"{server.id}.{server.name}：❌ 移除失败，无法连接服务器")
-                continue
-
-            if is_success(response):
-                lines.append(f"{server.id}.{server.name}：✅ 移除成功")
-            else:
-                error_msg = get_error_reason(response)
-                lines.append(f"{server.id}.{server.name}：❌ 移除失败，{error_msg}")
-
+    success_count = sum(1 for o in outcomes if o.ok)
     logger.info(
-        f"解封用户黑名单同步完成：user_id={user_qq} name={user_name} server_count={len(servers)}"
+        f"解封用户黑名单同步完成：operator_id={operator_id} target_user_id={result.user_qq} "
+        f"target_name={result.user_name} success={success_count}/{len(outcomes)}"
     )
     await bot.send(event, at + "\n" + "\n".join(lines))
