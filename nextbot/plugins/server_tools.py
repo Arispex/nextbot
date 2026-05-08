@@ -4,7 +4,6 @@ import re
 import tempfile
 from pathlib import Path
 
-import httpx
 from nonebot import on_command
 from nonebot.adapters import Bot, Event, Message
 from nonebot.adapters.onebot.v11 import GroupMessageEvent as OBV11GroupMessageEvent
@@ -14,6 +13,11 @@ from nonebot.params import CommandArg
 
 from nextbot.command_config import command_control, raise_command_usage
 from nextbot.db import Server, get_session
+from nextbot.large_image import (
+    LONG_READ_TIMEOUT as _LONG_READ_TIMEOUT,
+    MAX_BASE64_BYTES as _MAX_BASE64_BYTES,
+    semaphore_for as _semaphore_for,
+)
 from nextbot.message_parser import (
     parse_command_args_with_fallback,
     parse_command_text_with_fallback,
@@ -38,10 +42,6 @@ execute_matcher = on_command("执行")
 map_image_matcher = on_command("全亮地图")
 download_map_matcher = on_command("下载地图")
 
-# 大对象响应的硬上限，超过即拒绝（防止后端 bug / 攻击者控制后端塞数 GB base64 把进程打爆）
-_MAX_BASE64_BYTES = 200 * 1024 * 1024
-# 长 read 超时使用的 httpx Timeout 模板（地图渲染 / 世界文件下载可达数十秒）
-_LONG_READ_TIMEOUT = httpx.Timeout(connect=5.0, read=300.0, write=10.0, pool=5.0)
 # 文件名白名单：仅 ASCII 字母 / 数字 / `_` / `-` / `.`，长度 1-128
 _SAFE_FILE_NAME_RE = re.compile(r"[\w\-.]{1,128}")
 _SAFE_WLD_NAME_RE = re.compile(r"[\w\-.]{1,128}\.wld")
@@ -50,14 +50,6 @@ _SAFE_WLD_NAME_RE = re.compile(r"[\w\-.]{1,128}\.wld")
 # 不同 server_id 互不阻塞；不同 handler（map / download）也分开避免互相挤占。
 _map_semaphores: dict[int, asyncio.Semaphore] = {}
 _download_semaphores: dict[int, asyncio.Semaphore] = {}
-
-
-def _semaphore_for(pool: dict[int, asyncio.Semaphore], server_id: int) -> asyncio.Semaphore:
-    sem = pool.get(server_id)
-    if sem is None:
-        sem = asyncio.Semaphore(1)
-        pool[server_id] = sem
-    return sem
 
 
 def _parse_execute_arg_text(text: str) -> tuple[int, str] | None:

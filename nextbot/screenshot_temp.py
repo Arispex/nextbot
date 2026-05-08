@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -22,8 +23,14 @@ async def temp_screenshot_path(
             await bot.send(event, image_segment(path))
 
     退出时不论是否异常，文件都会被 unlink（missing_ok=True 不抛错）。
+
+    PQA-3.1 / PQB-X.3：文件名追加 8 位 uuid 后缀，避免秒级时间戳在并发场景
+    下同 prefix 碰撞导致 cleanup 删除并发请求的源文件 / 写入互相覆盖。
     """
-    path = Path("/tmp") / f"{prefix}-{beijing_filename_timestamp()}{suffix}"
+    path = (
+        Path("/tmp")
+        / f"{prefix}-{beijing_filename_timestamp()}-{uuid.uuid4().hex[:8]}{suffix}"
+    )
     try:
         yield path
     finally:

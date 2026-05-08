@@ -1,15 +1,17 @@
+import asyncio
 import base64
 import binascii
 from pathlib import Path
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import quote, urlparse, urlunparse
 
-from nonebot import get_driver, on_command
+from nonebot import on_command
 from nonebot.adapters import Bot, Event, Message
 from nonebot.adapters.onebot.v11 import MessageSegment as OBV11MessageSegment
 from nonebot.log import logger
 from nonebot.params import CommandArg
 
 from server.screenshot import RenderScreenshotError, ScreenshotOptions, screenshot_url
+from server.server_config import get_server_settings
 from server.web_server import create_inventory_page, create_progress_page
 from nextbot.command_config import (
     command_control,
@@ -17,6 +19,11 @@ from nextbot.command_config import (
     raise_command_usage,
 )
 from nextbot.db import Server, User, get_session
+from nextbot.large_image import (
+    LONG_READ_TIMEOUT as _LONG_READ_TIMEOUT,
+    MAX_BASE64_BYTES as _MAX_BASE64_BYTES,
+    semaphore_for as _semaphore_for,
+)
 from nextbot.message_parser import (
     parse_command_args_with_fallback,
     resolve_user_id_arg_with_fallback,
@@ -26,11 +33,12 @@ from nextbot.screenshot_temp import temp_screenshot_path
 from nextbot.time_utils import format_online_seconds
 from nextbot.tshock_api import (
     TShockRequestError,
+    TShockResponse,
     get_error_reason,
     is_success,
     request_server_api,
 )
-from nextbot.text_utils import reply_failure
+from nextbot.text_utils import reply_block, reply_failure, reply_success
 
 online_matcher = on_command("在线")
 self_kick_matcher = on_command("自踢")
@@ -54,6 +62,15 @@ PROGRESS_SCREENSHOT_OPTIONS = ScreenshotOptions(
     fit_content_height=True,
 )
 from nextbot.progression import PROGRESSION_KEY_TO_ZH as _PROGRESS_NAME_MAP
+
+# Per-server 信号量池：限制同一服务器同时驻留内存的大对象渲染数量。
+# 不同 handler 用不同 dict 隔离，避免 inventory / map / explored-map 互相挤占。
+# - 背包：Playwright 截图，PNG 较小，max_concurrent=2
+# - 地图（base64 直回）：单并发，避免几十 MB 累积
+_inventory_semaphores: dict[int, "asyncio.Semaphore"] = {}
+_my_map_semaphores: dict[int, "asyncio.Semaphore"] = {}
+_user_map_semaphores: dict[int, "asyncio.Semaphore"] = {}
+_explored_map_semaphores: dict[int, "asyncio.Semaphore"] = {}
 
 
 def _to_non_negative_int(value: object) -> int | None:
@@ -129,8 +146,9 @@ def _to_base64_image_uri(path: Path) -> str:
 
 
 def _to_public_render_url(url: str) -> str:
-    config = get_driver().config
-    base_url = str(getattr(config, "web_server_public_base_url", "")).strip()
+    # PQA-CC-4：用 server_settings.public_base_url（含 http://{host}:{port} fallback），
+    # 不再直接读 driver.config，与 server_config._normalize_public_base_url 行为对齐。
+    base_url = str(get_server_settings().public_base_url or "").strip()
     if not base_url:
         return url
 
@@ -153,6 +171,19 @@ def _to_public_render_url(url: str) -> str:
             target.fragment,
         )
     )
+
+
+def _safe_at_segment(user_id: str) -> "OBV11MessageSegment | None":
+    """PQB-X.4：把 OBV11MessageSegment.at(int(user_id)) 包一层异常防御。
+
+    项目目前仅用 OBV11，user_id 总是数字；但 V11-shim 适配器若 push 非数字
+    user_id，此处返回 None，调用方退化为不带 @ 的发送。
+    """
+    try:
+        return OBV11MessageSegment.at(int(user_id))
+    except (TypeError, ValueError):
+        logger.warning(f"无法将 user_id 解析为整数 @ 段：user_id={user_id}")
+        return None
 
 
 @online_matcher.handle()
@@ -182,11 +213,9 @@ async def handle_online(
         await bot.send(event, reply_failure("查询", "暂无服务器"))
         return
 
-    lines: list[str] = []
-    for i, server in enumerate(servers):
-        if i > 0:
-            lines.append("")
-        lines.append(f"{server.id}.{server.name}")
+    # PQA-1.1：并行 fan-out，避免 N 台服务器串行 connect+read 各 5s 累积 N×10s
+    async def _query_one(server: Server) -> list[str]:
+        out: list[str] = [f"{server.id}.{server.name}"]
         try:
             response = await request_server_api(
                 server,
@@ -194,29 +223,29 @@ async def handle_online(
                 params={"players": "true"},
             )
         except TShockRequestError:
-            lines.append("❌ 查询失败，无法连接服务器")
-            continue
+            out.append("❌ 查询失败，无法连接服务器")
+            return out
 
         if not is_success(response):
-            lines.append(f"❌ 查询失败，{get_error_reason(response)}")
-            continue
+            out.append(f"❌ 查询失败，{get_error_reason(response)}")
+            return out
 
         players = response.payload.get("players")
         if not isinstance(players, list):
-            lines.append("❌ 查询失败，返回数据格式错误")
-            continue
+            out.append("❌ 查询失败，返回数据格式错误")
+            return out
 
         playercount = response.payload.get("playercount")
         maxplayers = response.payload.get("maxplayers")
         if not isinstance(playercount, int) or not isinstance(maxplayers, int):
-            lines.append("❌ 查询失败，返回数据格式错误")
-            continue
+            out.append("❌ 查询失败，返回数据格式错误")
+            return out
 
         if not players:
-            lines.append("ℹ️ 无玩家在线")
-            continue
+            out.append("ℹ️ 无玩家在线")
+            return out
 
-        lines.append(f"在线玩家（{playercount}/{maxplayers}）")
+        out.append(f"在线玩家（{playercount}/{maxplayers}）")
         nicknames: list[str] = []
         for player in players:
             if isinstance(player, dict):
@@ -225,9 +254,18 @@ async def handle_online(
                     nicknames.append(nickname)
                     continue
             nicknames.append(str(player))
+        out.append(",".join(nicknames))
+        return out
 
-        player_names = ",".join(nicknames)
-        lines.append(player_names)
+    results = await asyncio.gather(
+        *(_query_one(s) for s in servers), return_exceptions=False
+    )
+
+    lines: list[str] = []
+    for i, server_lines in enumerate(results):
+        if i > 0:
+            lines.append("")
+        lines.extend(server_lines)
 
     logger.info(f"在线查询完成：server_count={len(servers)}")
     await bot.send(event, "🖥️ 服务器在线状态\n" + "\n".join(lines))
@@ -251,7 +289,7 @@ async def handle_self_kick(
         raise_command_usage()
 
     user_id = event.get_user_id()
-    at = OBV11MessageSegment.at(int(user_id))
+    at_seg = _safe_at_segment(user_id)
     session = get_session()
     try:
         user = session.query(User).filter(User.user_id == user_id).first()
@@ -260,15 +298,23 @@ async def handle_self_kick(
         session.close()
 
     if user is None:
-        await bot.send(event, at + " " + reply_failure("执行", "未注册账号"))
+        msg = reply_failure("执行", "未注册账号")
+        if at_seg is not None:
+            await bot.send(event, at_seg + " " + msg)
+        else:
+            await bot.send(event, msg)
         return
 
     if not servers:
-        await bot.send(event, at + " " + reply_failure("执行", "暂无服务器"))
+        msg = reply_failure("执行", "暂无服务器")
+        if at_seg is not None:
+            await bot.send(event, at_seg + " " + msg)
+        else:
+            await bot.send(event, msg)
         return
 
-    lines: list[str] = []
-    for server in servers:
+    # PQA-2.1：并行 fan-out。/kick 对已下线玩家是幂等的，并发安全。
+    async def _kick_one(server: Server) -> str:
         try:
             response = await request_server_api(
                 server,
@@ -276,20 +322,24 @@ async def handle_self_kick(
                 params={"cmd": f"/kick {user.name}"},
             )
         except TShockRequestError:
-            lines.append(f"{server.id}.{server.name}：❌ 执行失败，无法连接服务器")
-            continue
+            return f"{server.id}.{server.name}：❌ 执行失败，无法连接服务器"
 
         if is_success(response):
-            lines.append(f"{server.id}.{server.name}：✅ 执行成功")
-            continue
+            return f"{server.id}.{server.name}：✅ 执行成功"
+        return f"{server.id}.{server.name}：❌ 执行失败，{get_error_reason(response)}"
 
-        reason = get_error_reason(response)
-        lines.append(f"{server.id}.{server.name}：❌ 执行失败，{reason}")
+    lines = list(
+        await asyncio.gather(*(_kick_one(s) for s in servers), return_exceptions=False)
+    )
 
     logger.info(
         f"自踢执行完成：user_id={user_id} name={user.name} server_count={len(servers)}"
     )
-    await bot.send(event, at + "\n🖥️ 自踢结果\n" + "\n".join(lines))
+    body = "🖥️ 自踢结果\n" + "\n".join(lines)
+    if at_seg is not None:
+        await bot.send(event, at_seg + "\n" + body)
+    else:
+        await bot.send(event, body)
 
 
 @inventory_matcher.handle()
@@ -357,6 +407,7 @@ async def handle_user_inventory(
     session = get_session()
     try:
         server = session.query(Server).filter(Server.id == server_id).first()
+        # TOCTOU: target may be renamed between DB read and TShock fetch; TShock will return 404 in that case.
         target_user = session.query(User).filter(User.user_id == target_user_id).first()
     finally:
         session.close()
@@ -368,91 +419,111 @@ async def handle_user_inventory(
         await bot.send(event, reply_failure("查询", "用户不存在"))
         return
 
-    try:
-        response = await request_server_api(
-            server,
-            f"/nextbot/users/{target_user.name}/inventory",
+    # PQA-3.2：per-server 并发上限（背包是 Playwright 截图，PNG 较小，max=2 比地图宽松）
+    sem = _semaphore_for(_inventory_semaphores, server.id, max_concurrent=2)
+    async with sem:
+        # PQA-3.4：inventory + stats 两次 API 改并行（halve wall time）
+        # PQB-X.2 / PQA-3.6：URL 路径段插值前 quote(safe="") 防御 user.name 含 / 等字符
+        encoded_name = quote(target_user.name, safe="")
+        inv_task = request_server_api(
+            server, f"/nextbot/users/{encoded_name}/inventory"
         )
-    except TShockRequestError:
-        await bot.send(event, reply_failure("查询", "无法连接服务器"))
-        return
-
-    if not is_success(response):
-        await bot.send(event, reply_failure("查询", f"{get_error_reason(response)}"))
-        return
-
-    inventory = response.payload.get("items")
-    if not isinstance(inventory, list):
-        await bot.send(event, reply_failure("查询", "返回数据格式错误"))
-        return
-
-    try:
-        info_response = await request_server_api(
-            server,
-            f"/nextbot/users/{target_user.name}/stats",
+        stats_task = request_server_api(
+            server, f"/nextbot/users/{encoded_name}/stats"
         )
-    except TShockRequestError:
-        await bot.send(event, reply_failure("查询", "无法连接服务器"))
-        return
-
-    if not is_success(info_response):
-        await bot.send(event, reply_failure("查询", f"{get_error_reason(info_response)}"))
-        return
-
-    info_texts = _parse_user_info_texts(info_response.payload)
-    if info_texts is None:
-        await bot.send(event, reply_failure("查询", "返回数据格式错误"))
-        return
-
-    page_url = create_inventory_page(
-        user_id=target_user.user_id,
-        user_name=target_user.name,
-        server_id=server.id,
-        server_name=server.name,
-        life_text=info_texts["life_text"],
-        mana_text=info_texts["mana_text"],
-        fishing_tasks_text=info_texts["fishing_tasks_text"],
-        pve_deaths_text=info_texts["pve_deaths_text"],
-        pvp_deaths_text=info_texts["pvp_deaths_text"],
-        online_time_text=info_texts.get("online_time_text", ""),
-        map_exploration_text=info_texts.get("map_exploration_text", ""),
-        show_stats=bool(get_current_param("show_stats", True)),
-        show_index=bool(get_current_param("show_index", True)),
-        slots=[item for item in inventory if isinstance(item, dict)],
-    )
-    public_page_url = _to_public_render_url(page_url)
-    logger.info(
-        "用户背包渲染地址："
-        f"server_id={server.id} target_user_id={target_user.user_id} "
-        f"internal_url={page_url} public_url={public_page_url}"
-    )
-    if bool(get_current_param("send_link", False)):
-        await bot.send(event, f"ℹ️ 用户背包链接：{public_page_url}")
-    async with temp_screenshot_path(
-        f"inventory-{server.id}-{target_user.user_id}"
-    ) as screenshot_path:
         try:
-            await screenshot_url(
-                page_url,
-                screenshot_path,
-                options=INVENTORY_SCREENSHOT_OPTIONS,
+            inv_result, stats_result = await asyncio.gather(
+                inv_task, stats_task, return_exceptions=True
             )
-        except RenderScreenshotError as exc:
-            await bot.send(event, reply_failure("查询", f"{exc}"))
+        except Exception:
+            await bot.send(event, reply_failure("查询", "无法连接服务器"))
             return
 
-        logger.info(
-            f"用户背包截图成功：server_id={server.id} target_user_id={target_user.user_id} file={screenshot_path}"
-        )
-        if bot.adapter.get_name() == "OneBot V11":
-            try:
-                image_uri = _to_base64_image_uri(screenshot_path)
-            except OSError:
-                await bot.send(event, reply_failure("查询", "读取截图文件失败"))
-                return
-            await bot.send(event, OBV11MessageSegment.image(file=image_uri))
+        # 任一连接级异常 → 统一回 "无法连接服务器"
+        if isinstance(inv_result, TShockRequestError) or isinstance(
+            stats_result, TShockRequestError
+        ):
+            await bot.send(event, reply_failure("查询", "无法连接服务器"))
             return
-        await bot.send(event, f"✅ 截图成功，文件：{screenshot_path}")
+        # 其它未预期异常按 raise 处理（通常是开发期 bug，应该 surface）
+        if isinstance(inv_result, BaseException):
+            raise inv_result
+        if isinstance(stats_result, BaseException):
+            raise stats_result
+
+        response: TShockResponse = inv_result
+        info_response: TShockResponse = stats_result
+
+        if not is_success(response):
+            await bot.send(event, reply_failure("查询", get_error_reason(response)))
+            return
+
+        inventory = response.payload.get("items")
+        if not isinstance(inventory, list):
+            await bot.send(event, reply_failure("查询", "返回数据格式错误"))
+            return
+
+        if not is_success(info_response):
+            await bot.send(event, reply_failure("查询", get_error_reason(info_response)))
+            return
+
+        info_texts = _parse_user_info_texts(info_response.payload)
+        if info_texts is None:
+            await bot.send(event, reply_failure("查询", "返回数据格式错误"))
+            return
+
+        page_url = create_inventory_page(
+            user_id=target_user.user_id,
+            user_name=target_user.name,
+            server_id=server.id,
+            server_name=server.name,
+            life_text=info_texts["life_text"],
+            mana_text=info_texts["mana_text"],
+            fishing_tasks_text=info_texts["fishing_tasks_text"],
+            pve_deaths_text=info_texts["pve_deaths_text"],
+            pvp_deaths_text=info_texts["pvp_deaths_text"],
+            online_time_text=info_texts.get("online_time_text", ""),
+            map_exploration_text=info_texts.get("map_exploration_text", ""),
+            show_stats=bool(get_current_param("show_stats", True)),
+            show_index=bool(get_current_param("show_index", True)),
+            slots=[item for item in inventory if isinstance(item, dict)],
+        )
+        public_page_url = _to_public_render_url(page_url)
+        # PQA-3.7：日志不再记录完整 render URL（含 token），只保留诊断必要字段
+        logger.info(
+            f"用户背包渲染：server_id={server.id} target_user_id={target_user.user_id}"
+        )
+        if bool(get_current_param("send_link", False)):
+            await bot.send(event, f"ℹ️ 用户背包链接：{public_page_url}")
+        async with temp_screenshot_path(
+            f"inventory-{server.id}-{target_user.user_id}"
+        ) as screenshot_path:
+            try:
+                await screenshot_url(
+                    page_url,
+                    screenshot_path,
+                    options=INVENTORY_SCREENSHOT_OPTIONS,
+                )
+            except RenderScreenshotError as exc:
+                await bot.send(event, reply_failure("查询", f"{exc}"))
+                return
+
+            logger.info(
+                f"用户背包截图成功：server_id={server.id} target_user_id={target_user.user_id} file={screenshot_path}"
+            )
+            if bot.adapter.get_name() == "OneBot V11":
+                try:
+                    image_uri = _to_base64_image_uri(screenshot_path)
+                except OSError:
+                    await bot.send(event, reply_failure("查询", "读取截图文件失败"))
+                    return
+                await bot.send(event, OBV11MessageSegment.image(file=image_uri))
+                return
+            # PQB-X.6：非 V11 fallback 不暴露 /tmp 路径
+            await bot.send(
+                event,
+                reply_block(reply_success("查询"), [f"📁 文件：{screenshot_path.name}"]),
+            )
 
 
 @my_inventory_matcher.handle()
@@ -504,6 +575,7 @@ async def handle_my_inventory(
     session = get_session()
     try:
         server = session.query(Server).filter(Server.id == server_id).first()
+        # TOCTOU: caller may be renamed between DB read and TShock fetch; TShock will return 404.
         user = session.query(User).filter(User.user_id == user_id).first()
     finally:
         session.close()
@@ -515,92 +587,110 @@ async def handle_my_inventory(
         await bot.send(event, reply_failure("查询", "用户不存在"))
         return
 
-    try:
-        response = await request_server_api(
-            server,
-            f"/nextbot/users/{user.name}/inventory",
+    # PQA-4.2：与 handle_user_inventory 共享同一组 per-server semaphore，防止 OOM
+    sem = _semaphore_for(_inventory_semaphores, server.id, max_concurrent=2)
+    async with sem:
+        # PQA-4.4：inventory + stats 并行
+        # PQB-X.2：URL 路径段插值前 quote(safe="") 防御
+        encoded_name = quote(user.name, safe="")
+        inv_task = request_server_api(
+            server, f"/nextbot/users/{encoded_name}/inventory"
         )
-    except TShockRequestError:
-        await bot.send(event, reply_failure("查询", "无法连接服务器"))
-        return
-
-    if not is_success(response):
-        await bot.send(event, reply_failure("查询", f"{get_error_reason(response)}"))
-        return
-
-    inventory = response.payload.get("items")
-    if not isinstance(inventory, list):
-        await bot.send(event, reply_failure("查询", "返回数据格式错误"))
-        return
-
-    try:
-        info_response = await request_server_api(
-            server,
-            f"/nextbot/users/{user.name}/stats",
+        stats_task = request_server_api(
+            server, f"/nextbot/users/{encoded_name}/stats"
         )
-    except TShockRequestError:
-        await bot.send(event, reply_failure("查询", "无法连接服务器"))
-        return
-
-    if not is_success(info_response):
-        await bot.send(event, reply_failure("查询", f"{get_error_reason(info_response)}"))
-        return
-
-    info_texts = _parse_user_info_texts(info_response.payload)
-    if info_texts is None:
-        await bot.send(event, reply_failure("查询", "返回数据格式错误"))
-        return
-
-    page_url = create_inventory_page(
-        user_id=user.user_id,
-        user_name=user.name,
-        server_id=server.id,
-        server_name=server.name,
-        life_text=info_texts["life_text"],
-        mana_text=info_texts["mana_text"],
-        fishing_tasks_text=info_texts["fishing_tasks_text"],
-        pve_deaths_text=info_texts["pve_deaths_text"],
-        pvp_deaths_text=info_texts["pvp_deaths_text"],
-        online_time_text=info_texts.get("online_time_text", ""),
-        map_exploration_text=info_texts.get("map_exploration_text", ""),
-        show_stats=bool(get_current_param("show_stats", True)),
-        show_index=bool(get_current_param("show_index", True)),
-        slots=[item for item in inventory if isinstance(item, dict)],
-    )
-    public_page_url = _to_public_render_url(page_url)
-    logger.info(
-        "我的背包渲染地址："
-        f"server_id={server.id} user_id={user.user_id} "
-        f"internal_url={page_url} public_url={public_page_url}"
-    )
-    if bool(get_current_param("send_link", False)):
-        await bot.send(event, f"ℹ️ 我的背包链接：{public_page_url}")
-
-    async with temp_screenshot_path(
-        f"inventory-{server.id}-{user.user_id}"
-    ) as screenshot_path:
         try:
-            await screenshot_url(
-                page_url,
-                screenshot_path,
-                options=INVENTORY_SCREENSHOT_OPTIONS,
+            inv_result, stats_result = await asyncio.gather(
+                inv_task, stats_task, return_exceptions=True
             )
-        except RenderScreenshotError as exc:
-            await bot.send(event, reply_failure("查询", f"{exc}"))
+        except Exception:
+            await bot.send(event, reply_failure("查询", "无法连接服务器"))
             return
 
-        logger.info(
-            f"我的背包截图成功：server_id={server.id} user_id={user.user_id} file={screenshot_path}"
-        )
-        if bot.adapter.get_name() == "OneBot V11":
-            try:
-                image_uri = _to_base64_image_uri(screenshot_path)
-            except OSError:
-                await bot.send(event, reply_failure("查询", "读取截图文件失败"))
-                return
-            await bot.send(event, OBV11MessageSegment.image(file=image_uri))
+        if isinstance(inv_result, TShockRequestError) or isinstance(
+            stats_result, TShockRequestError
+        ):
+            await bot.send(event, reply_failure("查询", "无法连接服务器"))
             return
-        await bot.send(event, f"✅ 截图成功，文件：{screenshot_path}")
+        if isinstance(inv_result, BaseException):
+            raise inv_result
+        if isinstance(stats_result, BaseException):
+            raise stats_result
+
+        response: TShockResponse = inv_result
+        info_response: TShockResponse = stats_result
+
+        if not is_success(response):
+            await bot.send(event, reply_failure("查询", get_error_reason(response)))
+            return
+
+        inventory = response.payload.get("items")
+        if not isinstance(inventory, list):
+            await bot.send(event, reply_failure("查询", "返回数据格式错误"))
+            return
+
+        if not is_success(info_response):
+            await bot.send(event, reply_failure("查询", get_error_reason(info_response)))
+            return
+
+        info_texts = _parse_user_info_texts(info_response.payload)
+        if info_texts is None:
+            await bot.send(event, reply_failure("查询", "返回数据格式错误"))
+            return
+
+        page_url = create_inventory_page(
+            user_id=user.user_id,
+            user_name=user.name,
+            server_id=server.id,
+            server_name=server.name,
+            life_text=info_texts["life_text"],
+            mana_text=info_texts["mana_text"],
+            fishing_tasks_text=info_texts["fishing_tasks_text"],
+            pve_deaths_text=info_texts["pve_deaths_text"],
+            pvp_deaths_text=info_texts["pvp_deaths_text"],
+            online_time_text=info_texts.get("online_time_text", ""),
+            map_exploration_text=info_texts.get("map_exploration_text", ""),
+            show_stats=bool(get_current_param("show_stats", True)),
+            show_index=bool(get_current_param("show_index", True)),
+            slots=[item for item in inventory if isinstance(item, dict)],
+        )
+        public_page_url = _to_public_render_url(page_url)
+        # PQA-3.7：日志不再记录完整 render URL（含 token）
+        logger.info(
+            f"我的背包渲染：server_id={server.id} user_id={user.user_id}"
+        )
+        if bool(get_current_param("send_link", False)):
+            await bot.send(event, f"ℹ️ 我的背包链接：{public_page_url}")
+
+        async with temp_screenshot_path(
+            f"inventory-{server.id}-{user.user_id}"
+        ) as screenshot_path:
+            try:
+                await screenshot_url(
+                    page_url,
+                    screenshot_path,
+                    options=INVENTORY_SCREENSHOT_OPTIONS,
+                )
+            except RenderScreenshotError as exc:
+                await bot.send(event, reply_failure("查询", f"{exc}"))
+                return
+
+            logger.info(
+                f"我的背包截图成功：server_id={server.id} user_id={user.user_id} file={screenshot_path}"
+            )
+            if bot.adapter.get_name() == "OneBot V11":
+                try:
+                    image_uri = _to_base64_image_uri(screenshot_path)
+                except OSError:
+                    await bot.send(event, reply_failure("查询", "读取截图文件失败"))
+                    return
+                await bot.send(event, OBV11MessageSegment.image(file=image_uri))
+                return
+            # PQB-X.6：非 V11 fallback 不暴露 /tmp 路径
+            await bot.send(
+                event,
+                reply_block(reply_success("查询"), [f"📁 文件：{screenshot_path.name}"]),
+            )
 
 
 @my_map_matcher.handle()
@@ -628,6 +718,7 @@ async def handle_my_map(bot: Bot, event: Event, arg: Message = CommandArg()):
     session = get_session()
     try:
         server = session.query(Server).filter(Server.id == server_id).first()
+        # TOCTOU: caller may be renamed between DB read and TShock fetch; TShock will return 404.
         user = session.query(User).filter(User.user_id == user_id).first()
     finally:
         session.close()
@@ -643,52 +734,91 @@ async def handle_my_map(bot: Bot, event: Event, arg: Message = CommandArg()):
         f"我的地图请求：server_id={server.id} user_id={user.user_id} target_user_name={user.name}"
     )
 
-    try:
-        response = await request_server_api(
-            server,
-            f"/nextbot/users/{user.name}/map-image",
-            timeout=30.0,
-        )
-    except TShockRequestError:
-        await bot.send(event, reply_failure("查询", "无法连接服务器"))
-        return
-
-    if not is_success(response):
-        await bot.send(event, reply_failure("查询", f"{get_error_reason(response)}"))
-        return
-
-    b64_string = str(response.payload.get("base64") or "").strip()
-    if not b64_string:
-        await bot.send(event, reply_failure("查询", "返回数据格式错误"))
-        return
-
-    try:
-        png_bytes = base64.b64decode(b64_string, validate=True)
-    except (binascii.Error, ValueError):
-        await bot.send(event, reply_failure("查询", "返回数据格式错误"))
-        return
-
-    async with temp_screenshot_path(
-        f"map-{server.id}-{user.user_id}"
-    ) as screenshot_path:
+    # PQB-1.1：per-server 单并发 + 长 read 超时，避免大世界并发渲染撑爆内存
+    sem = _semaphore_for(_my_map_semaphores, server.id)
+    async with sem:
+        # PQB-X.2 / PQB-1.3：URL 段插值前 quote(safe="") 防御
+        encoded_name = quote(user.name, safe="")
         try:
-            screenshot_path.write_bytes(png_bytes)
-        except OSError:
-            await bot.send(event, reply_failure("查询", "保存图片失败"))
+            response = await request_server_api(
+                server,
+                f"/nextbot/users/{encoded_name}/map-image",
+                timeout=_LONG_READ_TIMEOUT,
+            )
+        except TShockRequestError:
+            await bot.send(event, reply_failure("查询", "无法连接服务器"))
             return
 
-        logger.info(
-            f"我的地图发送成功：server_id={server.id} user_id={user.user_id} file={screenshot_path}"
-        )
+        if not is_success(response):
+            await bot.send(event, reply_failure("查询", get_error_reason(response)))
+            return
+
+        b64_string = str(response.payload.get("base64") or "").strip()
+        if not b64_string:
+            await bot.send(event, reply_failure("查询", "返回数据格式错误"))
+            return
+
+        # PQB-1.1：硬上限，超过即拒绝
+        if len(b64_string) > _MAX_BASE64_BYTES:
+            logger.warning(
+                f"我的地图返回数据过大：server_id={server.id} user_id={user.user_id} size_bytes={len(b64_string)}"
+            )
+            await bot.send(event, reply_failure("查询", "返回数据过大"))
+            return
 
         if bot.adapter.get_name() == "OneBot V11":
-            # 同消息内 @用户 + 图片，方便群里快速定位自己的地图回复
-            # （与 自踢 / 切换抢劫保护 等命令的 at 模式保持一致）。
-            at = OBV11MessageSegment.at(int(user_id))
+            # PQB-1.6：V11 路径直接用 b64_string，跳过 b64decode + write_bytes（去掉一份冗余拷贝）
+            at_seg = _safe_at_segment(user_id)
             image = OBV11MessageSegment.image(file=f"base64://{b64_string}")
-            await bot.send(event, at + image)
+            try:
+                if at_seg is not None:
+                    # 同消息内 @用户 + 图片，与自踢等命令的 at 模式保持一致
+                    await bot.send(event, at_seg + image)
+                else:
+                    await bot.send(event, image)
+            finally:
+                # 拼出消息段后立刻释放本地引用，让 GC 尽早回收
+                del b64_string
+                response.payload.pop("base64", None)
+            logger.info(
+                f"我的地图发送成功：server_id={server.id} user_id={user.user_id}"
+            )
             return
-        await bot.send(event, f"✅ 地图生成成功，文件：{screenshot_path}")
+
+        # 非 V11 fallback：写一次盘，仅展示文件名 + 大小，不暴露 /tmp 路径
+        try:
+            png_bytes = base64.b64decode(b64_string, validate=True)
+        except (binascii.Error, ValueError):
+            await bot.send(event, reply_failure("查询", "返回数据格式错误"))
+            return
+        size_kb = len(png_bytes) // 1024
+        del b64_string
+        response.payload.pop("base64", None)
+
+        async with temp_screenshot_path(
+            f"map-{server.id}-{user.user_id}"
+        ) as screenshot_path:
+            try:
+                screenshot_path.write_bytes(png_bytes)
+            except OSError:
+                await bot.send(event, reply_failure("查询", "保存图片失败"))
+                return
+            del png_bytes
+
+            logger.info(
+                f"我的地图发送成功：server_id={server.id} user_id={user.user_id} file={screenshot_path.name}"
+            )
+            # PQB-1.5：不暴露 /tmp 路径
+            await bot.send(
+                event,
+                reply_block(
+                    reply_success("查询"),
+                    [
+                        f"📁 文件：{screenshot_path.name}",
+                        f"📦 大小：{size_kb} KB",
+                    ],
+                ),
+            )
 
 
 @user_map_matcher.handle()
@@ -734,6 +864,7 @@ async def handle_user_map(bot: Bot, event: Event, arg: Message = CommandArg()):
     session = get_session()
     try:
         server = session.query(Server).filter(Server.id == server_id).first()
+        # TOCTOU: target may be renamed between DB read and TShock fetch; TShock will return 404.
         target_user = (
             session.query(User).filter(User.user_id == target_user_id).first()
         )
@@ -752,53 +883,92 @@ async def handle_user_map(bot: Bot, event: Event, arg: Message = CommandArg()):
         f"target_user_id={target_user.user_id} target_user_name={target_user.name}"
     )
 
-    try:
-        response = await request_server_api(
-            server,
-            f"/nextbot/users/{target_user.name}/map-image",
-            timeout=30.0,
-        )
-    except TShockRequestError:
-        await bot.send(event, reply_failure("查询", "无法连接服务器"))
-        return
-
-    if not is_success(response):
-        await bot.send(event, reply_failure("查询", f"{get_error_reason(response)}"))
-        return
-
-    b64_string = str(response.payload.get("base64") or "").strip()
-    if not b64_string:
-        await bot.send(event, reply_failure("查询", "返回数据格式错误"))
-        return
-
-    try:
-        png_bytes = base64.b64decode(b64_string, validate=True)
-    except (binascii.Error, ValueError):
-        await bot.send(event, reply_failure("查询", "返回数据格式错误"))
-        return
-
-    async with temp_screenshot_path(
-        f"map-{server.id}-{target_user.user_id}"
-    ) as screenshot_path:
+    # PQB-2.1：per-server 单并发 + 长 read 超时
+    sem = _semaphore_for(_user_map_semaphores, server.id)
+    async with sem:
+        # PQB-X.2 / PQB-2.2：URL 段插值前 quote(safe="") 防御
+        encoded_name = quote(target_user.name, safe="")
         try:
-            screenshot_path.write_bytes(png_bytes)
-        except OSError:
-            await bot.send(event, reply_failure("查询", "保存图片失败"))
+            response = await request_server_api(
+                server,
+                f"/nextbot/users/{encoded_name}/map-image",
+                timeout=_LONG_READ_TIMEOUT,
+            )
+        except TShockRequestError:
+            await bot.send(event, reply_failure("查询", "无法连接服务器"))
             return
 
-        logger.info(
-            f"用户地图发送成功：server_id={server.id} requester_user_id={requester_user_id} "
-            f"target_user_id={target_user.user_id} file={screenshot_path}"
-        )
+        if not is_success(response):
+            await bot.send(event, reply_failure("查询", get_error_reason(response)))
+            return
+
+        b64_string = str(response.payload.get("base64") or "").strip()
+        if not b64_string:
+            await bot.send(event, reply_failure("查询", "返回数据格式错误"))
+            return
+
+        # PQB-2.1：硬上限
+        if len(b64_string) > _MAX_BASE64_BYTES:
+            logger.warning(
+                f"用户地图返回数据过大：server_id={server.id} target_user_id={target_user.user_id} size_bytes={len(b64_string)}"
+            )
+            await bot.send(event, reply_failure("查询", "返回数据过大"))
+            return
 
         if bot.adapter.get_name() == "OneBot V11":
-            # 同消息内 @ 发起人 + 图片，方便群里快速定位自己请求的回复
-            # （与 我的地图 的 at 模式一致）。
-            at = OBV11MessageSegment.at(int(requester_user_id))
+            # PQB-1.6：V11 路径跳过 b64decode + write_bytes
+            at_seg = _safe_at_segment(requester_user_id)
             image = OBV11MessageSegment.image(file=f"base64://{b64_string}")
-            await bot.send(event, at + image)
+            try:
+                if at_seg is not None:
+                    # 同消息内 @ 发起人 + 图片，与 我的地图 的 at 模式一致
+                    await bot.send(event, at_seg + image)
+                else:
+                    await bot.send(event, image)
+            finally:
+                del b64_string
+                response.payload.pop("base64", None)
+            logger.info(
+                f"用户地图发送成功：server_id={server.id} requester_user_id={requester_user_id} "
+                f"target_user_id={target_user.user_id}"
+            )
             return
-        await bot.send(event, f"✅ 地图生成成功，文件：{screenshot_path}")
+
+        # 非 V11 fallback
+        try:
+            png_bytes = base64.b64decode(b64_string, validate=True)
+        except (binascii.Error, ValueError):
+            await bot.send(event, reply_failure("查询", "返回数据格式错误"))
+            return
+        size_kb = len(png_bytes) // 1024
+        del b64_string
+        response.payload.pop("base64", None)
+
+        async with temp_screenshot_path(
+            f"map-{server.id}-{target_user.user_id}"
+        ) as screenshot_path:
+            try:
+                screenshot_path.write_bytes(png_bytes)
+            except OSError:
+                await bot.send(event, reply_failure("查询", "保存图片失败"))
+                return
+            del png_bytes
+
+            logger.info(
+                f"用户地图发送成功：server_id={server.id} requester_user_id={requester_user_id} "
+                f"target_user_id={target_user.user_id} file={screenshot_path.name}"
+            )
+            # PQB-2.5：不暴露 /tmp 路径
+            await bot.send(
+                event,
+                reply_block(
+                    reply_success("查询"),
+                    [
+                        f"📁 文件：{screenshot_path.name}",
+                        f"📦 大小：{size_kb} KB",
+                    ],
+                ),
+            )
 
 
 @explored_map_matcher.handle()
@@ -837,51 +1007,90 @@ async def handle_explored_map(bot: Bot, event: Event, arg: Message = CommandArg(
         f"查看地图请求：server_id={server.id} requester_user_id={requester_user_id}"
     )
 
-    try:
-        response = await request_server_api(
-            server,
-            "/nextbot/world/explored-map-image",
-            timeout=30.0,
-        )
-    except TShockRequestError:
-        await bot.send(event, reply_failure("查询", "无法连接服务器"))
-        return
-
-    if not is_success(response):
-        await bot.send(event, reply_failure("查询", f"{get_error_reason(response)}"))
-        return
-
-    b64_string = str(response.payload.get("base64") or "").strip()
-    if not b64_string:
-        await bot.send(event, reply_failure("查询", "返回数据格式错误"))
-        return
-
-    try:
-        png_bytes = base64.b64decode(b64_string, validate=True)
-    except (binascii.Error, ValueError):
-        await bot.send(event, reply_failure("查询", "返回数据格式错误"))
-        return
-
-    async with temp_screenshot_path(
-        f"explored-map-{server.id}"
-    ) as screenshot_path:
+    # PQB-3.1 / PQB-3.2：保留 guest 权限，但加 ST-2.1 模板（per-server 单并发 + 200MB 上限 + 长 read）
+    # 防止任意 guest 通过并发触发 OOM
+    sem = _semaphore_for(_explored_map_semaphores, server.id)
+    async with sem:
         try:
-            screenshot_path.write_bytes(png_bytes)
-        except OSError:
-            await bot.send(event, reply_failure("查询", "保存图片失败"))
+            # PQB-3.4：30s -> 300s（large 世界 explored region 渲染常 60-120s）
+            response = await request_server_api(
+                server,
+                "/nextbot/world/explored-map-image",
+                timeout=_LONG_READ_TIMEOUT,
+            )
+        except TShockRequestError:
+            await bot.send(event, reply_failure("查询", "无法连接服务器"))
             return
 
-        logger.info(
-            f"查看地图发送成功：server_id={server.id} requester_user_id={requester_user_id} file={screenshot_path}"
-        )
+        if not is_success(response):
+            await bot.send(event, reply_failure("查询", get_error_reason(response)))
+            return
+
+        b64_string = str(response.payload.get("base64") or "").strip()
+        if not b64_string:
+            await bot.send(event, reply_failure("查询", "返回数据格式错误"))
+            return
+
+        # PQB-3.1：硬上限
+        if len(b64_string) > _MAX_BASE64_BYTES:
+            logger.warning(
+                f"查看地图返回数据过大：server_id={server.id} requester_user_id={requester_user_id} size_bytes={len(b64_string)}"
+            )
+            await bot.send(event, reply_failure("查询", "返回数据过大"))
+            return
 
         if bot.adapter.get_name() == "OneBot V11":
-            # 同消息内 @ 发起人 + 图片，与 我的地图 / 用户地图 一致
-            at = OBV11MessageSegment.at(int(requester_user_id))
+            # PQB-3.7：V11 路径跳过 b64decode + write_bytes
+            at_seg = _safe_at_segment(requester_user_id)
             image = OBV11MessageSegment.image(file=f"base64://{b64_string}")
-            await bot.send(event, at + image)
+            try:
+                if at_seg is not None:
+                    # 同消息内 @ 发起人 + 图片，与 我的地图 / 用户地图 一致
+                    await bot.send(event, at_seg + image)
+                else:
+                    await bot.send(event, image)
+            finally:
+                del b64_string
+                response.payload.pop("base64", None)
+            logger.info(
+                f"查看地图发送成功：server_id={server.id} requester_user_id={requester_user_id}"
+            )
             return
-        await bot.send(event, f"✅ 探索地图生成成功，文件：{screenshot_path}")
+
+        # 非 V11 fallback
+        try:
+            png_bytes = base64.b64decode(b64_string, validate=True)
+        except (binascii.Error, ValueError):
+            await bot.send(event, reply_failure("查询", "返回数据格式错误"))
+            return
+        size_kb = len(png_bytes) // 1024
+        del b64_string
+        response.payload.pop("base64", None)
+
+        async with temp_screenshot_path(
+            f"explored-map-{server.id}"
+        ) as screenshot_path:
+            try:
+                screenshot_path.write_bytes(png_bytes)
+            except OSError:
+                await bot.send(event, reply_failure("查询", "保存图片失败"))
+                return
+            del png_bytes
+
+            logger.info(
+                f"查看地图发送成功：server_id={server.id} requester_user_id={requester_user_id} file={screenshot_path.name}"
+            )
+            # PQB-3.5：不暴露 /tmp 路径
+            await bot.send(
+                event,
+                reply_block(
+                    reply_success("查询"),
+                    [
+                        f"📁 文件：{screenshot_path.name}",
+                        f"📦 大小：{size_kb} KB",
+                    ],
+                ),
+            )
 
 
 @progress_matcher.handle()
@@ -906,6 +1115,7 @@ async def handle_world_progress(
     except ValueError:
         raise_command_usage()
 
+    user_id = event.get_user_id()
     session = get_session()
     try:
         server = session.query(Server).filter(Server.id == server_id).first()
@@ -917,23 +1127,36 @@ async def handle_world_progress(
         return
 
     try:
+        # PQB-4.1：拉到 15s（与 server_tools 执行的 ST-1.4 一致），世界进度在繁忙服务器偶有超过 5s
         response = await request_server_api(
             server,
             "/nextbot/world/progress",
+            timeout=15.0,
         )
     except TShockRequestError:
         await bot.send(event, reply_failure("查询", "无法连接服务器"))
         return
 
     if not is_success(response):
-        await bot.send(event, reply_failure("查询", f"{get_error_reason(response)}"))
+        await bot.send(event, reply_failure("查询", get_error_reason(response)))
         return
 
+    # PQB-4.4：丢弃非 bool 字段时记一条 warning，便于发现 TShock 端字段类型变更
+    payload_items = list(response.payload.items())
     progress = {
         _PROGRESS_NAME_MAP.get(k, k): v
-        for k, v in response.payload.items()
+        for k, v in payload_items
         if isinstance(v, bool)
     }
+    dropped = [
+        f"{k}({type(v).__name__})"
+        for k, v in payload_items
+        if not isinstance(v, bool) and k != "status"
+    ]
+    if dropped:
+        logger.warning(
+            f"世界进度返回非 bool 字段：server_id={server.id} dropped={','.join(dropped)}"
+        )
     if not progress:
         await bot.send(event, reply_failure("查询", "返回数据格式错误"))
         return
@@ -943,11 +1166,8 @@ async def handle_world_progress(
         server_name=server.name,
         progress=progress,
     )
-    logger.info(
-        "世界进度渲染地址："
-        f"server_id={server.id} "
-        f"internal_url={page_url}"
-    )
+    # PQA-3.7 一致性：日志只保留诊断字段，不再打 page_url
+    logger.info(f"世界进度渲染：server_id={server.id} user_id={user_id}")
 
     async with temp_screenshot_path(f"progress-{server.id}") as screenshot_path:
         try:
@@ -960,8 +1180,9 @@ async def handle_world_progress(
             await bot.send(event, reply_failure("查询", f"{exc}"))
             return
 
+        # PQB-4.6：成功日志补 user_id
         logger.info(
-            f"世界进度截图成功：server_id={server.id} file={screenshot_path}"
+            f"世界进度截图成功：server_id={server.id} user_id={user_id} file={screenshot_path}"
         )
         if bot.adapter.get_name() == "OneBot V11":
             try:
@@ -971,4 +1192,8 @@ async def handle_world_progress(
                 return
             await bot.send(event, OBV11MessageSegment.image(file=image_uri))
             return
-        await bot.send(event, f"✅ 截图成功，文件：{screenshot_path}")
+        # PQB-4.5：补非 V11 fallback，不暴露 /tmp 路径
+        await bot.send(
+            event,
+            reply_block(reply_success("查询"), [f"📁 文件：{screenshot_path.name}"]),
+        )
