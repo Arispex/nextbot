@@ -81,9 +81,6 @@ def _parse_execute_arg_text(text: str) -> tuple[int, str] | None:
     command_text = command.strip()
     if not command_text:
         return None
-    # ST-1.3：强制 / 前缀，避免 owner 笔误把非命令文本当成 say 广播或得到 "command not found"
-    if not command_text.startswith("/"):
-        return None
     return server_id, command_text
 
 
@@ -148,6 +145,12 @@ async def handle_execute(
         raise_command_usage()
 
     target_id, command = parsed
+    # ST-1.3：强制 / 前缀，避免 owner 笔误把非命令文本当成 say 广播或得到 "command not found"
+    # 走 reply_failure 而不是 raise_command_usage，因为格式实际是对的，问题只是命令没带 /
+    if not command.startswith("/"):
+        await bot.send(event, at_prefix(event, reply_failure("执行", "命令必须以 / 开头")))
+        return
+
     session = get_session()
     try:
         server = session.query(Server).filter(Server.id == target_id).first()
