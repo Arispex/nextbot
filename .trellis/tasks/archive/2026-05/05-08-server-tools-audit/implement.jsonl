@@ -1,0 +1,5 @@
+{"file": ".trellis/tasks/05-08-server-tools-audit/prd.md", "reason": "任务范围与验收标准"}
+{"file": ".trellis/tasks/05-08-server-tools-audit/research/server-tools-findings.md", "reason": "服务器工具命令的全部审计条目，含位置/复现/方案"}
+{"file": ".trellis/tasks/05-08-server-tools-audit/research/server-manager-findings.md", "reason": "服务器管理命令的全部审计条目，含 SM-1.x/SM-2.x/SM-4.x 详情"}
+{"file": ".trellis/tasks/05-08-server-tools-audit/research/main-agent-recheck.md", "reason": "主代理复查后的严重度调整、误判剔除、不修项标注"}
+{"file": ".trellis/spec/backend/index.md", "reason": "项目后端规范索引（命令日志规范、reply_success/reply_failure 体系）"}

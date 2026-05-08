@@ -1,0 +1,5 @@
+{"file": ".trellis/tasks/05-08-server-tools-audit/prd.md", "reason": "任务范围与验收标准"}
+{"file": ".trellis/tasks/05-08-server-tools-audit/research/server-tools-findings.md", "reason": "审计原始发现，对照检查每条修复是否真的覆盖"}
+{"file": ".trellis/tasks/05-08-server-tools-audit/research/server-manager-findings.md", "reason": "审计原始发现，对照检查 SM-* 修复是否真的覆盖"}
+{"file": ".trellis/tasks/05-08-server-tools-audit/research/main-agent-recheck.md", "reason": "主代理复查结论，含跳过项与严重度调整"}
+{"file": ".trellis/spec/backend/index.md", "reason": "项目后端规范索引"}
