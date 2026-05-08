@@ -336,3 +336,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 105: 商店系统命令审计与修复
+
+**Date**: 2026-05-08
+**Task**: 商店系统命令审计与修复
+**Branch**: `main`
+
+### Summary
+
+对 商店系统 3 个命令做安全/性能审计，sub-agent 初审 + 主代理二次复查后保留 3 必修 + 5 应修 + 6 建议（其中 4 项观察 / UX / 影响小项跳过）。修复：两条买入路径金币 lost-update（条件 UPDATE）/ 指令购买 DB-API 双重一致性（CRITICAL 日志 + 全失败 reply_failure）/ TOCTOU 商品下架重读 / 单价+总价+buy_count+actual_value+quantity 5 个上界 / 3 handler 异常兜底 / 列表 N+1 修复（LEFT JOIN + SQL 分页）/ unicode 折叠 / _safe_param_int helper 复用 / webui actual_value+quantity 上界。第二轮 check 通过；又补 2 个非阻塞优化（_buy_command 全失败切 reply_failure + webui quantity 9999 上界）。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `3e26710` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
