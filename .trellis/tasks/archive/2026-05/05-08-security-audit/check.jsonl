@@ -1,0 +1,5 @@
+{"file": ".trellis/tasks/05-08-security-audit/prd.md", "reason": "对照 9 个修复模块的验收标准"}
+{"file": ".trellis/tasks/05-08-security-audit/research/security-a-findings.md", "reason": "对照 SA 原始发现确认每项已修"}
+{"file": ".trellis/tasks/05-08-security-audit/research/security-b-findings.md", "reason": "对照 SB / SC 原始发现确认每项已修"}
+{"file": ".trellis/tasks/05-08-security-audit/research/main-agent-recheck.md", "reason": "主代理复查结论（含 SA-COMMON.1 / SB-1.1 / SB-2.1 / SB-3.2 / SC-4.1 跳过项）"}
+{"file": ".trellis/spec/backend/index.md", "reason": "项目后端规范索引"}

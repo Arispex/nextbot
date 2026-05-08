@@ -1,0 +1,5 @@
+{"file": ".trellis/tasks/05-08-security-audit/prd.md", "reason": "任务范围与 9 个修复模块清单 + 验收标准"}
+{"file": ".trellis/tasks/05-08-security-audit/research/security-a-findings.md", "reason": "security.py 17 项审计原始发现（允许登入 / 拒绝登入）"}
+{"file": ".trellis/tasks/05-08-security-audit/research/security-b-findings.md", "reason": "ban.py + ban_core.py 28 项审计原始发现（封禁用户 / 解封用户 / 封禁列表 + 共享模块）"}
+{"file": ".trellis/tasks/05-08-security-audit/research/main-agent-recheck.md", "reason": "主代理复查结论：严重度调整、误判剔除、不修项、归并去重"}
+{"file": ".trellis/spec/backend/index.md", "reason": "项目后端规范索引"}
