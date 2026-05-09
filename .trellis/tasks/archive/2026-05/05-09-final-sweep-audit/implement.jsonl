@@ -1,0 +1,7 @@
+{"file": ".trellis/tasks/05-09-final-sweep-audit/prd.md", "reason": "14 个修复模块清单 + 验收标准"}
+{"file": ".trellis/tasks/05-09-final-sweep-audit/research/sweep-financial-findings.md", "reason": "金融文件审计原始发现（含 SF-X.1 / SF-4.x）"}
+{"file": ".trellis/tasks/05-09-final-sweep-audit/research/sweep-security-findings.md", "reason": "安全 / 权限审计原始发现（含 SS-1.1 / SS-2.1 / SS-3.1 / SS-4.1 / SS-7.1）"}
+{"file": ".trellis/tasks/05-09-final-sweep-audit/research/sweep-server-findings.md", "reason": "服务器交互审计（复审通过，仅 4 条 ℹ️ 观察项）"}
+{"file": ".trellis/tasks/05-09-final-sweep-audit/research/sweep-shared-findings.md", "reason": "共享模块审计（含 SH-8.1 critical / SH-4.2 / SH-8.2 / SH-9.1）"}
+{"file": ".trellis/tasks/05-09-final-sweep-audit/research/main-agent-recheck.md", "reason": "主代理复查结论 + 修复优先级"}
+{"file": ".trellis/spec/backend/index.md", "reason": "项目后端规范索引"}
