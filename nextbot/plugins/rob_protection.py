@@ -123,6 +123,8 @@ async def handle_toggle_rob_protection(
         current_coins = original_coins - cost
         name = original_name
     except Exception:  # noqa: BLE001
+        # R4R-2.1：commit 前任意路径抛异常时显式 rollback。
+        session.rollback()
         logger.exception(f"切换抢劫保护处理异常：user_id={user_id}")
         try:
             await bot.send(event, at + " " + reply_failure("切换抢劫保护", "处理失败，请稍后重试"))

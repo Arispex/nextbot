@@ -466,6 +466,8 @@ async def handle_rob(bot: Bot, event: Event, arg: Message = CommandArg()) -> Non
             session.query(User.name).filter(User.user_id == target_user_id).scalar() or ""
         )
     except Exception:  # noqa: BLE001
+        # R4R-2.1：commit 前任意路径抛异常时显式 rollback。
+        session.rollback()
         logger.exception(f"抢劫处理异常：robber_id={robber_id} target_id={target_user_id}")
         try:
             await bot.send(event, at + " " + reply_failure("抢劫", "处理失败，请稍后重试"))

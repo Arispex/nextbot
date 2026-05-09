@@ -101,9 +101,10 @@
       line-height: 1.15;
       letter-spacing: -0.01em;
       font-feature-settings: "tnum";
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
+      /* R4R-polish：MAX_COINS bump 到 100 亿后单格数字最长可达 14 字符（含千分位），
+       * 原 ellipsis 截断会丢精度；改 break-all + break-word 让长数字换行展示。 */
+      overflow-wrap: break-word;
+      word-break: break-all;
     }
 
     .stat-value.gain { color: var(--color-accent-teal); }

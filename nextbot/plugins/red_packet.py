@@ -224,6 +224,8 @@ async def handle_send(bot: Bot, event: Event, arg: Message = CommandArg()) -> No
 
         send_success = True
     except Exception:  # noqa: BLE001
+        # R4R-2.1：commit 前任意路径抛异常时显式 rollback。
+        session.rollback()
         logger.exception(f"发红包处理异常：user_id={user_id}")
         try:
             await bot.send(event, at + " " + reply_failure("发红包", "处理失败，请稍后重试"))
@@ -391,6 +393,8 @@ async def handle_grab(bot: Bot, event: Event, arg: Message = CommandArg()) -> No
         )
         grab_success = True
     except Exception:  # noqa: BLE001
+        # R4R-2.1：commit 前任意路径抛异常时显式 rollback。
+        session.rollback()
         logger.exception(f"抢红包处理异常：user_id={user_id}")
         try:
             await bot.send(event, at + " " + reply_failure("抢红包", "处理失败，请稍后重试"))
@@ -504,6 +508,8 @@ async def handle_withdraw(bot: Bot, event: Event, arg: Message = CommandArg()) -
         session.commit()
         withdraw_success = True
     except Exception:  # noqa: BLE001
+        # R4R-2.1：commit 前任意路径抛异常时显式 rollback。
+        session.rollback()
         logger.exception(f"收回红包处理异常：user_id={user_id}")
         try:
             await bot.send(event, at + " " + reply_failure("收回红包", "处理失败，请稍后重试"))

@@ -787,7 +787,22 @@ async def handle_total_online_time_leaderboard(
                 return server, None
             return server, entries
 
-    fetch_results = await asyncio.gather(*[_fetch_one(s) for s in servers])
+    # R4R-B.1：return_exceptions=True 防止任一 task 抛非 TShockRequestError
+    # 异常（如 CancelledError、内部 bug）时整个 gather cancel 其他任务，
+    # 与 lottery / shop fan-out 模板对齐。_fetch_one 已自行 catch
+    # TShockRequestError，所以正常路径不会进入异常分支。
+    raw_fetch_results = await asyncio.gather(
+        *[_fetch_one(s) for s in servers], return_exceptions=True,
+    )
+    fetch_results: list[tuple[Server, list | None]] = []
+    for server, raw in zip(servers, raw_fetch_results, strict=True):
+        if isinstance(raw, BaseException):
+            logger.warning(
+                f"总在线时长排行榜：server_id={server.id} 抓取异常：reason={raw!r}"
+            )
+            fetch_results.append((server, None))
+        else:
+            fetch_results.append(raw)
 
     # LB-3.2：totals dict 加 size cap，防控制 TShock 的攻击者塞海量假 username
     totals: dict[str, int] = {}

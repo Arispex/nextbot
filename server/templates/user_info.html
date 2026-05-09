@@ -135,8 +135,10 @@
       font-feature-settings: "tnum";
       color: var(--color-ink);
       margin: 0;
+      /* R4R-polish：MAX_COINS bump 到 100 亿后单格数字最长可达 14 字符（含千分位），
+       * 用 break-all 强制对长数字串换行（word-break: break-word 在 Chromium 行为不一致）。 */
       overflow-wrap: break-word;
-      word-break: break-word;
+      word-break: break-all;
     }
 
     .stat-unit {

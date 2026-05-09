@@ -438,6 +438,9 @@ async def handle_sign(bot: Bot, event: Event, arg: Message = CommandArg()) -> No
             ),
         )
     except Exception:  # noqa: BLE001
+        # R4R-2.1：commit 前任意路径抛异常时显式 rollback，避免依赖 session.close()
+        # 隐式 rollback；与同文件 IntegrityError 分支风格统一。
+        session.rollback()
         logger.exception(f"签到处理异常：user_id={user_id}")
         try:
             await bot.send(event, at + " " + reply_failure("签到", "处理失败，请稍后重试"))
@@ -580,6 +583,8 @@ async def handle_transfer(bot: Bot, event: Event, arg: Message = CommandArg()) -
             ),
         )
     except Exception:  # noqa: BLE001
+        # R4R-2.1：commit 前任意路径抛异常时显式 rollback。
+        session.rollback()
         logger.exception(f"转账处理异常：sender_id={sender_id}")
         try:
             await bot.send(event, at + " " + reply_failure("转账", "处理失败，请稍后重试"))
@@ -656,6 +661,8 @@ async def handle_add_coins(
             session.query(User.name).filter(User.user_id == target_user_id).scalar() or ""
         )
     except Exception:  # noqa: BLE001
+        # R4R-2.1：commit 前任意路径抛异常时显式 rollback。
+        session.rollback()
         logger.exception(f"添加金币处理异常：user_id={target_user_id}")
         try:
             await bot.send(event, at + " " + reply_failure("添加", "处理失败，请稍后重试"))
@@ -781,6 +788,8 @@ async def handle_remove_coins(
             session.query(User.name).filter(User.user_id == target_user_id).scalar() or ""
         )
     except Exception:  # noqa: BLE001
+        # R4R-2.1：commit 前任意路径抛异常时显式 rollback。
+        session.rollback()
         logger.exception(f"扣除金币处理异常：user_id={target_user_id}")
         try:
             await bot.send(event, at + " " + reply_failure("扣除", "处理失败，请稍后重试"))

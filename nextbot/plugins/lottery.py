@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import math
 import random
+import unicodedata
 
 from nonebot import on_command
 from nonebot.adapters import Bot, Event, Message
@@ -63,6 +64,15 @@ MAX_LOTTERY_CMD_EXECUTIONS = 200
 
 # LO-3.10：玩家名进入指令模板前禁止包含的字符（防 TShock 命令解析器拼接歧义）
 _FORBIDDEN_PLAYER_CHARS = set('"\';\n\r ')
+
+
+def _normalize_player_name(name: str) -> str:
+    """unicode NFKC + casefold 折叠，用于跨全角/半角 + 大小写比对。
+
+    R4R-5.1：与 shop._normalize_player_name / warehouse._normalize_player_name
+    保持一致，避免 lottery 与其他域玩家名匹配口径漂移。
+    """
+    return unicodedata.normalize("NFKC", str(name)).strip().casefold()
 
 
 def _player_name_safe_for_command(name: str) -> bool:
@@ -172,10 +182,11 @@ async def _check_player_online(server: Server, player_name: str) -> tuple[bool |
     players = resp.payload.get("players")
     if not isinstance(players, list):
         return None, "返回数据格式错误"
-    name_lower = player_name.lower()
+    # R4R-5.1：unicode NFKC + casefold，与 shop / warehouse 一致，跨全角/半角折叠匹配
+    target = _normalize_player_name(player_name)
     for p in players:
-        nickname = str(p.get("nickname", "")).strip() if isinstance(p, dict) else str(p).strip()
-        if nickname.lower() == name_lower:
+        nickname = str(p.get("nickname", "")) if isinstance(p, dict) else str(p)
+        if _normalize_player_name(nickname) == target:
             return True, ""
     return False, "玩家不在线"
 

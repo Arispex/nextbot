@@ -131,10 +131,23 @@ async def _sync_whitelist_to_all_servers(
     if not servers:
         return []
 
-    results = await asyncio.gather(
-        *(_sync_one_whitelist(server, user_id, name) for server in servers)
+    # R4R-B.1：return_exceptions=True 防止任一 task 抛非 TShockRequestError 异常
+    # （如 CancelledError、内部 bug）时整个 gather cancel 其他任务，
+    # 与 shop / lottery 的 fan-out 模板对齐。
+    raw_results = await asyncio.gather(
+        *(_sync_one_whitelist(server, user_id, name) for server in servers),
+        return_exceptions=True,
     )
-    return list(results)
+    results: list[tuple[Server, SyncStatus, str]] = []
+    for server, raw in zip(servers, raw_results, strict=True):
+        if isinstance(raw, BaseException):
+            logger.warning(
+                f"白名单同步异常：server_id={server.id} user_id={user_id} name={name} reason={raw!r}"
+            )
+            results.append((server, "fail", "同步异常"))
+        else:
+            results.append(raw)
+    return results
 
 
 async def _rename_one_whitelist(
@@ -561,10 +574,21 @@ async def handle_rename(bot: Bot, event: Event, arg: Message = CommandArg()) -> 
         lines.append("🖥️ 同步服务器白名单结果：ℹ️ 暂无服务器")
     else:
         lines.append("🖥️ 同步服务器白名单结果：")
-        rename_results = await asyncio.gather(
-            *(_rename_one_whitelist(s, old_name, new_name) for s in servers)
+        # R4R-B.1：return_exceptions=True 防止任一 task 抛非 TShockRequestError
+        # 异常（如 CancelledError、内部 bug）时整个 gather cancel 其他任务。
+        raw_rename_results = await asyncio.gather(
+            *(_rename_one_whitelist(s, old_name, new_name) for s in servers),
+            return_exceptions=True,
         )
-        for server, remove_ok, add_ok, remove_msg, add_msg in rename_results:
+        for server, raw in zip(servers, raw_rename_results, strict=True):
+            if isinstance(raw, BaseException):
+                logger.warning(
+                    f"更改用户名称白名单同步异常：server_id={server.id} "
+                    f"old_name={old_name} new_name={new_name} reason={raw!r}"
+                )
+                lines.append(f"{server.id}.{server.name}：❌ 同步异常")
+                continue
+            _, remove_ok, add_ok, remove_msg, add_msg = raw
             if remove_ok and add_ok:
                 lines.append(f"{server.id}.{server.name}：✅ 同步成功")
             else:

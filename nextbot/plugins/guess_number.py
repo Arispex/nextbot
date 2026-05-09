@@ -227,8 +227,6 @@ async def handle_guess_number(bot: Bot, event: Event, arg: Message = CommandArg(
             result_type = "远离"
             payout = 0
 
-        net = payout - cost
-
         # PC-8.1：payout 加币走 add_coins_with_cap，受 SF-X.1 全局账户上限保护，
         # 与 economy / red_packet / warehouse / lottery 等域对称。统计字段拆出独立 UPDATE。
         applied_payout = 0
@@ -240,6 +238,12 @@ async def handle_guess_number(bot: Bot, event: Event, arg: Message = CommandArg(
                     f"猜数字派奖触顶 cap：user_id={user_id} requested={payout} applied={applied_payout}"
                 )
 
+        # R4R-7.1：win / loss / tie 的分支判定仍按理论 net（用户行为真实结果），
+        # 但 stats 累计值用 applied_net（实际入账，与 user.coins 真实变化对账）。
+        # cap 触顶导致 applied_net <= 0 时仍归类为"赢"分支，避免 win_count 漏计。
+        net = payout - cost
+        applied_net = applied_payout - cost
+
         if net > 0:
             session.execute(
                 update(User)
@@ -247,7 +251,7 @@ async def handle_guess_number(bot: Bot, event: Event, arg: Message = CommandArg(
                 .values(
                     guess_total_count=User.guess_total_count + 1,
                     guess_win_count=User.guess_win_count + 1,
-                    guess_total_gain=User.guess_total_gain + net,
+                    guess_total_gain=User.guess_total_gain + max(0, applied_net),
                 )
             )
         elif net < 0:
@@ -256,7 +260,7 @@ async def handle_guess_number(bot: Bot, event: Event, arg: Message = CommandArg(
                 .where(User.user_id == user_id)
                 .values(
                     guess_total_count=User.guess_total_count + 1,
-                    guess_total_loss=User.guess_total_loss + abs(net),
+                    guess_total_loss=User.guess_total_loss + abs(applied_net),
                 )
             )
         else:
@@ -273,6 +277,9 @@ async def handle_guess_number(bot: Bot, event: Event, arg: Message = CommandArg(
             session.query(User.coins).filter(User.user_id == user_id).scalar() or 0
         )
     except Exception:  # noqa: BLE001
+        # R4R-2.1：commit 前任意路径抛异常时显式 rollback，避免依赖 session.close()
+        # 隐式 rollback；与 user_manager IntegrityError 分支风格统一。
+        session.rollback()
         logger.exception(f"猜数字处理异常：user_id={user_id}")
         try:
             await bot.send(event, at + " " + reply_failure("猜数字", "处理失败，请稍后重试"))
@@ -289,7 +296,6 @@ async def handle_guess_number(bot: Bot, event: Event, arg: Message = CommandArg(
     # PC-8.1：reply 中显示 applied_payout（实际入账）而非 payout（理论派奖）。
     # 触顶时另起一行展示原始派奖与触顶差额，避免"获得 X 金币"与 final_coins 对不上。
     if net > 0:
-        applied_net = applied_payout - cost
         lines.append(f"{EMOJI_COIN} {result_type}！投入 {cost}，获得 {applied_payout}，净赚 {applied_net} 金币")
     elif net == 0:
         lines.append(f"⚖️ {result_type}！投入 {cost} 金币，刚好持平")
