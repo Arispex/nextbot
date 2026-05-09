@@ -15,6 +15,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    event,
 )
 from sqlalchemy import text as sa_text
 from sqlalchemy.engine import Engine, create_engine
@@ -93,6 +94,20 @@ DEFAULT_GUEST_PERMISSIONS: frozenset[str] = frozenset({
     "warehouse.list_user",
     "warehouse.recycle_self",
 })
+
+
+# 保留组名（不可创建）。owner 是 .env 短路非 DB 组，列入仅消除 UI 误导，
+# 防止管理员误创建一个看似"特权"的组结果实际无效。
+RESERVED_GROUP_NAMES: frozenset[str] = frozenset({
+    "owner", "admin", "root", "system", "superuser",
+})
+
+
+# 删除身份组时受影响 user 的回退目标组。
+# 旧逻辑硬编码到 "guest"，但 ensure_default_groups() seed 的 "default" 才是
+# post-registration baseline（继承 guest），改为 "default" 避免 silently 把
+# 用户降到 guest 等级。
+GROUP_DELETE_FALLBACK = "default"
 
 
 class Base(DeclarativeBase):
@@ -370,6 +385,28 @@ def _ensure_engine_and_factory() -> tuple[Engine, sessionmaker[Session]]:
             echo=False,
             connect_args={"check_same_thread": False},
         )
+
+        # PMA-3.2：SQLite 默认 BEGIN DEFERRED 允许并发读，但
+        # 删除身份组的 cascade（删除 + bulk update + read-modify-write
+        # 其它组 inherits）需要序列化写入避免 dangling references。
+        # busy_timeout=5000ms 让阻塞的 writer 等待而不是立即报错；
+        # BEGIN IMMEDIATE 让每个事务一开始就持写锁，所有 mutation
+        # 串行执行。本项目本来也是单 SQLite writer 模型，影响可控。
+        @event.listens_for(_engine, "connect")
+        def _set_sqlite_pragma(dbapi_connection, _connection_record):  # noqa: ANN001
+            cursor = dbapi_connection.cursor()
+            try:
+                cursor.execute("PRAGMA busy_timeout = 5000")
+            finally:
+                cursor.close()
+
+        @event.listens_for(_engine, "begin")
+        def _force_immediate_begin(connection):  # noqa: ANN001
+            # SQLAlchemy 默认 BEGIN DEFERRED；显式 BEGIN IMMEDIATE 让
+            # SELECT 也持写锁，将后续 commit 排队，消除 read-modify-write
+            # race 的窗口。
+            connection.exec_driver_sql("BEGIN IMMEDIATE")
+
         _session_factory = sessionmaker(bind=_engine, autoflush=False, autocommit=False)
     return _engine, _session_factory
 

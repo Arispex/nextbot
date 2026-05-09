@@ -338,6 +338,21 @@ def _get_registered_command(command_key: str) -> RegisteredCommand | None:
         return _registry.get(command_key)
 
 
+def get_permission_registry() -> frozenset[str]:
+    """返回 @command_control(permission=...) 注册过的所有 permission key 集合。
+
+    供 nextbot.permissions.validate_permission_key() 校验权限名是否存在使用。
+    所有命令的权限 key 均通过 command_control 装饰器声明，因此此 registry
+    是项目内"已知权限"的单一真源。
+
+    返回 frozenset 而非可变集合：调用方不应试图修改注册表。
+    """
+    with _registry_lock:
+        return frozenset(
+            cmd.permission for cmd in _registry.values() if cmd.permission
+        )
+
+
 def _get_disabled_policy() -> tuple[str, str]:
     config = get_driver().config
     mode = str(getattr(config, "command_disabled_mode", _DEFAULT_DISABLED_MODE)).strip().lower()

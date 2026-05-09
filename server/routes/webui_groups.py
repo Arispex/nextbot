@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse, Response
 from nonebot.log import logger
 from sqlalchemy import func
 
-from nextbot.db import Group, User, get_session
+from nextbot.db import GROUP_DELETE_FALLBACK, Group, User, get_session
 from server.routes import (
     api_error,
     api_success,
@@ -398,7 +398,7 @@ async def webui_groups_delete(group_name: str) -> JSONResponse:
         session.flush()
 
         session.query(User).filter(User.group == group_name).update(
-            {User.group: "guest"},
+            {User.group: GROUP_DELETE_FALLBACK},
             synchronize_session=False,
         )
 
