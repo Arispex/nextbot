@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-3.md`
-- **Total Sessions**: 111
+- **Total Sessions**: 112
 - **Last Active**: 2026-05-09
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-3.md` | ~570 | Active |
+| `journal-3.md` | ~603 | Active |
 | `journal-2.md` | ~1973 | Archived |
 | `journal-1.md` | ~1999 | Archived |
 <!-- @@@/auto:active-documents -->
@@ -31,6 +31,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 112 | 2026-05-09 | Final sweep 全量复审 + 14 项修复 | `8d98920` | `main` |
 | 111 | 2026-05-09 | 截图功能迁移到公共 helper | `203d7d6` | `main` |
 | 110 | 2026-05-09 | 剩余 5 类 plugins 审计修复 (final sweep) | `e7f9ae9` | `main` |
 | 109 | 2026-05-09 | 权限管理命令审计修复 | `b6e0db4` | `main` |
