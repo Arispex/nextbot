@@ -1,7 +1,6 @@
 import asyncio
 import base64
 import binascii
-from pathlib import Path
 from urllib.parse import quote, urlparse, urlunparse
 
 from nonebot import on_command
@@ -10,7 +9,7 @@ from nonebot.adapters.onebot.v11 import MessageSegment as OBV11MessageSegment
 from nonebot.log import logger
 from nonebot.params import CommandArg
 
-from server.screenshot import RenderScreenshotError, ScreenshotOptions, screenshot_url
+from server.screenshot import ScreenshotOptions
 from server.server_config import get_server_settings
 from server.web_server import create_inventory_page, create_progress_page
 from nextbot.command_config import (
@@ -29,6 +28,7 @@ from nextbot.message_parser import (
     resolve_user_id_arg_with_fallback,
 )
 from nextbot.permissions import require_permission
+from nextbot.screenshot_render import render_and_send_screenshot
 from nextbot.screenshot_temp import temp_screenshot_path
 from nextbot.time_utils import format_online_seconds
 from nextbot.tshock_api import (
@@ -64,10 +64,11 @@ PROGRESS_SCREENSHOT_OPTIONS = ScreenshotOptions(
 from nextbot.progression import PROGRESSION_KEY_TO_ZH as _PROGRESS_NAME_MAP
 
 # Per-server 信号量池：限制同一服务器同时驻留内存的大对象渲染数量。
-# 不同 handler 用不同 dict 隔离，避免 inventory / map / explored-map 互相挤占。
-# - 背包：Playwright 截图，PNG 较小，max_concurrent=2
+# 不同 handler 用不同 dict 隔离，避免 inventory / map / explored-map / progress 互相挤占。
+# - 背包 / 进度：Playwright 截图，PNG 较小，max_concurrent=2
 # - 地图（base64 直回）：单并发，避免几十 MB 累积
 _inventory_semaphores: dict[int, "asyncio.Semaphore"] = {}
+_progress_semaphores: dict[int, "asyncio.Semaphore"] = {}
 _my_map_semaphores: dict[int, "asyncio.Semaphore"] = {}
 _user_map_semaphores: dict[int, "asyncio.Semaphore"] = {}
 _explored_map_semaphores: dict[int, "asyncio.Semaphore"] = {}
@@ -137,12 +138,6 @@ def _parse_user_info_texts(response_payload: dict[str, object]) -> dict[str, str
         "online_time_text": format_online_seconds(online_seconds) if online_seconds is not None else "",
         "map_exploration_text": f"{map_exploration_value:.2f}%" if map_exploration_value is not None else "",
     }
-
-
-def _to_base64_image_uri(path: Path) -> str:
-    raw = path.read_bytes()
-    encoded = base64.b64encode(raw).decode("ascii")
-    return f"base64://{encoded}"
 
 
 def _to_public_render_url(url: str) -> str:
@@ -495,35 +490,17 @@ async def handle_user_inventory(
         )
         if bool(get_current_param("send_link", False)):
             await bot.send(event, f"ℹ️ 用户背包链接：{public_page_url}")
-        async with temp_screenshot_path(
-            f"inventory-{server.id}-{target_user.user_id}"
-        ) as screenshot_path:
-            try:
-                await screenshot_url(
-                    page_url,
-                    screenshot_path,
-                    options=INVENTORY_SCREENSHOT_OPTIONS,
-                )
-            except RenderScreenshotError as exc:
-                await bot.send(event, reply_failure("查询", f"{exc}"))
-                return
-
-            logger.info(
-                f"用户背包截图成功：server_id={server.id} target_user_id={target_user.user_id} file={screenshot_path}"
-            )
-            if bot.adapter.get_name() == "OneBot V11":
-                try:
-                    image_uri = _to_base64_image_uri(screenshot_path)
-                except OSError:
-                    await bot.send(event, reply_failure("查询", "读取截图文件失败"))
-                    return
-                await bot.send(event, OBV11MessageSegment.image(file=image_uri))
-                return
-            # PQB-X.6：非 V11 fallback 不暴露 /tmp 路径
-            await bot.send(
-                event,
-                reply_block(reply_success("查询"), [f"📁 文件：{screenshot_path.name}"]),
-            )
+        # per-server semaphore 已由外层 `async with sem` 持有；helper 不再
+        # 重复加锁，否则同一 task 二次 acquire 同一信号量在 max=2 + 并发 2 时
+        # 可能构成死锁。
+        await render_and_send_screenshot(
+            bot,
+            event,
+            page_url=page_url,
+            options=INVENTORY_SCREENSHOT_OPTIONS,
+            file_prefix=f"inventory-{server.id}-{target_user.user_id}",
+            failure_action="查询",
+        )
 
 
 @my_inventory_matcher.handle()
@@ -662,35 +639,16 @@ async def handle_my_inventory(
         if bool(get_current_param("send_link", False)):
             await bot.send(event, f"ℹ️ 我的背包链接：{public_page_url}")
 
-        async with temp_screenshot_path(
-            f"inventory-{server.id}-{user.user_id}"
-        ) as screenshot_path:
-            try:
-                await screenshot_url(
-                    page_url,
-                    screenshot_path,
-                    options=INVENTORY_SCREENSHOT_OPTIONS,
-                )
-            except RenderScreenshotError as exc:
-                await bot.send(event, reply_failure("查询", f"{exc}"))
-                return
-
-            logger.info(
-                f"我的背包截图成功：server_id={server.id} user_id={user.user_id} file={screenshot_path}"
-            )
-            if bot.adapter.get_name() == "OneBot V11":
-                try:
-                    image_uri = _to_base64_image_uri(screenshot_path)
-                except OSError:
-                    await bot.send(event, reply_failure("查询", "读取截图文件失败"))
-                    return
-                await bot.send(event, OBV11MessageSegment.image(file=image_uri))
-                return
-            # PQB-X.6：非 V11 fallback 不暴露 /tmp 路径
-            await bot.send(
-                event,
-                reply_block(reply_success("查询"), [f"📁 文件：{screenshot_path.name}"]),
-            )
+        # per-server semaphore 已由外层 `async with sem` 持有；helper 不再
+        # 重复加锁，避免同 task 重复 acquire 在并发场景下死锁。
+        await render_and_send_screenshot(
+            bot,
+            event,
+            page_url=page_url,
+            options=INVENTORY_SCREENSHOT_OPTIONS,
+            file_prefix=f"inventory-{server.id}-{user.user_id}",
+            failure_action="查询",
+        )
 
 
 @my_map_matcher.handle()
@@ -1169,31 +1127,15 @@ async def handle_world_progress(
     # PQA-3.7 一致性：日志只保留诊断字段，不再打 page_url
     logger.info(f"世界进度渲染：server_id={server.id} user_id={user_id}")
 
-    async with temp_screenshot_path(f"progress-{server.id}") as screenshot_path:
-        try:
-            await screenshot_url(
-                page_url,
-                screenshot_path,
-                options=PROGRESS_SCREENSHOT_OPTIONS,
-            )
-        except RenderScreenshotError as exc:
-            await bot.send(event, reply_failure("查询", f"{exc}"))
-            return
-
-        # PQB-4.6：成功日志补 user_id
-        logger.info(
-            f"世界进度截图成功：server_id={server.id} user_id={user_id} file={screenshot_path}"
-        )
-        if bot.adapter.get_name() == "OneBot V11":
-            try:
-                image_uri = _to_base64_image_uri(screenshot_path)
-            except OSError:
-                await bot.send(event, reply_failure("查询", "读取截图文件失败"))
-                return
-            await bot.send(event, OBV11MessageSegment.image(file=image_uri))
-            return
-        # PQB-4.5：补非 V11 fallback，不暴露 /tmp 路径
-        await bot.send(
-            event,
-            reply_block(reply_success("查询"), [f"📁 文件：{screenshot_path.name}"]),
-        )
+    # PQB-4.x：per-server semaphore（max=2，与背包一致），helper 内置 base64
+    # size cap + V11 / 非 V11 fallback。
+    sem = _semaphore_for(_progress_semaphores, server.id, max_concurrent=2)
+    await render_and_send_screenshot(
+        bot,
+        event,
+        page_url=page_url,
+        options=PROGRESS_SCREENSHOT_OPTIONS,
+        file_prefix=f"progress-{server.id}",
+        semaphore=sem,
+        failure_action="查询",
+    )

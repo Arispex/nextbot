@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-import base64
+import asyncio
 import math
 import unicodedata
-from pathlib import Path
 
 from nonebot import on_command
 from nonebot.adapters import Bot, Event, Message
@@ -31,7 +30,7 @@ from nextbot.message_parser import parse_command_args_with_fallback
 from nextbot.permissions import require_permission
 from nextbot.plugins.economy import MAX_COINS_AMOUNT
 from nextbot.progression import PROGRESSION_KEY_TO_ZH
-from nextbot.screenshot_temp import temp_screenshot_path
+from nextbot.screenshot_render import render_and_send_screenshot
 from nextbot.text_utils import (
     EMOJI_COIN,
     EMOJI_SERVER,
@@ -51,7 +50,7 @@ from nextbot.tshock_api import (
     request_server_api,
 )
 from nextbot.warehouse_lock import warehouse_lock
-from server.screenshot import RenderScreenshotError, ScreenshotOptions, screenshot_url
+from server.screenshot import ScreenshotOptions
 from server.web_server import create_shop_list_page, create_shop_view_page
 
 shop_list_matcher = on_command("商店列表")
@@ -97,11 +96,8 @@ SHOP_LIST_SCREENSHOT_OPTIONS = ScreenshotOptions(
     fit_content_height=True,
 )
 
-
-def _to_base64_image_uri(path: Path) -> str:
-    raw = path.read_bytes()
-    encoded = base64.b64encode(raw).decode("ascii")
-    return f"base64://{encoded}"
+# 商店列表 / 商店详情共享同一组渲染并发上限，避免 guest 高频刷命令撑爆 Playwright
+_shop_screenshot_semaphore = asyncio.Semaphore(2)
 
 
 def _load_shop_by_selector(session, selector: str) -> Shop | None:
@@ -273,25 +269,15 @@ async def handle_shop_list(bot: Bot, event: Event, arg: Message = CommandArg()) 
             f"item_count={len(render_entries)} internal_url={page_url}"
         )
 
-        async with temp_screenshot_path("shop-list") as screenshot_path:
-            try:
-                await screenshot_url(
-                    page_url, screenshot_path, options=SHOP_LIST_SCREENSHOT_OPTIONS,
-                )
-            except RenderScreenshotError as exc:
-                await bot.send(event, reply_failure("查询", str(exc)))
-                return
-
-            if bot.adapter.get_name() == "OneBot V11":
-                try:
-                    image_uri = _to_base64_image_uri(screenshot_path)
-                except OSError:
-                    await bot.send(event, reply_failure("查询", "读取截图文件失败"))
-                    return
-                await bot.send(event, OBV11MessageSegment.image(file=image_uri))
-                return
-
-            await bot.send(event, f"✅ 截图成功，文件：{screenshot_path}")
+        await render_and_send_screenshot(
+            bot,
+            event,
+            page_url=page_url,
+            options=SHOP_LIST_SCREENSHOT_OPTIONS,
+            file_prefix="shop-list",
+            semaphore=_shop_screenshot_semaphore,
+            failure_action="查询",
+        )
     except Exception:  # noqa: BLE001
         logger.exception(f"商店列表处理异常：user_id={user_id}")
         try:
@@ -440,25 +426,15 @@ async def handle_shop_view(bot: Bot, event: Event, arg: Message = CommandArg()) 
             f"商店详情渲染地址：shop_id={shop_id} page={page}/{total_pages} "
             f"total={total} item_count={len(render_items)} internal_url={page_url}"
         )
-        async with temp_screenshot_path(f"shop-{shop_id}") as screenshot_path:
-            try:
-                await screenshot_url(
-                    page_url, screenshot_path, options=SHOP_VIEW_SCREENSHOT_OPTIONS,
-                )
-            except RenderScreenshotError as exc:
-                await bot.send(event, reply_failure("查询", str(exc)))
-                return
-
-            if bot.adapter.get_name() == "OneBot V11":
-                try:
-                    image_uri = _to_base64_image_uri(screenshot_path)
-                except OSError:
-                    await bot.send(event, reply_failure("查询", "读取截图文件失败"))
-                    return
-                await bot.send(event, OBV11MessageSegment.image(file=image_uri))
-                return
-
-            await bot.send(event, f"✅ 截图成功，文件：{screenshot_path}")
+        await render_and_send_screenshot(
+            bot,
+            event,
+            page_url=page_url,
+            options=SHOP_VIEW_SCREENSHOT_OPTIONS,
+            file_prefix=f"shop-{shop_id}",
+            semaphore=_shop_screenshot_semaphore,
+            failure_action="查询",
+        )
     except Exception:  # noqa: BLE001
         logger.exception(f"查看商店处理异常：user_id={user_id}")
         try:

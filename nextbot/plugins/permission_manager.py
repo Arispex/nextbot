@@ -4,8 +4,9 @@
 
 - ``添加用户权限`` / ``删除用户权限`` / ``修改用户身份组``：受 POLA / 危险
   key blocklist / 层级护栏（target group ⊆ operator perms）约束
-- ``管理员列表``：并行获取昵称（asyncio.gather + wait_for），base64 受
-  ``MAX_BASE64_BYTES`` 上限保护
+- ``管理员列表``：并行获取昵称（asyncio.gather + wait_for），截图统一走
+  ``render_and_send_screenshot`` helper（内置 base64 size cap + per-handler
+  semaphore + V11 / 非 V11 分支）
 - ``同步访客权限``：保留两步确认（已正确）
 - ``重置访客权限``（新增）：reset 到 DEFAULT_GUEST_PERMISSIONS（清掉额外
   权限），二次确认 + 列出将移除 / 新增的 key
@@ -13,7 +14,6 @@
 from __future__ import annotations
 
 import asyncio
-import base64
 
 from nonebot import on_command
 from nonebot.adapters import Bot, Event, Message
@@ -33,7 +33,6 @@ from nextbot.db import (
     execute_rowcount,
     get_session,
 )
-from nextbot.large_image import MAX_BASE64_BYTES
 from nextbot.message_parser import (
     parse_command_args_with_fallback,
     resolve_user_id_arg_with_fallback,
@@ -52,7 +51,7 @@ from nextbot.permissions import (
     suggest_permission_keys,
     validate_permission_key,
 )
-from nextbot.screenshot_temp import temp_screenshot_path
+from nextbot.screenshot_render import render_and_send_screenshot
 from nextbot.text_utils import (
     EMOJI_CHART,
     EMOJI_GROUP,
@@ -63,7 +62,7 @@ from nextbot.text_utils import (
     reply_info,
     reply_success,
 )
-from server.screenshot import RenderScreenshotError, ScreenshotOptions, screenshot_url
+from server.screenshot import ScreenshotOptions
 from server.web_server import create_admin_list_page
 
 add_user_perm_matcher = on_command("添加用户权限")
@@ -79,6 +78,10 @@ ADMIN_LIST_SCREENSHOT_OPTIONS = ScreenshotOptions(
     full_page=True,
     fit_content_height=True,
 )
+
+# 管理员列表 handler-wide semaphore，限制并发渲染数量，与 ban / shop / leaderboard 等
+# 业务隔离，防止 Playwright 进程膨胀。
+_admin_list_semaphore = asyncio.Semaphore(2)
 
 # PMB-4.1：单个 owner 昵称获取超时（秒），超时后用占位符兜底，
 # 避免 N 个 owner × per-call timeout 累积阻塞 handler。
@@ -650,39 +653,17 @@ async def handle_admin_list(bot: Bot, event: Event, arg: Message = CommandArg())
     page_url = create_admin_list_page(admins=admins)
     logger.info(f"管理员列表渲染地址：admin_count={len(admins)} internal_url={page_url}")
 
-    async with temp_screenshot_path("admin-list") as screenshot_path:
-        try:
-            await screenshot_url(page_url, screenshot_path, options=ADMIN_LIST_SCREENSHOT_OPTIONS)
-        except RenderScreenshotError as exc:
-            await bot.send(event, reply_failure("查询", f"{exc}"))
-            return
-
-        logger.info(f"管理员列表截图成功：file={screenshot_path}")
-        if bot.adapter.get_name() == "OneBot V11":
-            # PMB-4.2：base64 size cap，避免恶意模板生成超大图把进程打爆
-            try:
-                file_size = screenshot_path.stat().st_size
-            except OSError:
-                await bot.send(event, reply_failure("查询", "读取截图文件失败"))
-                return
-            # base64 编码后体积约为 4/3，预估后再决定是否拒绝
-            if file_size * 4 // 3 > MAX_BASE64_BYTES:
-                await bot.send(
-                    event, reply_failure("查询", "截图过大")
-                )
-                logger.warning(
-                    f"管理员列表截图超过 base64 上限：file_size={file_size}"
-                )
-                return
-            try:
-                raw = screenshot_path.read_bytes()
-                image_uri = f"base64://{base64.b64encode(raw).decode('ascii')}"
-            except OSError:
-                await bot.send(event, reply_failure("查询", "读取截图文件失败"))
-                return
-            await bot.send(event, OBV11MessageSegment.image(file=image_uri))
-            return
-        await bot.send(event, f"✅ 截图成功，文件：{screenshot_path}")
+    # PMB-4.2：helper 内置 base64 size cap + 非 V11 fallback；handler-wide
+    # semaphore 限并发，避免恶意模板生成超大图把进程打爆。
+    await render_and_send_screenshot(
+        bot,
+        event,
+        page_url=page_url,
+        options=ADMIN_LIST_SCREENSHOT_OPTIONS,
+        file_prefix="admin-list",
+        semaphore=_admin_list_semaphore,
+        failure_action="查询",
+    )
 
 
 # ---------------------------------------------------------------------------

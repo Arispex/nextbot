@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import base64
+import asyncio
 import json
 import unicodedata
 from contextlib import asynccontextmanager
@@ -36,7 +36,7 @@ from nextbot.message_parser import (
 from nextbot.permissions import require_permission
 from nextbot.plugins.economy import MAX_COINS_AMOUNT
 from nextbot.progression import PROGRESSION_KEY_TO_ZH, TIER_OPTIONS, parse_tier
-from nextbot.screenshot_temp import temp_screenshot_path
+from nextbot.screenshot_render import render_and_send_screenshot
 from nextbot.text_utils import (
     EMOJI_CHART,
     EMOJI_COIN,
@@ -56,7 +56,7 @@ from nextbot.tshock_api import (
     request_server_api,
 )
 from nextbot.warehouse_lock import warehouse_lock
-from server.screenshot import RenderScreenshotError, ScreenshotOptions, screenshot_url
+from server.screenshot import ScreenshotOptions
 from server.web_server import create_warehouse_page
 
 WAREHOUSE_SCREENSHOT_OPTIONS = ScreenshotOptions(
@@ -66,11 +66,8 @@ WAREHOUSE_SCREENSHOT_OPTIONS = ScreenshotOptions(
     fit_content_height=True,
 )
 
-
-def _to_base64_image_uri(path: Path) -> str:
-    raw = path.read_bytes()
-    encoded = base64.b64encode(raw).decode("ascii")
-    return f"base64://{encoded}"
+# 仓库渲染共享并发上限，防止刷命令撑爆 Playwright
+_warehouse_screenshot_semaphore = asyncio.Semaphore(2)
 
 
 _DICTS_DIR = Path(__file__).resolve().parent.parent.parent / "server" / "assets" / "dicts"
@@ -283,26 +280,15 @@ async def _send_warehouse_image(
     page_url: str,
     file_prefix: str,
 ) -> None:
-    async with temp_screenshot_path(file_prefix) as screenshot_path:
-        try:
-            await screenshot_url(
-                page_url, screenshot_path, options=WAREHOUSE_SCREENSHOT_OPTIONS,
-            )
-        except RenderScreenshotError as exc:
-            await bot.send(event, reply_failure("查询", str(exc)))
-            return
-
-        logger.info(f"仓库截图成功：file={screenshot_path}")
-        if bot.adapter.get_name() == "OneBot V11":
-            try:
-                image_uri = _to_base64_image_uri(screenshot_path)
-            except OSError:
-                await bot.send(event, reply_failure("查询", "读取截图文件失败"))
-                return
-            await bot.send(event, OBV11MessageSegment.image(file=image_uri))
-            return
-
-        await bot.send(event, f"✅ 截图成功，文件：{screenshot_path}")
+    await render_and_send_screenshot(
+        bot,
+        event,
+        page_url=page_url,
+        options=WAREHOUSE_SCREENSHOT_OPTIONS,
+        file_prefix=file_prefix,
+        semaphore=_warehouse_screenshot_semaphore,
+        failure_action="查询",
+    )
 
 
 list_self_matcher = on_command("我的仓库")

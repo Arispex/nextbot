@@ -1,5 +1,4 @@
 import asyncio
-import base64
 import re
 from typing import Any, Literal
 
@@ -14,9 +13,9 @@ from nextbot.message_parser import (
     resolve_user_id_arg_with_fallback,
 )
 from nextbot.permissions import require_permission
-from nextbot.screenshot_temp import temp_screenshot_path
+from nextbot.screenshot_render import render_and_send_screenshot
 from nextbot.time_utils import format_beijing_datetime
-from server.screenshot import RenderScreenshotError, ScreenshotOptions, screenshot_url
+from server.screenshot import ScreenshotOptions
 from server.web_server import create_user_info_page
 
 from sqlalchemy import func
@@ -39,6 +38,9 @@ USER_INFO_SCREENSHOT_OPTIONS = ScreenshotOptions(
     full_page=True,
     fit_content_height=True,
 )
+
+# 用户信息渲染共享并发上限，防止刷命令撑爆 Playwright
+_user_info_screenshot_semaphore = asyncio.Semaphore(2)
 
 add_matcher = on_command("注册账号")
 sync_matcher = on_command("同步白名单")
@@ -318,26 +320,15 @@ async def _render_and_send_user_info(
         f"用户信息渲染地址：user_id={user_data['user_id']} name={user_data['user_name']} "
         f"days={days} sign_dates_count={len(sign_dates)} internal_url={page_url}"
     )
-    async with temp_screenshot_path(f"user-info-{user_data['user_id']}") as screenshot_path:
-        try:
-            await screenshot_url(page_url, screenshot_path, options=USER_INFO_SCREENSHOT_OPTIONS)
-        except RenderScreenshotError as exc:
-            await bot.send(event, reply_failure("查询", f"{exc}"))
-            return
-
-        logger.info(
-            f"用户信息截图成功：user_id={user_data['user_id']} file={screenshot_path}"
-        )
-        if bot.adapter.get_name() == "OneBot V11":
-            try:
-                raw = screenshot_path.read_bytes()
-                image_uri = f"base64://{base64.b64encode(raw).decode('ascii')}"
-            except OSError:
-                await bot.send(event, reply_failure("查询", "读取截图文件失败"))
-                return
-            await bot.send(event, OBV11MessageSegment.image(file=image_uri))
-            return
-        await bot.send(event, f"✅ 截图成功，文件：{screenshot_path}")
+    await render_and_send_screenshot(
+        bot,
+        event,
+        page_url=page_url,
+        options=USER_INFO_SCREENSHOT_OPTIONS,
+        file_prefix=f"user-info-{user_data['user_id']}",
+        semaphore=_user_info_screenshot_semaphore,
+        failure_action="查询",
+    )
 
 
 def _serialize_user_for_render(user: User) -> dict[str, Any]:

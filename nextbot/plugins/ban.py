@@ -1,7 +1,5 @@
 import asyncio
-import base64
 import math
-from pathlib import Path
 
 from nonebot import on_command
 from nonebot.adapters import Bot, Event, Message
@@ -23,16 +21,15 @@ from nextbot.command_config import (
     raise_command_usage,
 )
 from nextbot.db import User, get_session
-from nextbot.large_image import MAX_BASE64_BYTES
 from nextbot.message_parser import (
     parse_command_args_with_fallback,
     resolve_user_id_arg_with_fallback,
 )
 from nextbot.permissions import require_permission
-from nextbot.screenshot_temp import temp_screenshot_path
+from nextbot.screenshot_render import render_and_send_screenshot
 from nextbot.text_utils import EMOJI_USER, reply_failure, reply_success
 from nextbot.time_utils import format_beijing_datetime
-from server.screenshot import RenderScreenshotError, ScreenshotOptions, screenshot_url
+from server.screenshot import ScreenshotOptions
 from server.web_server import create_ban_list_page
 
 ban_matcher = on_command("封禁用户")
@@ -48,12 +45,6 @@ BAN_LIST_SCREENSHOT_OPTIONS = ScreenshotOptions(
 
 # SB-2.2：封禁列表 handler-wide semaphore，防止 guest 高频刷命令导致 Playwright 进程膨胀
 _ban_list_semaphore = asyncio.Semaphore(2)
-
-
-def _to_base64_image_uri(path: Path) -> str:
-    raw = path.read_bytes()
-    encoded = base64.b64encode(raw).decode("ascii")
-    return f"base64://{encoded}"
 
 
 @ban_matcher.handle()
@@ -211,41 +202,16 @@ async def handle_ban_list(bot: Bot, event: Event, arg: Message = CommandArg()) -
         f"封禁列表渲染地址：page={page}/{total_pages} total={total} internal_url={page_url}"
     )
 
-    # SB-2.2：handler-wide semaphore + base64 size 上限防 OOM
-    async with _ban_list_semaphore:
-        async with temp_screenshot_path("ban-list") as screenshot_path:
-            try:
-                await screenshot_url(page_url, screenshot_path, options=BAN_LIST_SCREENSHOT_OPTIONS)
-            except RenderScreenshotError as exc:
-                await bot.send(event, reply_failure("查询", f"{exc}"))
-                return
-
-            logger.info(f"封禁列表截图成功：page={page}/{total_pages} file={screenshot_path}")
-
-            try:
-                file_size = screenshot_path.stat().st_size
-            except OSError:
-                await bot.send(event, reply_failure("查询", "读取截图文件失败"))
-                return
-
-            # base64 编码后体积约为原始字节的 4/3
-            if file_size * 4 // 3 > MAX_BASE64_BYTES:
-                logger.warning(
-                    f"封禁列表截图过大：page={page}/{total_pages} size_bytes={file_size}"
-                )
-                await bot.send(event, reply_failure("查询", "封禁列表过大，请使用更小的页码"))
-                return
-
-            if bot.adapter.get_name() == "OneBot V11":
-                try:
-                    image_uri = _to_base64_image_uri(screenshot_path)
-                except OSError:
-                    await bot.send(event, reply_failure("查询", "读取截图文件失败"))
-                    return
-                await bot.send(event, OBV11MessageSegment.image(file=image_uri))
-                return
-
-            await bot.send(event, f"✅ 截图成功，文件：{screenshot_path}")
+    # SB-2.2：helper 内置 semaphore + base64 size 上限防 OOM + V11 / 非 V11 fallback
+    await render_and_send_screenshot(
+        bot,
+        event,
+        page_url=page_url,
+        options=BAN_LIST_SCREENSHOT_OPTIONS,
+        file_prefix="ban-list",
+        semaphore=_ban_list_semaphore,
+        failure_action="查询",
+    )
 
 
 @unban_matcher.handle()
