@@ -1,0 +1,5 @@
+{"file": ".trellis/tasks/05-09-permission-audit/prd.md", "reason": "对照 22 个修复模块的验收标准"}
+{"file": ".trellis/tasks/05-09-permission-audit/research/permission-a-findings.md", "reason": "对照 PMA 原始发现确认每项已修"}
+{"file": ".trellis/tasks/05-09-permission-audit/research/permission-b-findings.md", "reason": "对照 PMB / XC 原始发现确认每项已修"}
+{"file": ".trellis/tasks/05-09-permission-audit/research/main-agent-recheck.md", "reason": "主代理复查结论（含用户澄清 owner 不是 DB 分组）"}
+{"file": ".trellis/spec/backend/index.md", "reason": "项目后端规范索引"}

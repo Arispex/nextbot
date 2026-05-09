@@ -1,0 +1,5 @@
+{"file": ".trellis/tasks/05-09-permission-audit/prd.md", "reason": "任务范围与 22 个修复模块清单 + 验收标准"}
+{"file": ".trellis/tasks/05-09-permission-audit/research/permission-a-findings.md", "reason": "group_manager.py 25 项审计原始发现"}
+{"file": ".trellis/tasks/05-09-permission-audit/research/permission-b-findings.md", "reason": "permission_manager.py 30 项审计原始发现（含 XC-* 跨命令）"}
+{"file": ".trellis/tasks/05-09-permission-audit/research/main-agent-recheck.md", "reason": "主代理复查结论：严重度调整、误判剔除、用户澄清 owner 不是 DB 分组"}
+{"file": ".trellis/spec/backend/index.md", "reason": "项目后端规范索引"}
