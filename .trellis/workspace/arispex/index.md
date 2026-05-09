@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-3.md`
-- **Total Sessions**: 108
-- **Last Active**: 2026-05-08
+- **Total Sessions**: 109
+- **Last Active**: 2026-05-09
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-3.md` | ~471 | Active |
+| `journal-3.md` | ~504 | Active |
 | `journal-2.md` | ~1973 | Archived |
 | `journal-1.md` | ~1999 | Archived |
 <!-- @@@/auto:active-documents -->
@@ -31,6 +31,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 109 | 2026-05-09 | 权限管理命令审计修复 | `b6e0db4` | `main` |
 | 108 | 2026-05-08 | 安全管理命令审计修复 | `34aa7b1` | `main` |
 | 107 | 2026-05-08 | 玩家查询命令审计修复 | `5720eda` | `main` |
 | 106 | 2026-05-08 | 服务器工具/管理命令审计修复 | `942d923`, `4fd61e8` | `main` |
