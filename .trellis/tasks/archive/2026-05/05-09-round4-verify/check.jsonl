@@ -1,0 +1,5 @@
+{"file": ".trellis/tasks/05-09-round4-verify/prd.md", "reason": "对照 5 项修复"}
+{"file": ".trellis/tasks/05-09-round4-verify/research/round4-side-effects.md", "reason": "对照副作用原始发现"}
+{"file": ".trellis/tasks/05-09-round4-verify/research/round4-residual.md", "reason": "对照残留原始发现"}
+{"file": ".trellis/tasks/05-09-round4-verify/research/main-agent-recheck.md", "reason": "主代理复查"}
+{"file": ".trellis/spec/backend/index.md", "reason": "项目后端规范索引"}
