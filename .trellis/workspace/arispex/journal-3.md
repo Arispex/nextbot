@@ -535,3 +535,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 111: 截图功能迁移到公共 helper
+
+**Date**: 2026-05-09
+**Task**: 截图功能迁移到公共 helper
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `203d7d6` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
