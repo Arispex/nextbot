@@ -6,7 +6,6 @@ import random
 
 from nonebot import on_command
 from nonebot.adapters import Bot, Event, Message
-from nonebot.adapters.onebot.v11 import MessageSegment as OBV11MessageSegment
 from nonebot.log import logger
 from nonebot.params import CommandArg
 from sqlalchemy import update as sa_update
@@ -31,6 +30,7 @@ from nextbot.text_utils import (
     reply_block,
     reply_failure,
     reply_success,
+    safe_at_segment_or_empty,
 )
 from nextbot.time_utils import db_now_utc_naive, format_beijing_datetime
 from server.screenshot import ScreenshotOptions
@@ -123,7 +123,7 @@ def _claim_slot_atomic(session, packet_id: int, draw_amount: int) -> bool:
 )
 @require_permission("economy.red_packet.send")
 async def handle_send(bot: Bot, event: Event, arg: Message = CommandArg()) -> None:
-    at = OBV11MessageSegment.at(int(event.get_user_id()))
+    at = safe_at_segment_or_empty(event.get_user_id())
     args = parse_command_args_with_fallback(event, arg, "发红包")
     if len(args) != 4:
         raise_command_usage()
@@ -265,7 +265,7 @@ async def handle_send(bot: Bot, event: Event, arg: Message = CommandArg()) -> No
 )
 @require_permission("economy.red_packet.grab")
 async def handle_grab(bot: Bot, event: Event, arg: Message = CommandArg()) -> None:
-    at = OBV11MessageSegment.at(int(event.get_user_id()))
+    at = safe_at_segment_or_empty(event.get_user_id())
     args = parse_command_args_with_fallback(event, arg, "抢红包")
     if len(args) != 1:
         raise_command_usage()
@@ -413,7 +413,7 @@ async def handle_grab(bot: Bot, event: Event, arg: Message = CommandArg()) -> No
 )
 @require_permission("economy.red_packet.withdraw")
 async def handle_withdraw(bot: Bot, event: Event, arg: Message = CommandArg()) -> None:
-    at = OBV11MessageSegment.at(int(event.get_user_id()))
+    at = safe_at_segment_or_empty(event.get_user_id())
     args = parse_command_args_with_fallback(event, arg, "收回红包")
     if len(args) != 1:
         raise_command_usage()

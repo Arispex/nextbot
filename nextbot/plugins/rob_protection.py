@@ -1,6 +1,5 @@
 from nonebot import on_command
 from nonebot.adapters import Bot, Event, Message
-from nonebot.adapters.onebot.v11 import MessageSegment as OBV11MessageSegment
 from nonebot.log import logger
 from nonebot.params import CommandArg
 from sqlalchemy import update
@@ -10,7 +9,7 @@ from nextbot.db import User, execute_rowcount, get_session
 from nextbot.message_parser import parse_command_args_with_fallback
 from nextbot.permissions import require_permission
 from nextbot.plugins.economy import MAX_COINS_AMOUNT
-from nextbot.text_utils import reply_block, reply_failure, reply_success
+from nextbot.text_utils import reply_block, reply_failure, reply_success, safe_at_segment_or_empty
 
 rob_protection_matcher = on_command("切换抢劫保护")
 
@@ -50,7 +49,7 @@ def _safe_param_int(key: str, default: int, min_value: int = 0) -> int:
 async def handle_toggle_rob_protection(
     bot: Bot, event: Event, arg: Message = CommandArg()
 ) -> None:
-    at = OBV11MessageSegment.at(int(event.get_user_id()))
+    at = safe_at_segment_or_empty(event.get_user_id())
 
     args = parse_command_args_with_fallback(event, arg, "切换抢劫保护")
     if len(args) != 1:

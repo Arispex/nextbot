@@ -3,7 +3,6 @@ import math
 
 from nonebot import on_command
 from nonebot.adapters import Bot, Event, Message
-from nonebot.adapters.onebot.v11 import MessageSegment as OBV11MessageSegment
 from nonebot.log import logger
 from nonebot.params import CommandArg
 
@@ -28,7 +27,7 @@ from nextbot.message_parser import (
 )
 from nextbot.permissions import require_permission
 from nextbot.screenshot_render import render_and_send_screenshot
-from nextbot.text_utils import EMOJI_USER, reply_failure, reply_success
+from nextbot.text_utils import EMOJI_USER, reply_failure, reply_success, safe_at_segment_or_empty
 from nextbot.time_utils import format_beijing_datetime
 from server.screenshot import ScreenshotOptions
 from server.web_server import create_ban_list_page
@@ -60,7 +59,7 @@ _ban_list_semaphore = asyncio.Semaphore(2)
 @require_permission("admin.ban")
 async def handle_ban(bot: Bot, event: Event, arg: Message = CommandArg()) -> None:
     operator_id = event.get_user_id()
-    at = OBV11MessageSegment.at(int(operator_id))
+    at = safe_at_segment_or_empty(operator_id)
 
     target_user_id, parse_error = resolve_user_id_arg_with_fallback(
         event, arg, "封禁用户", arg_index=0,
@@ -244,7 +243,7 @@ async def handle_ban_list(bot: Bot, event: Event, arg: Message = CommandArg()) -
 @require_permission("admin.unban")
 async def handle_unban(bot: Bot, event: Event, arg: Message = CommandArg()) -> None:
     operator_id = event.get_user_id()
-    at = OBV11MessageSegment.at(int(operator_id))
+    at = safe_at_segment_or_empty(operator_id)
 
     target_user_id, parse_error = resolve_user_id_arg_with_fallback(
         event, arg, "解封用户", arg_index=0,

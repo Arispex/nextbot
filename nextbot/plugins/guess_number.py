@@ -3,7 +3,6 @@ from datetime import datetime, timedelta
 
 from nonebot import on_command
 from nonebot.adapters import Bot, Event, Message
-from nonebot.adapters.onebot.v11 import MessageSegment as OBV11MessageSegment
 from nonebot.log import logger
 from nonebot.params import CommandArg
 from sqlalchemy import update
@@ -12,9 +11,9 @@ from nextbot.command_config import command_control, get_current_param, raise_com
 from nextbot.db import User, execute_rowcount, get_session
 from nextbot.message_parser import parse_command_args_with_fallback
 from nextbot.permissions import require_permission
-from nextbot.plugins.economy import MAX_COINS_AMOUNT
+from nextbot.plugins.economy import MAX_COINS_AMOUNT, add_coins_with_cap
 from nextbot.time_utils import db_now_utc_naive
-from nextbot.text_utils import EMOJI_COIN, EMOJI_GAME, EMOJI_TARGET, reply_block, reply_failure
+from nextbot.text_utils import EMOJI_COIN, EMOJI_GAME, EMOJI_TARGET, reply_block, reply_failure, safe_at_segment_or_empty
 
 guess_matcher = on_command("猜数字")
 
@@ -123,7 +122,7 @@ def _safe_param_int(key: str, default: int, min_value: int = 0) -> int:
 )
 @require_permission("economy.guess_number")
 async def handle_guess_number(bot: Bot, event: Event, arg: Message = CommandArg()) -> None:
-    at = OBV11MessageSegment.at(int(event.get_user_id()))
+    at = safe_at_segment_or_empty(event.get_user_id())
 
     args = parse_command_args_with_fallback(event, arg, "猜数字")
     if len(args) != 2:
@@ -230,45 +229,41 @@ async def handle_guess_number(bot: Bot, event: Event, arg: Message = CommandArg(
 
         net = payout - cost
 
-        # 累加 payout（如果 > 0）+ 统计字段，全部用条件 UPDATE
+        # PC-8.1：payout 加币走 add_coins_with_cap，受 SF-X.1 全局账户上限保护，
+        # 与 economy / red_packet / warehouse / lottery 等域对称。统计字段拆出独立 UPDATE。
+        applied_payout = 0
+        capped = False
+        if payout > 0:
+            applied_payout, capped = add_coins_with_cap(session, user_id, payout)
+            if capped:
+                logger.warning(
+                    f"猜数字派奖触顶 cap：user_id={user_id} requested={payout} applied={applied_payout}"
+                )
+
         if net > 0:
             session.execute(
                 update(User)
                 .where(User.user_id == user_id)
                 .values(
-                    coins=User.coins + payout,
                     guess_total_count=User.guess_total_count + 1,
                     guess_win_count=User.guess_win_count + 1,
                     guess_total_gain=User.guess_total_gain + net,
                 )
             )
         elif net < 0:
-            if payout > 0:
-                session.execute(
-                    update(User)
-                    .where(User.user_id == user_id)
-                    .values(
-                        coins=User.coins + payout,
-                        guess_total_count=User.guess_total_count + 1,
-                        guess_total_loss=User.guess_total_loss + abs(net),
-                    )
-                )
-            else:
-                session.execute(
-                    update(User)
-                    .where(User.user_id == user_id)
-                    .values(
-                        guess_total_count=User.guess_total_count + 1,
-                        guess_total_loss=User.guess_total_loss + abs(net),
-                    )
-                )
-        else:
-            # net == 0：payout == cost，把押金原数加回，仅累计场次
             session.execute(
                 update(User)
                 .where(User.user_id == user_id)
                 .values(
-                    coins=User.coins + payout,
+                    guess_total_count=User.guess_total_count + 1,
+                    guess_total_loss=User.guess_total_loss + abs(net),
+                )
+            )
+        else:
+            session.execute(
+                update(User)
+                .where(User.user_id == user_id)
+                .values(
                     guess_total_count=User.guess_total_count + 1,
                 )
             )
@@ -291,19 +286,26 @@ async def handle_guess_number(bot: Bot, event: Event, arg: Message = CommandArg(
 
     head_emoji = EMOJI_TARGET if diff == 0 else EMOJI_GAME
     lines = [f"🎯 答案 {answer}，你猜 {guess}（差 {diff}）"]
+    # PC-8.1：reply 中显示 applied_payout（实际入账）而非 payout（理论派奖）。
+    # 触顶时另起一行展示原始派奖与触顶差额，避免"获得 X 金币"与 final_coins 对不上。
     if net > 0:
-        lines.append(f"{EMOJI_COIN} {result_type}！投入 {cost}，获得 {payout}，净赚 {net} 金币")
+        applied_net = applied_payout - cost
+        lines.append(f"{EMOJI_COIN} {result_type}！投入 {cost}，获得 {applied_payout}，净赚 {applied_net} 金币")
     elif net == 0:
         lines.append(f"⚖️ {result_type}！投入 {cost} 金币，刚好持平")
     else:
         if payout > 0:
-            lines.append(f"❌ {result_type}！投入 {cost}，返还 {payout}，损失 {abs(net)} 金币")
+            applied_loss = cost - applied_payout
+            lines.append(f"❌ {result_type}！投入 {cost}，返还 {applied_payout}，损失 {applied_loss} 金币")
         else:
             lines.append(f"❌ {result_type}！投入 {cost} 金币，全部损失")
     lines.append(f"{EMOJI_COIN} 当前金币：{final_coins}")
+    if capped and applied_payout < payout:
+        lines.append(f"⚠️ 已触账户上限，理论派奖 {payout}，{payout - applied_payout} 金币未入账")
 
     logger.info(
         f"猜数字结果：user_id={user_id} guess={guess} answer={answer} diff={diff} "
-        f"result={result_type} cost={cost} payout={payout} net={net}"
+        f"result={result_type} cost={cost} payout={payout} applied_payout={applied_payout} "
+        f"capped={capped} net={net}"
     )
     await bot.send(event, at + "\n" + reply_block(f"{head_emoji} 猜数字", lines))

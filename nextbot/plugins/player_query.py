@@ -38,7 +38,7 @@ from nextbot.tshock_api import (
     is_success,
     request_server_api,
 )
-from nextbot.text_utils import reply_block, reply_failure, reply_success
+from nextbot.text_utils import reply_block, reply_failure, reply_success, safe_at_segment
 
 online_matcher = on_command("在线")
 self_kick_matcher = on_command("自踢")
@@ -168,17 +168,9 @@ def _to_public_render_url(url: str) -> str:
     )
 
 
-def _safe_at_segment(user_id: str) -> "OBV11MessageSegment | None":
-    """PQB-X.4：把 OBV11MessageSegment.at(int(user_id)) 包一层异常防御。
-
-    项目目前仅用 OBV11，user_id 总是数字；但 V11-shim 适配器若 push 非数字
-    user_id，此处返回 None，调用方退化为不带 @ 的发送。
-    """
-    try:
-        return OBV11MessageSegment.at(int(user_id))
-    except (TypeError, ValueError):
-        logger.warning(f"无法将 user_id 解析为整数 @ 段：user_id={user_id}")
-        return None
+# PQB-X.4 / PC-4.1：_safe_at_segment 已提升到 nextbot.text_utils.safe_at_segment，
+# 此处保留模块级 alias，避免本文件其它 callsite 大改。
+_safe_at_segment = safe_at_segment
 
 
 @online_matcher.handle()

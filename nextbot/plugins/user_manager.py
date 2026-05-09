@@ -1,10 +1,10 @@
 import asyncio
 import re
 from typing import Any, Literal
+from urllib.parse import quote
 
 from nonebot import on_command
 from nonebot.adapters import Bot, Event, Message
-from nonebot.adapters.onebot.v11 import MessageSegment as OBV11MessageSegment
 from nonebot.log import logger
 from nonebot.params import CommandArg
 from nextbot.audit import audit_permission_change
@@ -19,18 +19,18 @@ from nextbot.time_utils import format_beijing_datetime
 from server.screenshot import ScreenshotOptions
 from server.web_server import create_user_info_page
 
-from sqlalchemy import func
+from sqlalchemy import func, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from nextbot.db import Server, User, UserSignRecord, get_session
+from nextbot.db import Server, User, UserSignRecord, execute_rowcount, get_session
 from nextbot.tshock_api import (
     TShockRequestError,
     get_error_reason,
     is_success,
     request_server_api,
 )
-from nextbot.text_utils import EMOJI_USER, reply_block, reply_failure, reply_success
+from nextbot.text_utils import EMOJI_USER, reply_block, reply_failure, reply_success, safe_at_segment_or_empty
 
 
 USER_INFO_SCREENSHOT_OPTIONS = ScreenshotOptions(
@@ -94,10 +94,12 @@ async def _sync_one_whitelist(
         return server, "exists", ""
 
     # 添加白名单
+    # PC-3.1：URL path segment quote(safe="")，与 ban_core / player_query 加固对齐
+    encoded_name = quote(name, safe="")
     try:
         response = await request_server_api(
             server,
-            f"/nextbot/whitelist/add/{name}",
+            f"/nextbot/whitelist/add/{encoded_name}",
         )
     except TShockRequestError:
         logger.info(
@@ -148,9 +150,11 @@ async def _rename_one_whitelist(
     add_msg = ""
 
     # 删除旧白名单
+    # PC-3.1：URL path segment quote(safe="")
+    encoded_old_name = quote(old_name, safe="")
     try:
         response = await request_server_api(
-            server, f"/nextbot/whitelist/remove/{old_name}",
+            server, f"/nextbot/whitelist/remove/{encoded_old_name}",
         )
         remove_ok = is_success(response)
         if not remove_ok:
@@ -159,9 +163,11 @@ async def _rename_one_whitelist(
         remove_msg = "无法连接服务器"
 
     # 添加新白名单
+    # PC-3.1：URL path segment quote(safe="")
+    encoded_new_name = quote(new_name, safe="")
     try:
         response = await request_server_api(
-            server, f"/nextbot/whitelist/add/{new_name}",
+            server, f"/nextbot/whitelist/add/{encoded_new_name}",
         )
         add_ok = is_success(response)
         if not add_ok:
@@ -190,7 +196,7 @@ async def handle_add_whitelist(
         raise_command_usage()
 
     user_id = event.get_user_id()
-    at = OBV11MessageSegment.at(int(user_id))
+    at = safe_at_segment_or_empty(user_id)
     name = args[0].strip()
     invalid_reason = _validate_user_name(name)
     if invalid_reason is not None:
@@ -255,7 +261,7 @@ async def handle_sync_whitelist(
         raise_command_usage()
 
     user_id = event.get_user_id()
-    at = OBV11MessageSegment.at(int(user_id))
+    at = safe_at_segment_or_empty(user_id)
     session = get_session()
     try:
         user = session.query(User).filter(User.user_id == user_id).first()
@@ -442,7 +448,7 @@ async def handle_self_info(
 )
 @require_permission("admin.rename")
 async def handle_rename(bot: Bot, event: Event, arg: Message = CommandArg()) -> None:
-    at = OBV11MessageSegment.at(int(event.get_user_id()))
+    at = safe_at_segment_or_empty(event.get_user_id())
 
     target_user_id, parse_error = resolve_user_id_arg_with_fallback(
         event, arg, "更改用户名称", arg_index=0,
@@ -488,7 +494,32 @@ async def handle_rename(bot: Bot, event: Event, arg: Message = CommandArg()) -> 
             await bot.send(event, at + " " + reply_failure("更改", "用户名称已被占用"))
             return
 
-        user.name = new_name
+        # PC-1.1：条件 UPDATE 取代 ORM dirty-set，便于在 WHERE 中带 old_name 校验，
+        # 与项目内其它 mutation 路径风格统一；UNIQUE 撞库仍由 IntegrityError 兜底。
+        try:
+            rowcount = execute_rowcount(
+                session,
+                update(User)
+                .where(
+                    User.user_id == target_user_id,
+                    User.name == old_name,
+                )
+                .values(name=new_name),
+            )
+        except IntegrityError:
+            session.rollback()
+            logger.info(
+                f"更改用户名称并发竞态：user_id={target_user_id} new_name={new_name} 已被另一并发请求占用"
+            )
+            await bot.send(event, at + " " + reply_failure("更改", "用户名称已被占用"))
+            return
+        if rowcount == 0:
+            session.rollback()
+            logger.info(
+                f"更改用户名称并发竞态：user_id={target_user_id} old_name={old_name} 已被另一并发请求修改"
+            )
+            await bot.send(event, at + " " + reply_failure("更改", "并发冲突，请重试"))
+            return
         try:
             session.commit()
         except IntegrityError:

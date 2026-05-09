@@ -60,6 +60,7 @@ from nextbot.text_utils import (
     reply_failure,
     reply_info,
     reply_success,
+    safe_at_segment_or_empty,
 )
 
 list_matcher = on_command("身份组列表")
@@ -90,7 +91,8 @@ def _operator_id(event: Event) -> str:
 
 
 def _at_segment(event: Event) -> OBV11MessageSegment:
-    return OBV11MessageSegment.at(int(event.get_user_id()))
+    # PC-4.1：使用 safe_at_segment_or_empty，非数字 user_id 退化为空文本段
+    return safe_at_segment_or_empty(event.get_user_id())
 
 
 def _format_perm_preview(csv_value: str) -> str:

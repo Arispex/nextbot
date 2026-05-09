@@ -3,7 +3,6 @@ from datetime import timedelta
 
 from nonebot import on_command
 from nonebot.adapters import Bot, Event, Message
-from nonebot.adapters.onebot.v11 import MessageSegment as OBV11MessageSegment
 from nonebot.log import logger
 from nonebot.params import CommandArg
 from sqlalchemy import or_ as sa_or, update
@@ -12,8 +11,9 @@ from nextbot.command_config import command_control, get_current_param, raise_com
 from nextbot.db import User, execute_rowcount, get_session
 from nextbot.message_parser import parse_command_args_with_fallback, resolve_user_id_arg_with_fallback
 from nextbot.permissions import require_permission
+from nextbot.plugins.economy import add_coins_with_cap
 from nextbot.time_utils import db_now_utc_naive
-from nextbot.text_utils import reply_failure
+from nextbot.text_utils import reply_failure, safe_at_segment_or_empty
 
 rob_matcher = on_command("抢劫")
 
@@ -144,7 +144,7 @@ def _safe_param_int(key: str, default: int, min_value: int = 0) -> int:
 )
 @require_permission("economy.rob")
 async def handle_rob(bot: Bot, event: Event, arg: Message = CommandArg()) -> None:
-    at = OBV11MessageSegment.at(int(event.get_user_id()))
+    at = safe_at_segment_or_empty(event.get_user_id())
     robber_id = event.get_user_id()
 
     # M-3.3：自抢短路。如果第一个参数是数字 ID 且等于发起者，立即拒绝，
@@ -167,6 +167,10 @@ async def handle_rob(bot: Bot, event: Event, arg: Message = CommandArg()) -> Non
         return
     if parse_error:
         raise_command_usage()
+    if target_user_id is None:
+        # 兜底：上面 parse_error 分支理论上已覆盖所有 None 情况
+        await bot.send(event, at + " " + reply_failure("抢劫", "用户参数解析失败"))
+        return
 
     args = parse_command_args_with_fallback(event, arg, "抢劫")
     if len(args) != 1:
@@ -258,6 +262,8 @@ async def handle_rob(bot: Bot, event: Event, arg: Message = CommandArg()) -> Non
                 clauses.append(attacker_cooldown_filter)
             return clauses
 
+        applied_amount = 0
+        capped = False
         if roll <= success_rate:
             # 成功，判断是否大成功
             steal_percent = random.randint(min_steal_percent, max_steal_percent)
@@ -296,13 +302,13 @@ async def handle_rob(bot: Bot, event: Event, arg: Message = CommandArg()) -> Non
                     await bot.send(event, at + " " + reply_failure("抢劫", "对方身无分文"))
                 return
 
-            # 2) 加 attacker：同时校验 attacker 冷却 + 保护
+            # 2) attacker 冷却 / 保护守护 + 统计字段（不含 coins，coins 通过 helper 受 cap 保护）
+            #    先尝试条件 UPDATE，若 attacker 状态变更则回退 victim
             a_rows = execute_rowcount(
                 session,
                 update(User)
                 .where(*attacker_where_clauses())
                 .values(
-                    coins=User.coins + amount,
                     rob_total_count=User.rob_total_count + 1,
                     rob_success_count=User.rob_success_count + 1,
                     rob_total_gain=User.rob_total_gain + amount,
@@ -310,18 +316,31 @@ async def handle_rob(bot: Bot, event: Event, arg: Message = CommandArg()) -> Non
                 ),
             )
             if a_rows == 0:
-                # 回滚 victim 扣款
+                # 回滚 victim 扣款（PC-8.1：refund 也走 helper 受 cap 保护）
+                refund_applied, refund_capped = add_coins_with_cap(session, target_user_id, amount)
                 session.execute(
                     update(User)
                     .where(User.user_id == target_user_id)
                     .values(
-                        coins=User.coins + amount,
                         rob_total_loss=User.rob_total_loss - amount,
                     )
                 )
+                if refund_capped and refund_applied < amount:
+                    logger.warning(
+                        f"抢劫回滚 victim refund 触顶 cap：victim={target_user_id} "
+                        f"requested={amount} applied={refund_applied}"
+                    )
                 session.commit()
                 await bot.send(event, at + " " + reply_failure("抢劫", "冷却中或保护状态变更，已取消"))
                 return
+
+            # PC-8.1：attacker 派金走 add_coins_with_cap，受 SF-X.1 全局账户上限保护。
+            # 若 capped，差额视为经济沉淀（victim 已扣，attacker 仅按可加余量入账）。
+            applied_amount, capped = add_coins_with_cap(session, robber_id, amount)
+            if capped:
+                logger.warning(
+                    f"抢劫成功派金触顶 cap：robber={robber_id} requested={amount} applied={applied_amount}"
+                )
 
         elif roll <= success_rate + counter_rate:
             result_type = "counter"
@@ -348,12 +367,18 @@ async def handle_rob(bot: Bot, event: Event, arg: Message = CommandArg()) -> Non
                 await bot.send(event, at + " " + reply_failure("抢劫", "金币不足以承担反被抢的损失，已取消"))
                 return
 
-            # 加 victim（与 amount 一致，attacker 已经原子扣了完整 amount，金币守恒）
+            # PC-8.1：victim 派金走 add_coins_with_cap，受 SF-X.1 全局账户上限保护。
+            # 若 capped，差额视为经济沉淀（attacker 已扣，victim 仅按可加余量入账）。
+            applied_amount, capped = add_coins_with_cap(session, target_user_id, amount)
+            if capped:
+                logger.warning(
+                    f"抢劫反抢 victim 派金触顶 cap：victim={target_user_id} "
+                    f"requested={amount} applied={applied_amount}"
+                )
             session.execute(
                 update(User)
                 .where(User.user_id == target_user_id)
                 .values(
-                    coins=User.coins + amount,
                     rob_total_gain=User.rob_total_gain + amount,
                 )
             )
@@ -451,16 +476,28 @@ async def handle_rob(bot: Bot, event: Event, arg: Message = CommandArg()) -> Non
         session.close()
 
     victim_display = f"{victim_name}（{target_user_id}）"
+    # PC-8.1：success / crit / counter 路径中的 "抢走了 X 金币" 显示 applied_amount
+    # （实际入账），与 dice / guess_number / red_packet 一致；触顶时另起一行展示
+    # 理论数额。police / fail 路径没有派金 helper（attacker 直接扣，无 cap），
+    # 仍用原 amount。
+    success_amount = applied_amount if result_type in ("crit", "success", "counter") else amount
     messages = {
-        "crit": f"🔥 大成功！你趁 {victim_display} 不注意，抢走了 💰 {amount} 金币",
-        "success": f"✅ 抢劫成功，从 {victim_display} 手中抢走了 💰 {amount} 金币",
-        "counter": f"🚫 {victim_display} 反应迅速，反而从你手中抢走了 💰 {amount} 金币",
+        "crit": f"🔥 大成功！你趁 {victim_display} 不注意，抢走了 💰 {success_amount} 金币",
+        "success": f"✅ 抢劫成功，从 {victim_display} 手中抢走了 💰 {success_amount} 金币",
+        "counter": f"🚫 {victim_display} 反应迅速，反而从你手中抢走了 💰 {success_amount} 金币",
         "police": f"🚨 你被巡逻的警察当场抓获，罚款 💰 {amount} 金币",
         "fail": f"❌ 你被 {victim_display} 发现了，慌忙逃跑时丢失了 💰 {amount} 金币",
     }
 
+    reply_text = messages[result_type]
+    # PC-8.1：派金触顶时附加提示，告知用户理论数额与差额
+    if result_type in ("crit", "success") and capped and applied_amount < amount:
+        reply_text += f"\n⚠️ 已触账户上限，理论抢走 {amount}，{amount - applied_amount} 金币未入账"
+    elif result_type == "counter" and capped and applied_amount < amount:
+        reply_text += f"\n⚠️ 对方账户已触上限，理论 {amount} 金币，{amount - applied_amount} 金币未入账"
+
     logger.info(
         f"抢劫结果：robber={robber_name}({robber_id}) victim={victim_name}({target_user_id}) "
-        f"result={result_type} amount={amount}"
+        f"result={result_type} amount={amount} applied_amount={applied_amount} capped={capped}"
     )
-    await bot.send(event, at + " " + messages[result_type])
+    await bot.send(event, at + " " + reply_text)

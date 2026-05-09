@@ -5,6 +5,7 @@ from nonebot.params import CommandArg
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 
+from nextbot.audit import audit_permission_change
 from nextbot.command_config import command_control, raise_command_usage
 from nextbot.db import Server, get_session
 from nextbot.message_parser import parse_command_args_with_fallback
@@ -98,6 +99,19 @@ async def handle_add_server(
         f"ip={validated.ip} game_port={validated.game_port} "
         f"restapi_port={validated.restapi_port}"
     )
+    # PC-6.1：服务器条目变更（add）涉及 token / IP / port，是基础设施级配置，
+    # 走统一 audit 入口便于事故回查
+    audit_permission_change(
+        actor_user_id=event.get_user_id(),
+        action="server.add",
+        target=str(new_id),
+        after={
+            "name": validated.name,
+            "ip": validated.ip,
+            "game_port": validated.game_port,
+            "restapi_port": validated.restapi_port,
+        },
+    )
     await bot.send(
         event,
         at_prefix(
@@ -144,8 +158,11 @@ async def handle_delete_server(
             await bot.send(event, at_prefix(event, reply_failure("删除", "服务器不存在")))
             return
 
-        deleted_id = server.id
-        deleted_name = server.name
+        deleted_id = int(server.id)
+        deleted_name = str(server.name)
+        deleted_ip = str(server.ip)
+        deleted_game_port = int(server.game_port)
+        deleted_restapi_port = int(server.restapi_port)
         session.delete(server)
         session.flush()
 
@@ -157,6 +174,18 @@ async def handle_delete_server(
         session.close()
 
     logger.info(f"删除服务器成功：server_id={deleted_id}")
+    # PC-6.1：服务器删除是基础设施级变更，走统一 audit 入口
+    audit_permission_change(
+        actor_user_id=event.get_user_id(),
+        action="server.delete",
+        target=str(deleted_id),
+        before={
+            "name": deleted_name,
+            "ip": deleted_ip,
+            "game_port": deleted_game_port,
+            "restapi_port": deleted_restapi_port,
+        },
+    )
     await bot.send(
         event,
         at_prefix(

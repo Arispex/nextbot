@@ -8,7 +8,6 @@ from pathlib import Path
 
 from nonebot import on_command
 from nonebot.adapters import Bot, Event, Message
-from nonebot.adapters.onebot.v11 import MessageSegment as OBV11MessageSegment
 from nonebot.log import logger
 from nonebot.params import CommandArg
 from sqlalchemy.exc import IntegrityError
@@ -45,6 +44,7 @@ from nextbot.text_utils import (
     reply_block,
     reply_failure,
     reply_success,
+    safe_at_segment_or_empty,
 )
 from nextbot.time_utils import db_now_utc_naive
 from nextbot.tshock_api import (
@@ -315,7 +315,7 @@ async def handle_list_self(bot: Bot, event: Event, arg: Message = CommandArg()) 
         raise_command_usage()
 
     user_id = event.get_user_id()
-    at = OBV11MessageSegment.at(int(user_id))
+    at = safe_at_segment_or_empty(user_id)
     try:
         user = _load_user(user_id)
         if user is None:
@@ -413,7 +413,7 @@ async def handle_list_user(bot: Bot, event: Event, arg: Message = CommandArg()) 
 )
 @require_permission("warehouse.add")
 async def handle_add(bot: Bot, event: Event, arg: Message = CommandArg()) -> None:
-    at = OBV11MessageSegment.at(int(event.get_user_id()))
+    at = safe_at_segment_or_empty(event.get_user_id())
 
     target_user_id, parse_error = resolve_user_id_arg_with_fallback(
         event, arg, "添加仓库物品", arg_index=0,
@@ -591,7 +591,7 @@ async def handle_add(bot: Bot, event: Event, arg: Message = CommandArg()) -> Non
 )
 @require_permission("warehouse.remove")
 async def handle_remove(bot: Bot, event: Event, arg: Message = CommandArg()) -> None:
-    at = OBV11MessageSegment.at(int(event.get_user_id()))
+    at = safe_at_segment_or_empty(event.get_user_id())
 
     target_user_id, parse_error = resolve_user_id_arg_with_fallback(
         event, arg, "删除仓库物品", arg_index=0,
@@ -795,7 +795,7 @@ async def _remove_many(
 @require_permission("warehouse.drop_self")
 async def handle_drop(bot: Bot, event: Event, arg: Message = CommandArg()) -> None:
     user_id = event.get_user_id()
-    at = OBV11MessageSegment.at(int(user_id))
+    at = safe_at_segment_or_empty(user_id)
 
     args = parse_command_args_with_fallback(event, arg, "丢弃仓库物品")
     if not (1 <= len(args) <= 2):
@@ -995,7 +995,7 @@ async def _drop_many(
 @require_permission("warehouse.recycle_self")
 async def handle_recycle(bot: Bot, event: Event, arg: Message = CommandArg()) -> None:
     user_id = event.get_user_id()
-    at = OBV11MessageSegment.at(int(user_id))
+    at = safe_at_segment_or_empty(user_id)
 
     args = parse_command_args_with_fallback(event, arg, "回收仓库物品")
     if not (1 <= len(args) <= 2):
@@ -1337,7 +1337,7 @@ async def _issue_give_command(
 @require_permission("warehouse.claim_self")
 async def handle_claim(bot: Bot, event: Event, arg: Message = CommandArg()) -> None:
     user_id = event.get_user_id()
-    at = OBV11MessageSegment.at(int(user_id))
+    at = safe_at_segment_or_empty(user_id)
 
     args = parse_command_args_with_fallback(event, arg, "领取仓库物品")
     if not (2 <= len(args) <= 3):
@@ -1688,7 +1688,7 @@ async def _claim_many(
 @require_permission("warehouse.gift_self")
 async def handle_gift(bot: Bot, event: Event, arg: Message = CommandArg()) -> None:
     sender_id = event.get_user_id()
-    at = OBV11MessageSegment.at(int(sender_id))
+    at = safe_at_segment_or_empty(sender_id)
 
     target_user_id, parse_error = resolve_user_id_arg_with_fallback(
         event, arg, "赠送仓库物品", arg_index=0,

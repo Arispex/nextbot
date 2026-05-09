@@ -16,10 +16,9 @@ from nonebot.log import logger
 from nonebot.matcher import current_matcher
 from nonebot.params import CommandArg
 
-from nonebot.adapters.onebot.v11 import MessageSegment as OBV11MessageSegment
-
 from nextbot.db import CommandConfig, User, get_session
 from nextbot.stats import increment_command_execute_total
+from nextbot.text_utils import safe_at_segment_or_empty
 from nextbot.time_utils import db_now_utc_naive
 
 _ALLOWED_PARAM_TYPES = {"bool", "int", "float", "string"}
@@ -963,7 +962,8 @@ def command_control(
                 if bot is not None and event is not None:
                     ban_msg = _check_user_banned(event.get_user_id())
                     if ban_msg:
-                        at = OBV11MessageSegment.at(int(event.get_user_id()))
+                        # PC-4.1：使用 safe_at_segment_or_empty，非数字 user_id 退化为空文本段
+                        at = safe_at_segment_or_empty(event.get_user_id())
                         await bot.send(event, at + "\n" + ban_msg)
                         return None
 

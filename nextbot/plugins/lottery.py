@@ -6,7 +6,6 @@ import random
 
 from nonebot import on_command
 from nonebot.adapters import Bot, Event, Message
-from nonebot.adapters.onebot.v11 import MessageSegment as OBV11MessageSegment
 from nonebot.log import logger
 from nonebot.params import CommandArg
 from sqlalchemy import func, update
@@ -27,7 +26,7 @@ from nextbot.permissions import require_permission
 from nextbot.plugins.economy import MAX_COINS_AMOUNT
 from nextbot.screenshot_render import render_and_send_screenshot
 from nextbot.server_broadcast import broadcast, BroadcastOutcome
-from nextbot.text_utils import reply_failure
+from nextbot.text_utils import reply_failure, safe_at_segment_or_empty
 from nextbot.time_utils import db_now_utc_naive
 from nextbot.tshock_api import TShockRequestError, get_error_reason, is_success, request_server_api
 from nextbot.warehouse_lock import warehouse_lock
@@ -469,7 +468,7 @@ async def handle_lottery_view(bot: Bot, event: Event, arg: Message = CommandArg(
 @require_permission("lottery.draw")
 async def handle_lottery_draw(bot: Bot, event: Event, arg: Message = CommandArg()) -> None:
     user_id = event.get_user_id()
-    at = OBV11MessageSegment.at(int(user_id))
+    at = safe_at_segment_or_empty(user_id)
 
     try:
         args = parse_command_args_with_fallback(event, arg, "抽奖")
@@ -618,8 +617,11 @@ async def handle_lottery_draw(bot: Bot, event: Event, arg: Message = CommandArg(
             if snap["require_online"]:
                 online_servers = []
                 offline_reasons: list[str] = []
-                for srv in target_servers:
-                    ok, reason = await _check_online_cached(int(srv.id), srv, player_name)
+                # PC-2.1：跨服务器在线检查并行 fan-out（与 mutation broadcast / leaderboard 对齐）
+                check_results = await asyncio.gather(
+                    *(_check_online_cached(int(srv.id), srv, player_name) for srv in target_servers)
+                )
+                for srv, (ok, reason) in zip(target_servers, check_results):
                     if ok is True:
                         online_servers.append(srv)
                     elif ok is False:
@@ -779,13 +781,22 @@ async def handle_lottery_draw(bot: Bot, event: Event, arg: Message = CommandArg(
                         room = max(0, MAX_COINS_AMOUNT - coins_now)
                         partial = min(capped_pos, room)
                         if partial > 0:
-                            execute_rowcount(
+                            # PV-X.1：partial UPDATE 必须校验 rowcount，否则极端 TOCTOU
+                            # 下另一个并发请求把 room 占掉时，这里 rowcount=0 但仍会
+                            # 误声明 applied_pos = partial，导致结果页与 final_coins 对不上
+                            partial_rowcount = execute_rowcount(
                                 session_local,
                                 update(User)
                                 .where(User.user_id == user_id, User.coins + partial <= MAX_COINS_AMOUNT)
                                 .values(coins=User.coins + partial),
                             )
-                            applied_pos = partial
+                            if partial_rowcount > 0:
+                                applied_pos = partial
+                            else:
+                                logger.warning(
+                                    f"抽奖正向 partial cap UPDATE 被并发覆盖：user_id={user_id} "
+                                    f"pool_id={pool_id} requested={coin_delta_pos} applied=0"
+                                )
                         if applied_pos < coin_delta_pos:
                             logger.warning(
                                 f"抽奖正向 coin 奖励部分被 cap：user_id={user_id} pool_id={pool_id} "
@@ -812,13 +823,20 @@ async def handle_lottery_draw(bot: Bot, event: Event, arg: Message = CommandArg(
                         # coin_delta_neg 是负数，可扣最大 = coins_now（取负）
                         partial = -min(coins_now, -coin_delta_neg)
                         if partial < 0:
-                            execute_rowcount(
+                            # PV-X.1：partial UPDATE 校验 rowcount，避免被并发扣款覆盖
+                            partial_rowcount = execute_rowcount(
                                 session_local,
                                 update(User)
                                 .where(User.user_id == user_id, User.coins + partial >= 0)
                                 .values(coins=User.coins + partial),
                             )
-                            applied_neg = partial
+                            if partial_rowcount > 0:
+                                applied_neg = partial
+                            else:
+                                logger.warning(
+                                    f"抽奖负向 partial cap UPDATE 被并发覆盖：user_id={user_id} "
+                                    f"pool_id={pool_id} requested={coin_delta_neg} applied=0"
+                                )
                         logger.warning(
                             f"抽奖负向 coin 奖励部分被 cap：user_id={user_id} pool_id={pool_id} "
                             f"requested={coin_delta_neg} applied={applied_neg}"

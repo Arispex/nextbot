@@ -54,7 +54,7 @@ async def render_and_send_screenshot(
             None 时不加锁（仅用于不需要限流的低频命令）。
         failure_action: 失败回复使用的动作动词（如 "查询" / "抽奖" / "生成"），
             被 `reply_failure(action, reason)` 拼成 "❌ <action>失败，<reason>"。
-        success_caption: 非 V11 适配器的成功提示语，None 时使用默认 "截图生成成功"。
+        success_caption: 非 V11 适配器的成功提示语，None 时使用默认 "截图已生成"。
 
     Returns:
         True 表示成功发送（无论 V11 还是 fallback），False 表示失败（已经

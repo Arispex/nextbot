@@ -4,7 +4,6 @@ from urllib.parse import quote
 
 from nonebot import on_command
 from nonebot.adapters import Bot, Event, Message
-from nonebot.adapters.onebot.v11 import MessageSegment as OBV11MessageSegment
 from nonebot.log import logger
 from nonebot.params import CommandArg
 
@@ -13,7 +12,7 @@ from nextbot.db import Server, User, get_session
 from nextbot.message_parser import parse_command_args_with_fallback
 from nextbot.permissions import require_permission
 from nextbot.server_broadcast import BroadcastOutcome, aggregate, broadcast
-from nextbot.text_utils import reply_block, reply_failure, reply_success
+from nextbot.text_utils import reply_block, reply_failure, reply_success, safe_at_segment_or_empty
 from nextbot.tshock_api import (
     TShockRequestError,
     get_error_reason,
@@ -123,7 +122,7 @@ async def _handle_login_action(
         raise_command_usage()
 
     user_id = event.get_user_id()
-    at = OBV11MessageSegment.at(int(user_id))
+    at = safe_at_segment_or_empty(user_id)
     user, servers = _load_self_and_servers(user_id)
     if user is None:
         await bot.send(event, at + " " + reply_failure(action, "未注册账号"))

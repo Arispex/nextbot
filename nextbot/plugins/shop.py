@@ -6,7 +6,6 @@ import unicodedata
 
 from nonebot import on_command
 from nonebot.adapters import Bot, Event, Message
-from nonebot.adapters.onebot.v11 import MessageSegment as OBV11MessageSegment
 from nonebot.log import logger
 from nonebot.params import CommandArg
 from sqlalchemy import func, update
@@ -42,6 +41,7 @@ from nextbot.text_utils import (
     reply_block,
     reply_failure,
     reply_success,
+    safe_at_segment_or_empty,
 )
 from nextbot.time_utils import db_now_utc_naive
 from nextbot.tshock_api import (
@@ -461,7 +461,7 @@ async def handle_shop_view(bot: Bot, event: Event, arg: Message = CommandArg()) 
 @require_permission("shop.buy")
 async def handle_shop_buy(bot: Bot, event: Event, arg: Message = CommandArg()) -> None:
     user_id = event.get_user_id()
-    at = OBV11MessageSegment.at(int(user_id))
+    at = safe_at_segment_or_empty(user_id)
 
     try:
         args = parse_command_args_with_fallback(event, arg, "购买商品")
@@ -737,8 +737,11 @@ async def _buy_command(
     offline_reasons: list[str] = []
     if require_online:
         online_servers: list[Server] = []
-        for srv in servers:
-            online, reason = await _check_player_online(srv, player_name)
+        # PC-2.1：跨服务器在线检查并行 fan-out（与 mutation broadcast / lottery 对齐）
+        check_results = await asyncio.gather(
+            *(_check_player_online(srv, player_name) for srv in servers)
+        )
+        for srv, (online, reason) in zip(servers, check_results):
             if online is True:
                 online_servers.append(srv)
             elif online is False:

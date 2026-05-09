@@ -6,12 +6,12 @@ from datetime import date, timedelta
 
 from nonebot import on_command
 from nonebot.adapters import Bot, Event, Message
-from nonebot.adapters.onebot.v11 import MessageSegment as OBV11MessageSegment
 from nonebot.log import logger
 from nonebot.params import CommandArg
 from sqlalchemy import update
 from sqlalchemy.exc import IntegrityError
 
+from nextbot.audit import audit_permission_change
 from nextbot.command_config import (
     command_control,
     get_current_param,
@@ -28,6 +28,7 @@ from nextbot.text_utils import (
     reply_block,
     reply_failure,
     reply_success,
+    safe_at_segment_or_empty,
 )
 from nextbot.time_utils import beijing_today_text
 
@@ -213,7 +214,7 @@ async def handle_sign(bot: Bot, event: Event, arg: Message = CommandArg()) -> No
     if args:
         raise_command_usage()
 
-    at = OBV11MessageSegment.at(int(event.get_user_id()))
+    at = safe_at_segment_or_empty(event.get_user_id())
     min_coins = int(get_current_param("min_coins", 10))
     max_coins = int(get_current_param("max_coins", 30))
     enable_streak = bool(get_current_param("enable_streak", True))
@@ -393,7 +394,7 @@ async def handle_transfer(bot: Bot, event: Event, arg: Message = CommandArg()) -
     if len(args) != 2:
         raise_command_usage()
 
-    at = OBV11MessageSegment.at(int(event.get_user_id()))
+    at = safe_at_segment_or_empty(event.get_user_id())
     target_user_id, parse_error = resolve_user_id_arg_with_fallback(
         event, arg, "转账", arg_index=0
     )
@@ -537,7 +538,7 @@ async def handle_add_coins(
     if len(args) != 2:
         raise_command_usage()
 
-    at = OBV11MessageSegment.at(int(event.get_user_id()))
+    at = safe_at_segment_or_empty(event.get_user_id())
     target_user_id, parse_error = resolve_user_id_arg_with_fallback(
         event,
         arg,
@@ -601,6 +602,21 @@ async def handle_add_coins(
         f"name={user_name} requested={amount} applied={applied_amount} "
         f"before={before_coins} after={coins} reason=admin_add"
     )
+    # PC-6.1：admin 加币是直接对其它用户余额的高敏感操作，
+    # 走统一 audit 入口让事故时易于聚合查询。仅 cross-user 时记录。
+    if actor_id != target_user_id:
+        audit_permission_change(
+            actor_user_id=actor_id,
+            action="economy.coins.add",
+            target=str(target_user_id),
+            before={"coins": before_coins},
+            after={"coins": coins},
+            context={
+                "requested": amount,
+                "applied": applied_amount,
+                "name": user_name,
+            },
+        )
     success_lines = [
         f"{EMOJI_USER} 用户：{user_name}（{target_user_id}）",
         f"{EMOJI_COIN} 数量：+{applied_amount}",
@@ -636,7 +652,7 @@ async def handle_remove_coins(
     if len(args) != 2:
         raise_command_usage()
 
-    at = OBV11MessageSegment.at(int(event.get_user_id()))
+    at = safe_at_segment_or_empty(event.get_user_id())
     target_user_id, parse_error = resolve_user_id_arg_with_fallback(
         event,
         arg,
@@ -706,10 +722,25 @@ async def handle_remove_coins(
         session.close()
 
     actor_id = event.get_user_id()
+    before_coins = coins + amount
     logger.info(
         f"金币变更：actor={actor_id} target={target_user_id} action=economy.coins.remove "
         f"name={user_name} amount={amount} after={coins} reason=admin_remove"
     )
+    # PC-6.1：admin 扣币是直接对其它用户余额的高敏感操作，
+    # 走统一 audit 入口让事故时易于聚合查询。仅 cross-user 时记录。
+    if actor_id != target_user_id:
+        audit_permission_change(
+            actor_user_id=actor_id,
+            action="economy.coins.remove",
+            target=str(target_user_id),
+            before={"coins": before_coins},
+            after={"coins": coins},
+            context={
+                "amount": amount,
+                "name": user_name,
+            },
+        )
     await bot.send(
         event,
         at + "\n" + reply_block(
