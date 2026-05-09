@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-3.md`
-- **Total Sessions**: 109
+- **Total Sessions**: 110
 - **Last Active**: 2026-05-09
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-3.md` | ~504 | Active |
+| `journal-3.md` | ~537 | Active |
 | `journal-2.md` | ~1973 | Archived |
 | `journal-1.md` | ~1999 | Archived |
 <!-- @@@/auto:active-documents -->
@@ -31,6 +31,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 110 | 2026-05-09 | 剩余 5 类 plugins 审计修复 (final sweep) | `e7f9ae9` | `main` |
 | 109 | 2026-05-09 | 权限管理命令审计修复 | `b6e0db4` | `main` |
 | 108 | 2026-05-08 | 安全管理命令审计修复 | `34aa7b1` | `main` |
 | 107 | 2026-05-08 | 玩家查询命令审计修复 | `5720eda` | `main` |
