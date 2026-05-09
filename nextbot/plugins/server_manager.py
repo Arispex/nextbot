@@ -61,6 +61,18 @@ async def handle_add_server(
         logger.warning(
             f"添加服务器失败：field={exc.field or ''} reason={exc.reason}"
         )
+        # R3N-5.2：与 ban / permission_manager denied 模式对齐，失败路径也走
+        # 统一 audit 入口便于安全监测平台聚合（防恶意反复尝试添加冲突 ID 等）
+        audit_permission_change(
+            actor_user_id=event.get_user_id(),
+            action="server.add.denied",
+            target=str(raw_name),
+            context={
+                "reason": "validation_error",
+                "field": exc.field or "",
+                "details": exc.reason,
+            },
+        )
         await bot.send(event, at_prefix(event, reply_failure("添加", exc.reason)))
         return
 
@@ -85,6 +97,16 @@ async def handle_add_server(
             session.rollback()
             logger.warning(
                 f"添加服务器失败：name={validated.name} reason=ID 分配冲突 attempted_id={new_id}"
+            )
+            # R3N-5.2：失败 audit
+            audit_permission_change(
+                actor_user_id=event.get_user_id(),
+                action="server.add.denied",
+                target=str(validated.name),
+                context={
+                    "reason": "integrity_error",
+                    "attempted_id": new_id,
+                },
             )
             await bot.send(
                 event,
@@ -155,6 +177,13 @@ async def handle_delete_server(
     try:
         server = session.query(Server).filter(Server.id == target_id).first()
         if server is None:
+            # R3N-5.2：失败 audit（防恶意反复探测不存在 server_id）
+            audit_permission_change(
+                actor_user_id=event.get_user_id(),
+                action="server.delete.denied",
+                target=str(target_id),
+                context={"reason": "not_found"},
+            )
             await bot.send(event, at_prefix(event, reply_failure("删除", "服务器不存在")))
             return
 

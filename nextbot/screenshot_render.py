@@ -130,12 +130,19 @@ async def _render_and_send_inner(
 
         # 非 V11 fallback：避免暴露 /tmp 内部路径，只回文件名 + 大小
         size_kb = file_size // 1024
-        # SH-4.2：默认 caption 改为 "截图已生成"，避免 reply_success 拼出
-        # "生成成功，截图生成成功" 这种 "动作 + 结果，结果" 的重复文案。
+        # R3 M9：与 V11 路径行为对称——V11 路径只发图不发文字 caption，
+        # fallback 路径同样不发独立 caption（仅在 success_caption 显式传入
+        # 时才作为额外说明附加）。避免 "✅ 抽奖成功，截图已生成" 在
+        # fallback 出现而 V11 用户看不到的不对称。
+        head = (
+            reply_success(failure_action, success_caption)
+            if success_caption
+            else reply_success(failure_action)
+        )
         await bot.send(
             event,
             reply_block(
-                reply_success(failure_action, success_caption or "截图已生成"),
+                head,
                 [
                     f"📁 文件：{screenshot_path.name}",
                     f"📦 大小：{size_kb} KB",

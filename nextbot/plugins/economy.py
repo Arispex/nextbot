@@ -45,7 +45,11 @@ remove_coins_matcher = on_command("扣除金币")
 #
 # 同时也用作单笔操作的 sanity 上界（add/remove/transfer/red_packet send/
 # warehouse value/shop total_price 等），防御 admin 配置过大数值导致溢出。
-MAX_COINS_AMOUNT = 100_000_000
+#
+# 上限值为 100 亿（10_000_000_000），SQLite INTEGER 是 64-bit signed
+# (max 9.2e18)，远未达到 schema 上限，无需 schema 调整。所有 cap 防御
+# 逻辑保留，仅放宽阈值。
+MAX_COINS_AMOUNT = 10_000_000_000
 
 
 def _parse_positive_int(text: str) -> int | None:
@@ -78,6 +82,12 @@ def add_coins_with_cap(session, user_id: str, delta: int) -> tuple[int, bool]:
     调用方负责 commit / rollback。本函数仅 execute UPDATE。
     """
     if delta <= 0:
+        if delta < 0:
+            # R3N-1.3：区分 delta=0（合法 no-op）与 delta<0（调用方 bug）。
+            # 仍 return (0, False) 不抛异常，但记 warning 帮助定位上游问题。
+            logger.warning(
+                f"add_coins_with_cap 收到负 delta：user_id={user_id} delta={delta}"
+            )
         return 0, False
     rowcount = execute_rowcount(
         session,
@@ -118,6 +128,65 @@ def add_coins_with_cap(session, user_id: str, delta: int) -> tuple[int, bool]:
     # 极端情况：在我们 SELECT 之后又有人加了币把 room 占掉
     logger.warning(
         f"金币加币触顶 cap（partial UPDATE 也失败）：user_id={user_id} requested_delta={delta}"
+    )
+    return 0, True
+
+
+def subtract_coins_with_floor(session, user_id: str, delta: int) -> tuple[int, bool]:
+    """带余额下限的扣币原子操作（``add_coins_with_cap`` 的对偶）。
+
+    R3E-3 / R3N-3.2：让 lottery._charge_atomic 等所有 -coins 路径统一走
+    此 helper，避免每个 caller 自实现 partial floor 逻辑导致行为漂移。
+
+    返回 ``(applied_delta, floored)``：
+        - applied_delta：实际扣除的金币数（>=0，可能 < delta）
+        - floored：True 表示被余额下限限制（部分或完全无法扣）
+
+    语义：先尝试一次性扣 delta（条件 ``coins >= delta``），若行影响为 0
+    则退而求其次扣到 0 余量。delta <= 0 直接返回 (0, False)，但
+    delta < 0 时 logger.warning（调用方 bug）。
+
+    调用方负责 commit / rollback。本函数仅 execute UPDATE。
+    """
+    if delta <= 0:
+        if delta < 0:
+            # 区分 delta=0（合法 no-op）与 delta<0（调用方 bug）
+            logger.warning(
+                f"subtract_coins_with_floor 收到负 delta：user_id={user_id} delta={delta}"
+            )
+        return 0, False
+    rowcount = execute_rowcount(
+        session,
+        update(User)
+        .where(User.user_id == user_id, User.coins >= delta)
+        .values(coins=User.coins - delta),
+    )
+    if rowcount > 0:
+        return delta, False
+    # 余额不足：扣到 0 即止
+    coins_now = int(
+        session.query(User.coins).filter(User.user_id == user_id).scalar() or 0
+    )
+    if coins_now <= 0:
+        logger.warning(
+            f"金币扣币触底 floor：user_id={user_id} requested_delta={delta} applied=0"
+        )
+        return 0, True
+    partial = min(delta, coins_now)
+    rowcount = execute_rowcount(
+        session,
+        update(User)
+        .where(User.user_id == user_id, User.coins >= partial)
+        .values(coins=User.coins - partial),
+    )
+    if rowcount > 0:
+        logger.warning(
+            f"金币扣币部分被 floor：user_id={user_id} requested_delta={delta} applied={partial}"
+        )
+        return partial, True
+    # 极端情况：SELECT 之后又有人扣了币
+    logger.warning(
+        f"金币扣币触底 floor（partial UPDATE 也失败）：user_id={user_id} requested_delta={delta}"
     )
     return 0, True
 

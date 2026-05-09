@@ -354,6 +354,31 @@ async def handle_grab(bot: Bot, event: Event, arg: Message = CommandArg()) -> No
                 f"抢红包触顶 cap：user_id={user_id} packet_id={packet_id} "
                 f"requested={draw_amount} applied={applied_amount}"
             )
+            # R3E-1：partial cap 下未入账的金币凭空蒸发
+            #
+            # _claim_slot_atomic 已扣 packet 全额 draw_amount 但用户只入账 applied，
+            # 差额 (draw_amount - applied) 必须退回 packet（参考 economy.transfer
+            # sender refund 模式 economy.py:469-482）。同时把 RedPacketClaim.amount
+            # 改成实际入账值，让事后审计与展示能对上。
+            refund = draw_amount - applied_amount
+            refund_rowcount = execute_rowcount(
+                session,
+                sa_update(RedPacket)
+                .where(RedPacket.id == packet_id)
+                .values(
+                    remaining_amount=RedPacket.remaining_amount + refund,
+                    remaining_count=RedPacket.remaining_count + 1,
+                ),
+            )
+            if refund_rowcount == 0:
+                # 极罕见：退还失败（packet 已被 withdraw 等竞态修改）。
+                # 这是 DB 内一致性问题，必须 CRITICAL log 让管理员介入对账。
+                logger.error(
+                    f"[CRITICAL] 红包退还失败：packet_id={packet_id} user_id={user_id} "
+                    f"refund={refund} draw={draw_amount} applied={applied_amount}"
+                )
+            # 改 RedPacketClaim.amount 为实际入账值（claim 已 flush 但未 commit）
+            claim.amount = applied_amount
 
         refreshed_packet = session.query(RedPacket).filter(RedPacket.id == packet_id).first()
         if refreshed_packet is not None and int(refreshed_packet.remaining_count) == 0:
@@ -390,9 +415,15 @@ async def handle_grab(bot: Bot, event: Event, arg: Message = CommandArg()) -> No
         f"{EMOJI_CHART} 已抢 {taken_amount}/{packet_total_amount}",
     ]
     if coin_capped:
-        success_lines.append(
-            f"⚠️ 已触账户上限，{draw_amount - actual_grab_amount} 金币未入账",
-        )
+        # R3E-1：未入账金币已退回红包，提示用户而非"未入账"
+        if actual_grab_amount > 0:
+            success_lines.append(
+                f"⚠️ 已触账户上限，{draw_amount - actual_grab_amount} 金币已退回红包",
+            )
+        else:
+            success_lines.append(
+                f"⚠️ 已触账户上限，本次未入账（{draw_amount} 金币已退回红包）",
+            )
     await bot.send(
         event,
         at + "\n" + reply_block(

@@ -23,7 +23,11 @@ from nextbot.db import (
 )
 from nextbot.message_parser import parse_command_args_with_fallback
 from nextbot.permissions import require_permission
-from nextbot.plugins.economy import MAX_COINS_AMOUNT
+from nextbot.plugins.economy import (
+    MAX_COINS_AMOUNT,
+    add_coins_with_cap,
+    subtract_coins_with_floor,
+)
 from nextbot.screenshot_render import render_and_send_screenshot
 from nextbot.server_broadcast import broadcast, BroadcastOutcome
 from nextbot.text_utils import reply_failure, safe_at_segment_or_empty
@@ -618,10 +622,20 @@ async def handle_lottery_draw(bot: Bot, event: Event, arg: Message = CommandArg(
                 online_servers = []
                 offline_reasons: list[str] = []
                 # PC-2.1：跨服务器在线检查并行 fan-out（与 mutation broadcast / leaderboard 对齐）
+                # R3N-4.2：return_exceptions=True 防止任一 task 抛非 TShockRequestError
+                # 异常时整个 gather cancel 其它任务（如内部 bug 触发 AttributeError）
                 check_results = await asyncio.gather(
-                    *(_check_online_cached(int(srv.id), srv, player_name) for srv in target_servers)
+                    *(_check_online_cached(int(srv.id), srv, player_name) for srv in target_servers),
+                    return_exceptions=True,
                 )
-                for srv, (ok, reason) in zip(target_servers, check_results):
+                for srv, result in zip(target_servers, check_results):
+                    if isinstance(result, BaseException):
+                        logger.warning(
+                            f"在线检查异常：server_id={srv.id} reason={result!r}"
+                        )
+                        offline_reasons.append(f"#{srv.id} {srv.name}：查询失败（异常）")
+                        continue
+                    ok, reason = result
                     if ok is True:
                         online_servers.append(srv)
                     elif ok is False:
@@ -756,91 +770,20 @@ async def handle_lottery_draw(bot: Bot, event: Event, arg: Message = CommandArg(
                         coin_delta_pos += amt
                     elif amt < 0:
                         coin_delta_neg += amt
+                # R3E-3 / R3N-3.2：复用 economy.add_coins_with_cap /
+                # subtract_coins_with_floor helper，避免自实现 partial cap 与
+                # helper 行为漂移。正向走 add_coins_with_cap，负向走
+                # subtract_coins_with_floor（注意 helper 接受的是正数 delta）。
                 applied_pos = 0
                 applied_neg = 0
                 if coin_delta_pos > 0:
-                    capped_pos = min(coin_delta_pos, MAX_COINS_AMOUNT)
-                    # 条件 UPDATE：加和不能超过 MAX_COINS_AMOUNT；超过则跳过加奖（保留 item / cmd），admin 调整
-                    pos_rowcount = execute_rowcount(
-                        session_local,
-                        update(User)
-                        .where(
-                            User.user_id == user_id,
-                            User.coins + capped_pos <= MAX_COINS_AMOUNT,
-                        )
-                        .values(coins=User.coins + capped_pos),
-                    )
-                    if pos_rowcount > 0:
-                        applied_pos = capped_pos
-                    else:
-                        # rowcount=0：用户余额已接近 MAX_COINS_AMOUNT，无法整体加完
-                        # → 退而求其次按可加余量加（保留与已修 economy 一致的"加到上限"语义）
-                        coins_now = int(
-                            session_local.query(User.coins).filter(User.user_id == user_id).scalar() or 0
-                        )
-                        room = max(0, MAX_COINS_AMOUNT - coins_now)
-                        partial = min(capped_pos, room)
-                        if partial > 0:
-                            # PV-X.1：partial UPDATE 必须校验 rowcount，否则极端 TOCTOU
-                            # 下另一个并发请求把 room 占掉时，这里 rowcount=0 但仍会
-                            # 误声明 applied_pos = partial，导致结果页与 final_coins 对不上
-                            partial_rowcount = execute_rowcount(
-                                session_local,
-                                update(User)
-                                .where(User.user_id == user_id, User.coins + partial <= MAX_COINS_AMOUNT)
-                                .values(coins=User.coins + partial),
-                            )
-                            if partial_rowcount > 0:
-                                applied_pos = partial
-                            else:
-                                logger.warning(
-                                    f"抽奖正向 partial cap UPDATE 被并发覆盖：user_id={user_id} "
-                                    f"pool_id={pool_id} requested={coin_delta_pos} applied=0"
-                                )
-                        if applied_pos < coin_delta_pos:
-                            logger.warning(
-                                f"抽奖正向 coin 奖励部分被 cap：user_id={user_id} pool_id={pool_id} "
-                                f"requested={coin_delta_pos} applied={applied_pos}"
-                            )
+                    applied_pos, _ = add_coins_with_cap(session_local, user_id, coin_delta_pos)
                 if coin_delta_neg < 0:
-                    # 条件 UPDATE：扣完不能 < 0；不足则跳过扣（保护用户余额）
-                    neg_rowcount = execute_rowcount(
-                        session_local,
-                        update(User)
-                        .where(
-                            User.user_id == user_id,
-                            User.coins + coin_delta_neg >= 0,
-                        )
-                        .values(coins=User.coins + coin_delta_neg),
+                    requested_neg = -coin_delta_neg  # helper 用正数表示扣除量
+                    applied_abs, _ = subtract_coins_with_floor(
+                        session_local, user_id, requested_neg
                     )
-                    if neg_rowcount > 0:
-                        applied_neg = coin_delta_neg
-                    else:
-                        # rowcount=0：余额不够扣完，按可扣余额扣（不让用户欠钱）
-                        coins_now = int(
-                            session_local.query(User.coins).filter(User.user_id == user_id).scalar() or 0
-                        )
-                        # coin_delta_neg 是负数，可扣最大 = coins_now（取负）
-                        partial = -min(coins_now, -coin_delta_neg)
-                        if partial < 0:
-                            # PV-X.1：partial UPDATE 校验 rowcount，避免被并发扣款覆盖
-                            partial_rowcount = execute_rowcount(
-                                session_local,
-                                update(User)
-                                .where(User.user_id == user_id, User.coins + partial >= 0)
-                                .values(coins=User.coins + partial),
-                            )
-                            if partial_rowcount > 0:
-                                applied_neg = partial
-                            else:
-                                logger.warning(
-                                    f"抽奖负向 partial cap UPDATE 被并发覆盖：user_id={user_id} "
-                                    f"pool_id={pool_id} requested={coin_delta_neg} applied=0"
-                                )
-                        logger.warning(
-                            f"抽奖负向 coin 奖励部分被 cap：user_id={user_id} pool_id={pool_id} "
-                            f"requested={coin_delta_neg} applied={applied_neg}"
-                        )
+                    applied_neg = -applied_abs
 
                 applied_coin_delta = applied_pos + applied_neg
                 session_local.commit()

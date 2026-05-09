@@ -563,15 +563,14 @@ def ensure_warehouse_schema() -> None:
 
 
 def ensure_lottery_schema() -> None:
-    # Tables themselves are created by Base.metadata.create_all; this hook
-    # exists so future column additions can ALTER without dropping data.
-    if not DB_PATH.exists():
-        return
-    conn = sqlite3.connect(str(DB_PATH))
-    try:
-        pass
-    finally:
-        conn.close()
+    """No-op forward-compat hook for lottery schema migrations.
+
+    Tables themselves are created by ``Base.metadata.create_all``; this
+    placeholder exists so future column additions can ALTER without dropping
+    data. Currently no migration is needed, so we deliberately do nothing
+    (avoid opening a sqlite3 connection that does no work).
+    """
+    return
 
 
 def ensure_shop_schema() -> None:

@@ -20,9 +20,12 @@ _CMD_MAX_LEN = 500
 _EXPORT_VERSION = 1
 _EXPORT_KIND = "shops"
 _IMPORT_MODES = {"merge", "replace_all"}
-# 与 nextbot.plugins.economy.MAX_COINS_AMOUNT 保持一致；
+# 与 nextbot.plugins.economy.MAX_COINS_AMOUNT 保持一致（100 亿）；
 # 不直接 import 经济插件以避免加载时触发 nonebot 副作用。
-_MAX_COINS_AMOUNT = 100_000_000
+# R3 M0：从 1 亿 (100_000_000) 同步放宽到 100 亿 (10_000_000_000)，
+# 否则 admin 在 WebUI 配 shop item 价格 > 1 亿会被拒，但通过 bot 命令
+# 直配 > 1 亿能通过，造成上限不一致。
+_MAX_COINS_AMOUNT = 10_000_000_000
 # 与 nextbot.plugins.shop.MAX_ITEM_QUANTITY 保持一致；
 # 限制单件商品的发放数量，防止 admin 误配大数耗尽仓库 / TShock。
 _MAX_ITEM_QUANTITY = 9999

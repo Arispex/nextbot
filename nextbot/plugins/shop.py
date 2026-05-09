@@ -738,10 +738,20 @@ async def _buy_command(
     if require_online:
         online_servers: list[Server] = []
         # PC-2.1：跨服务器在线检查并行 fan-out（与 mutation broadcast / lottery 对齐）
+        # R3N-4.2：return_exceptions=True 防止任一 task 抛非 TShockRequestError
+        # 异常时整个 gather cancel 其它任务
         check_results = await asyncio.gather(
-            *(_check_player_online(srv, player_name) for srv in servers)
+            *(_check_player_online(srv, player_name) for srv in servers),
+            return_exceptions=True,
         )
-        for srv, (online, reason) in zip(servers, check_results):
+        for srv, result in zip(servers, check_results):
+            if isinstance(result, BaseException):
+                logger.warning(
+                    f"在线检查异常：server_id={srv.id} reason={result!r}"
+                )
+                offline_reasons.append(f"#{srv.id} {srv.name}：查询失败（异常）")
+                continue
+            online, reason = result
             if online is True:
                 online_servers.append(srv)
             elif online is False:
