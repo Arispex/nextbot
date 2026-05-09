@@ -36,6 +36,14 @@ transfer_matcher = on_command("转账")
 add_coins_matcher = on_command("添加金币")
 remove_coins_matcher = on_command("扣除金币")
 
+# SF-X.1：账户上限（hard cap on User.coins balance）。
+#
+# 语义：用户 coins 余额任何时刻不得超过此值。所有 +coins 写入路径都必须
+# 加 `User.coins + delta <= MAX_COINS_AMOUNT` 条件 UPDATE，触顶时退而求其次
+# 加到上限即止（partial cap，参考 lottery._charge_atomic 模板）。
+#
+# 同时也用作单笔操作的 sanity 上界（add/remove/transfer/red_packet send/
+# warehouse value/shop total_price 等），防御 admin 配置过大数值导致溢出。
 MAX_COINS_AMOUNT = 100_000_000
 
 
@@ -52,6 +60,65 @@ def _parse_positive_int(text: str) -> int | None:
 
 def _exceeds_max_amount(amount: int) -> bool:
     return amount > MAX_COINS_AMOUNT
+
+
+def add_coins_with_cap(session, user_id: str, delta: int) -> tuple[int, bool]:
+    """带账户上限的加币原子操作。
+
+    SF-X.1：所有 +coins 路径统一走此 helper，避免单笔合规但累加越界。
+
+    返回 ``(applied_delta, capped)``：
+        - applied_delta：实际入账的金币数（可能 < delta）
+        - capped：True 表示触顶（部分或完全无法入账），调用方可据此提示用户
+
+    语义：先尝试一次性加 delta（条件 `coins + delta <= cap`），若行影响为 0
+    则退而求其次按可加余量加（partial cap）。delta <= 0 直接返回 (0, False)。
+
+    调用方负责 commit / rollback。本函数仅 execute UPDATE。
+    """
+    if delta <= 0:
+        return 0, False
+    rowcount = execute_rowcount(
+        session,
+        update(User)
+        .where(
+            User.user_id == user_id,
+            User.coins + delta <= MAX_COINS_AMOUNT,
+        )
+        .values(coins=User.coins + delta),
+    )
+    if rowcount > 0:
+        return delta, False
+    # 触顶：按可加余量加
+    coins_now = int(
+        session.query(User.coins).filter(User.user_id == user_id).scalar() or 0
+    )
+    room = max(0, MAX_COINS_AMOUNT - coins_now)
+    if room <= 0:
+        logger.warning(
+            f"金币加币触顶 cap：user_id={user_id} requested_delta={delta} applied=0"
+        )
+        return 0, True
+    partial = min(delta, room)
+    rowcount = execute_rowcount(
+        session,
+        update(User)
+        .where(
+            User.user_id == user_id,
+            User.coins + partial <= MAX_COINS_AMOUNT,
+        )
+        .values(coins=User.coins + partial),
+    )
+    if rowcount > 0:
+        logger.warning(
+            f"金币加币部分被 cap：user_id={user_id} requested_delta={delta} applied={partial}"
+        )
+        return partial, True
+    # 极端情况：在我们 SELECT 之后又有人加了币把 room 占掉
+    logger.warning(
+        f"金币加币触顶 cap（partial UPDATE 也失败）：user_id={user_id} requested_delta={delta}"
+    )
+    return 0, True
 
 
 @dataclass(frozen=True)
@@ -189,10 +256,16 @@ async def handle_sign(bot: Bot, event: Event, arg: Message = CommandArg()) -> No
 
         # 原子条件 UPDATE：仅当 last_sign_date != today 时才写入。
         # 并发同时签到时，第二条 rowcount=0，被 schema/SQL 层拦下。
+        # SF-X.1：加 `coins + total_reward <= MAX_COINS_AMOUNT` 守护账户上限；
+        # 触顶时仅写 streak / sign_total / last_sign_date，金币按可加余量加（partial cap）。
         rowcount = execute_rowcount(
             session,
             update(User)
-            .where(User.user_id == user_id, User.last_sign_date != today_text)
+            .where(
+                User.user_id == user_id,
+                User.last_sign_date != today_text,
+                User.coins + total_reward <= MAX_COINS_AMOUNT,
+            )
             .values(
                 coins=User.coins + total_reward,
                 last_sign_date=today_text,
@@ -201,8 +274,43 @@ async def handle_sign(bot: Bot, event: Event, arg: Message = CommandArg()) -> No
             ),
         )
         if rowcount == 0:
-            await bot.send(event, at + " " + reply_failure("签到", "今天已经签到过了"))
-            return
+            # 检查是否真的"今天已签"还是"账户触顶"
+            current_user = session.query(User).filter(User.user_id == user_id).first()
+            if current_user is None:
+                await bot.send(event, at + " " + reply_failure("签到", "请先注册账号"))
+                return
+            if str(current_user.last_sign_date or "") == today_text:
+                await bot.send(event, at + " " + reply_failure("签到", "今天已经签到过了"))
+                return
+            # 余额触顶 → partial cap：写 streak / sign_total / last_sign_date，
+            # coins 加到 cap 即止
+            coins_now = int(current_user.coins or 0)
+            room = max(0, MAX_COINS_AMOUNT - coins_now)
+            applied_reward = min(total_reward, room)
+            rowcount = execute_rowcount(
+                session,
+                update(User)
+                .where(
+                    User.user_id == user_id,
+                    User.last_sign_date != today_text,
+                    User.coins + applied_reward <= MAX_COINS_AMOUNT,
+                )
+                .values(
+                    coins=User.coins + applied_reward,
+                    last_sign_date=today_text,
+                    sign_streak=streak_result.next_streak,
+                    sign_total=User.sign_total + 1,
+                ),
+            )
+            if rowcount == 0:
+                await bot.send(event, at + " " + reply_failure("签到", "今天已经签到过了"))
+                return
+            if applied_reward < total_reward:
+                logger.warning(
+                    f"签到金币触顶 cap：user_id={user_id} "
+                    f"requested={total_reward} applied={applied_reward}"
+                )
+            total_reward = applied_reward
 
         # 写 UserSignRecord —— UniqueConstraint(user_id, sign_date) 兜底并发。
         try:
@@ -229,11 +337,12 @@ async def handle_sign(bot: Bot, event: Event, arg: Message = CommandArg()) -> No
             session.query(User.name).filter(User.user_id == user_id).scalar() or ""
         )
 
+        before_coins = coins_after - total_reward
         logger.info(
-            "签到成功："
-            f"user_id={user_id} name={user_name} base_reward={base_reward} "
-            f"streak_reward={streak_result.streak_reward} total_reward={total_reward} "
-            f"streak={streak_result.next_streak} coins={coins_after} today_order={today_order}"
+            f"金币变更：actor={user_id} target={user_id} action=economy.sign "
+            f"name={user_name} base_reward={base_reward} streak_reward={streak_result.streak_reward} "
+            f"amount={total_reward} before={before_coins} after={coins_after} "
+            f"streak={streak_result.next_streak} today_order={today_order} reason=daily_sign"
         )
         lines = [
             f"{EMOJI_CHART} 签到排名：第 {today_order} 位",
@@ -354,37 +463,50 @@ async def handle_transfer(bot: Bot, event: Event, arg: Message = CommandArg()) -
             return
 
         # 加 target（同事务原子完成）
-        session.execute(
-            update(User)
-            .where(User.user_id == target_user_id)
-            .values(coins=User.coins + amount)
-        )
+        # SF-X.1：账户上限保护——触顶时按可加余量加，剩余金额回退给 sender
+        applied_amount, capped = add_coins_with_cap(session, target_user_id, amount)
+        refund_amount = 0
+        if capped and applied_amount < amount:
+            # 把未入账的部分退回 sender
+            refund_amount = amount - applied_amount
+            execute_rowcount(
+                session,
+                update(User)
+                .where(User.user_id == sender_id)
+                .values(coins=User.coins + refund_amount),
+            )
+            logger.warning(
+                f"转账触顶 cap：sender={sender_id} target={target_user_id} "
+                f"requested={amount} applied={applied_amount} refund={refund_amount}"
+            )
         session.commit()
 
         sender_after = int(
             session.query(User.coins).filter(User.user_id == sender_id).scalar() or 0
-        )
-        sender_name = str(
-            session.query(User.name).filter(User.user_id == sender_id).scalar() or ""
         )
         target_name = str(
             session.query(User.name).filter(User.user_id == target_user_id).scalar() or ""
         )
 
         logger.info(
-            f"转账成功：sender_id={sender_id} sender_name={sender_name} "
-            f"target_id={target_user_id} target_name={target_name} "
-            f"amount={amount} sender_remaining={sender_after}"
+            f"金币变更：actor={sender_id} target={target_user_id} action=economy.transfer "
+            f"requested={amount} applied={applied_amount} refund={refund_amount} "
+            f"sender_remaining={sender_after} reason=transfer"
         )
+        success_lines = [
+            f"{EMOJI_COIN} 转出金币：{applied_amount}",
+            f"{EMOJI_USER} 转账对象：{target_name}（{target_user_id}）",
+            f"{EMOJI_COIN} 当前余额：{sender_after}",
+        ]
+        if refund_amount > 0:
+            success_lines.append(
+                f"⚠️ 对方账户已触上限，{refund_amount} 金币已退回",
+            )
         await bot.send(
             event,
             at + "\n" + reply_block(
                 reply_success("转账"),
-                [
-                    f"{EMOJI_COIN} 转出金币：{amount}",
-                    f"{EMOJI_USER} 转账对象：{target_name}（{target_user_id}）",
-                    f"{EMOJI_COIN} 当前余额：{sender_after}",
-                ],
+                success_lines,
             ),
         )
     except Exception:  # noqa: BLE001
@@ -444,19 +566,18 @@ async def handle_add_coins(
         )
         return
 
+    actor_id = event.get_user_id()
     session = get_session()
+    applied_amount = 0
+    capped = False
     try:
         user = session.query(User).filter(User.user_id == target_user_id).first()
         if user is None:
             await bot.send(event, at + " " + reply_failure("添加", "用户不存在"))
             return
 
-        # 原子条件 UPDATE：避免并发 lost-update。
-        session.execute(
-            update(User)
-            .where(User.user_id == target_user_id)
-            .values(coins=User.coins + amount)
-        )
+        # SF-X.1：账户上限保护——触顶时按可加余量加（partial cap）
+        applied_amount, capped = add_coins_with_cap(session, target_user_id, amount)
         session.commit()
         coins = int(
             session.query(User.coins).filter(User.user_id == target_user_id).scalar() or 0
@@ -474,18 +595,26 @@ async def handle_add_coins(
     finally:
         session.close()
 
+    before_coins = coins - applied_amount
     logger.info(
-        f"添加金币成功：user_id={target_user_id} name={user_name} amount={amount} coins={coins}"
+        f"金币变更：actor={actor_id} target={target_user_id} action=economy.coins.add "
+        f"name={user_name} requested={amount} applied={applied_amount} "
+        f"before={before_coins} after={coins} reason=admin_add"
     )
+    success_lines = [
+        f"{EMOJI_USER} 用户：{user_name}（{target_user_id}）",
+        f"{EMOJI_COIN} 数量：+{applied_amount}",
+        f"{EMOJI_COIN} 当前金币：{coins}",
+    ]
+    if capped and applied_amount < amount:
+        success_lines.append(
+            f"⚠️ 已触账户上限，{amount - applied_amount} 金币未入账",
+        )
     await bot.send(
         event,
         at + "\n" + reply_block(
             reply_success("添加"),
-            [
-                f"{EMOJI_USER} 用户：{user_name}（{target_user_id}）",
-                f"{EMOJI_COIN} 数量：+{amount}",
-                f"{EMOJI_COIN} 当前金币：{coins}",
-            ],
+            success_lines,
         ),
     )
 
@@ -576,8 +705,10 @@ async def handle_remove_coins(
     finally:
         session.close()
 
+    actor_id = event.get_user_id()
     logger.info(
-        f"扣除金币成功：user_id={target_user_id} name={user_name} amount={amount} coins={coins}"
+        f"金币变更：actor={actor_id} target={target_user_id} action=economy.coins.remove "
+        f"name={user_name} amount={amount} after={coins} reason=admin_remove"
     )
     await bot.send(
         event,

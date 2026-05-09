@@ -88,8 +88,10 @@ def is_owner(user_id: str) -> bool:
 
 # 仅 owner 可授予的危险权限。包含完全匹配 + 通配匹配。
 # 此列表故意保守：任何能用来 (a) 修改其他用户的权限 / 身份组，或
-# (b) 修改组的权限 / 继承关系，或 (c) 创建 / 删除组的 key 都进 blocklist。
+# (b) 修改组的权限 / 继承关系，或 (c) 创建 / 删除组的 key，或
+# (d) 等同 RCE 的能力（直接发 TShock 命令、添加 / 删除服务器端点）都进 blocklist。
 DANGEROUS_PERMISSION_PREFIXES: frozenset[str] = frozenset({
+    # Permission / group 管理类
     "permission.user.add",
     "permission.user.remove",
     "permission.user.group.set",
@@ -101,6 +103,18 @@ DANGEROUS_PERMISSION_PREFIXES: frozenset[str] = frozenset({
     "group.delete",
     "group.inherit.add",
     "group.inherit.clear",
+    # SS-7.1：RCE 等价 / 高危管理类
+    "server_tools.execute",   # /v3/server/rawcmd 任意 TShock 命令 = RCE 等价
+    "server_tools.map_image",
+    "server_tools.download_map",
+    "server.add",             # 注入新 TShock 端点（含 token）
+    "server.delete",          # 删除 TShock 端点
+    "admin.ban",              # 全服务器封禁用户
+    "admin.unban",
+    "admin.rename",           # 改名同步白名单（影响所有 server）
+    "economy.coins.add",      # 凭空创造金币
+    "economy.coins.remove",   # 凭空销毁金币
+    "user.whitelist.sync",    # 影响所有服务器白名单
 })
 
 

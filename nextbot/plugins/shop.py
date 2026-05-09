@@ -29,6 +29,7 @@ from nextbot.db import (
 from nextbot.message_parser import parse_command_args_with_fallback
 from nextbot.permissions import require_permission
 from nextbot.plugins.economy import MAX_COINS_AMOUNT
+from nextbot.server_broadcast import BroadcastOutcome, broadcast
 from nextbot.progression import PROGRESSION_KEY_TO_ZH
 from nextbot.screenshot_render import render_and_send_screenshot
 from nextbot.text_utils import (
@@ -61,6 +62,10 @@ shop_buy_matcher = on_command("购买商品")
 MAX_BUY_COUNT = 9999
 # 单笔物品总数量上限：与 warehouse 共享建议常量
 MAX_ITEM_QUANTITY = 9999
+# SF-4.x：跨服务器命令商品总 RPC 数上限（与 lottery MAX_LOTTERY_CMD_EXECUTIONS 对齐）。
+# online_servers × buy_count 超此值则在扣费前拒绝，防御 buy_count=9999 × 多服务器
+# 暴击 Bot / TShock。
+MAX_SHOP_CMD_EXECUTIONS = 200
 
 
 def _safe_param_int(
@@ -667,9 +672,10 @@ async def _buy_item(
         f"{EMOJI_COIN} 当前金币：{final_coins}",
     ])
     logger.info(
-        f"商店购买物品成功：user_id={user_id} shop_id={shop_id} item={target_name} "
-        f"shop_item_id={target_id} count={buy_count} total_quantity={total_quantity} "
-        f"price={total_price} slot={empty_slot}"
+        f"金币变更：actor={user_id} target={user_id} action=shop.buy.item "
+        f"shop_id={shop_id} item={target_name} shop_item_id={target_id} count={buy_count} "
+        f"total_quantity={total_quantity} amount={total_price} after={final_coins} "
+        f"slot={empty_slot} reason=shop_buy"
     )
     await bot.send(event, at + "\n" + reply_block(reply_success("购买"), lines))
 
@@ -684,6 +690,19 @@ async def _buy_command(
     command_template: str,
     require_online: bool,
 ) -> None:
+    # SF-4.3：拒绝 require_online=False + target_server_id=None 配置——
+    # 玩家不在线时 TShock /give silent fail，用户付 N 倍价格只拿到 1 倍东西。
+    # 强制管理员明确 target_server_id 或开启 require_online=True。
+    if not require_online and target_server_id is None:
+        await bot.send(
+            event,
+            at + " " + reply_failure(
+                "购买",
+                "命令商品配置错误，必须设置 require_online=True 或指定 target_server_id",
+            ),
+        )
+        return
+
     # Load player + servers; optionally verify online
     session = get_session()
     try:
@@ -742,6 +761,18 @@ async def _buy_command(
     else:
         online_servers = list(servers)
 
+    # SF-4.x：总 RPC 数上限校验（在扣费之前），防御 buy_count × N_servers 暴击
+    total_rpcs = len(online_servers) * buy_count
+    if total_rpcs > MAX_SHOP_CMD_EXECUTIONS:
+        await bot.send(
+            event,
+            at + " " + reply_failure(
+                "购买",
+                f"本次购买产生的指令调用过多（{total_rpcs}，最多 {MAX_SHOP_CMD_EXECUTIONS}）",
+            ),
+        )
+        return
+
     # Charge coins now (atomic UPDATE), then execute commands
     session = get_session()
     try:
@@ -788,11 +819,30 @@ async def _buy_command(
 
     cmd = command_template.replace("{player}", player_name)
 
-    exec_results: list[tuple[Server, bool, str]] = []
-    for srv in online_servers:
+    # SF-4.x：跨服务器并行（与 lottery 一致），单服务器内部 buy_count 次串行
+    async def _execute_for_server(srv: Server) -> BroadcastOutcome[list[tuple[bool, str]]]:
+        per_server: list[tuple[bool, str]] = []
         for _ in range(buy_count):
             ok, reason = await _issue_raw_command(srv, cmd)
-            exec_results.append((srv, ok, reason))
+            per_server.append((ok, reason))
+        success = all(ok for ok, _ in per_server)
+        detail = "" if success else "部分失败"
+        return BroadcastOutcome(
+            server=srv, ok=success, detail=detail, payload=per_server,
+        )
+
+    outcomes = await broadcast(online_servers, _execute_for_server)
+
+    exec_results: list[tuple[Server, bool, str]] = []
+    for outcome in outcomes:
+        if outcome.payload is None:
+            # broadcast 内部异常 → 当作 buy_count 次失败处理（避免漏统计）
+            exec_results.extend(
+                [(outcome.server, False, outcome.detail)] * buy_count
+            )
+        else:
+            for ok, reason in outcome.payload:
+                exec_results.append((outcome.server, ok, reason))
 
     success_count = sum(1 for _, ok, _ in exec_results if ok)
     fail_count = len(exec_results) - success_count
@@ -840,8 +890,9 @@ async def _buy_command(
     lines.append(f"{EMOJI_COIN} 当前金币：{final_coins}")
 
     logger.info(
-        f"商店购买指令完成：user_id={user_id} shop_id={shop_id} item={target_name} "
-        f"shop_item_id={target_id} count={buy_count} price={total_price} "
-        f"online_servers={len(online_servers)} success={success_count} fail={fail_count}"
+        f"金币变更：actor={user_id} target={user_id} action=shop.buy.command "
+        f"shop_id={shop_id} item={target_name} shop_item_id={target_id} count={buy_count} "
+        f"amount={total_price} after={final_coins} online_servers={len(online_servers)} "
+        f"success={success_count} fail={fail_count} reason=shop_buy_cmd"
     )
     await bot.send(event, at + "\n" + reply_block(head, lines))

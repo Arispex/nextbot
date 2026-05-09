@@ -20,7 +20,7 @@ from nextbot.command_config import (
 from nextbot.db import RedPacket, RedPacketClaim, User, execute_rowcount, get_session
 from nextbot.message_parser import parse_command_args_with_fallback
 from nextbot.permissions import require_permission
-from nextbot.plugins.economy import MAX_COINS_AMOUNT
+from nextbot.plugins.economy import MAX_COINS_AMOUNT, add_coins_with_cap
 from nextbot.screenshot_render import render_and_send_screenshot
 from nextbot.text_utils import (
     EMOJI_CHART,
@@ -280,9 +280,10 @@ async def handle_grab(bot: Bot, event: Event, arg: Message = CommandArg()) -> No
     packet_name = ""
     packet_type = ""
     packet_total_amount = 0
-    packet_total_count = 0
     draw_amount = 0
     taken_amount = 0
+    actual_grab_amount = 0
+    coin_capped = False
     session = get_session()
     try:
         packet = session.query(RedPacket).filter(RedPacket.name == name).first()
@@ -320,7 +321,6 @@ async def handle_grab(bot: Bot, event: Event, arg: Message = CommandArg()) -> No
         packet_name = str(packet.name)
         packet_type = str(packet.type)
         packet_total_amount = int(packet.total_amount)
-        packet_total_count = int(packet.total_count)
 
         if not _claim_slot_atomic(session, packet_id, draw_amount):
             session.rollback()
@@ -345,12 +345,15 @@ async def handle_grab(bot: Bot, event: Event, arg: Message = CommandArg()) -> No
             session.rollback()
             await bot.send(event, at + " " + reply_failure("抢红包", "请先注册账号"))
             return
-        # 原子条件 UPDATE：加 grabber 余额（避免 lost-update）
-        session.execute(
-            sa_update(User)
-            .where(User.user_id == user_id)
-            .values(coins=User.coins + draw_amount)
-        )
+        # SF-X.1：账户上限保护——触顶时按可加余量加（partial cap）
+        applied_amount, capped = add_coins_with_cap(session, user_id, draw_amount)
+        actual_grab_amount = applied_amount
+        coin_capped = capped and applied_amount < draw_amount
+        if coin_capped:
+            logger.warning(
+                f"抢红包触顶 cap：user_id={user_id} packet_id={packet_id} "
+                f"requested={draw_amount} applied={applied_amount}"
+            )
 
         refreshed_packet = session.query(RedPacket).filter(RedPacket.id == packet_id).first()
         if refreshed_packet is not None and int(refreshed_packet.remaining_count) == 0:
@@ -377,18 +380,24 @@ async def handle_grab(bot: Bot, event: Event, arg: Message = CommandArg()) -> No
 
     type_zh = _TYPE_EN_TO_ZH.get(packet_type, packet_type)
     logger.info(
-        f"抢红包成功：user_id={user_id}，name={packet_name}，type={packet_type}，"
-        f"amount={draw_amount}，taken={taken_amount}/{packet_total_amount}"
+        f"金币变更：actor={user_id} target={user_id} action=red_packet.grab "
+        f"packet={packet_name} type={packet_type} requested={draw_amount} "
+        f"applied={actual_grab_amount} taken={taken_amount}/{packet_total_amount} reason=grab"
     )
+    success_lines = [
+        f"{EMOJI_LIST} 名称：{packet_name}（{type_zh}）",
+        f"{EMOJI_COIN} 获得 {actual_grab_amount} 金币",
+        f"{EMOJI_CHART} 已抢 {taken_amount}/{packet_total_amount}",
+    ]
+    if coin_capped:
+        success_lines.append(
+            f"⚠️ 已触账户上限，{draw_amount - actual_grab_amount} 金币未入账",
+        )
     await bot.send(
         event,
         at + "\n" + reply_block(
             f"{EMOJI_RED_PACKET} 抢红包成功",
-            [
-                f"{EMOJI_LIST} 名称：{packet_name}（{type_zh}）",
-                f"{EMOJI_COIN} 获得 {draw_amount} 金币",
-                f"{EMOJI_CHART} 已抢 {taken_amount}/{packet_total_amount}",
-            ],
+            success_lines,
         ),
     )
 
@@ -417,6 +426,8 @@ async def handle_withdraw(bot: Bot, event: Event, arg: Message = CommandArg()) -
 
     withdraw_success = False
     refund_amount = 0
+    actual_refund_amount = 0
+    coin_capped = False
     session = get_session()
     try:
         packet = session.query(RedPacket).filter(RedPacket.name == name).first()
@@ -450,12 +461,15 @@ async def handle_withdraw(bot: Bot, event: Event, arg: Message = CommandArg()) -
             session.rollback()
             await bot.send(event, at + " " + reply_failure("收回红包", "请先注册账号"))
             return
-        # 原子条件 UPDATE：退回 sender 余额（避免 lost-update）
-        session.execute(
-            sa_update(User)
-            .where(User.user_id == user_id)
-            .values(coins=User.coins + refund_amount)
-        )
+        # SF-X.1：账户上限保护——触顶时按可加余量加（partial cap）
+        applied_amount, capped = add_coins_with_cap(session, user_id, refund_amount)
+        actual_refund_amount = applied_amount
+        coin_capped = capped and applied_amount < refund_amount
+        if coin_capped:
+            logger.warning(
+                f"收回红包触顶 cap：user_id={user_id} packet={name} "
+                f"requested={refund_amount} applied={applied_amount}"
+            )
         session.commit()
         withdraw_success = True
     except Exception:  # noqa: BLE001
@@ -472,16 +486,22 @@ async def handle_withdraw(bot: Bot, event: Event, arg: Message = CommandArg()) -
         return
 
     logger.info(
-        f"收回红包成功：user_id={user_id}，name={name}，refund_amount={refund_amount}"
+        f"金币变更：actor={user_id} target={user_id} action=red_packet.withdraw "
+        f"packet={name} requested={refund_amount} applied={actual_refund_amount} reason=withdraw"
     )
+    success_lines = [
+        f"{EMOJI_RED_PACKET} 红包：{name}",
+        f"{EMOJI_COIN} 退回：{actual_refund_amount} 金币",
+    ]
+    if coin_capped:
+        success_lines.append(
+            f"⚠️ 已触账户上限，{refund_amount - actual_refund_amount} 金币未退回",
+        )
     await bot.send(
         event,
         at + "\n" + reply_block(
             reply_success("收回"),
-            [
-                f"{EMOJI_RED_PACKET} 红包：{name}",
-                f"{EMOJI_COIN} 退回：{refund_amount} 金币",
-            ],
+            success_lines,
         ),
     )
 

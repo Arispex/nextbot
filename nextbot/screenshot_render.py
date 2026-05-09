@@ -130,10 +130,12 @@ async def _render_and_send_inner(
 
         # 非 V11 fallback：避免暴露 /tmp 内部路径，只回文件名 + 大小
         size_kb = file_size // 1024
+        # SH-4.2：默认 caption 改为 "截图已生成"，避免 reply_success 拼出
+        # "生成成功，截图生成成功" 这种 "动作 + 结果，结果" 的重复文案。
         await bot.send(
             event,
             reply_block(
-                reply_success(failure_action, success_caption or "截图生成成功"),
+                reply_success(failure_action, success_caption or "截图已生成"),
                 [
                     f"📁 文件：{screenshot_path.name}",
                     f"📦 大小：{size_kb} KB",

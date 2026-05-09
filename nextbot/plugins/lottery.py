@@ -947,11 +947,12 @@ async def handle_lottery_draw(bot: Bot, event: Event, arg: Message = CommandArg(
             command_results=cmd_results,
         )
         logger.info(
-            f"抽奖结果渲染：user_id={user_id} pool_id={pool_id} draws={draw_count} "
-            f"cost={total_cost} coin_delta={coin_delta} raw_coin_delta={raw_coin_delta} "
-            f"item_value_gained={item_value_gained} "
+            f"金币变更：actor={user_id} target={user_id} action=lottery.draw "
+            f"pool_id={pool_id} draws={draw_count} amount={total_cost} "
+            f"coin_delta={coin_delta} raw_coin_delta={raw_coin_delta} "
+            f"after={final_coins} item_value_gained={item_value_gained} "
             f"item_slots={needed_slots} cmd_executions={cmd_total} cmd_success={cmd_success} "
-            f"skipped={len(cmd_skip_reasons)} url_prefix={page_url[:80]}..."
+            f"skipped={len(cmd_skip_reasons)} url_prefix={page_url[:80]}... reason=lottery_draw"
         )
 
         # LO-3.6：cmd_skip_reasons 在所有 adapter 路径都先发送（不依赖截图分支）

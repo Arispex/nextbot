@@ -13,20 +13,6 @@ from server.web_server import start_web_server
 from nextbot.access_control import get_group_ids, get_owner_ids
 from nextbot.db import (
     DB_PATH,
-    Base,
-    ensure_command_config_schema,
-    ensure_default_groups,
-    ensure_default_stats,
-    ensure_red_packet_schema,
-    ensure_warehouse_schema,
-    ensure_sign_record_schema,
-    ensure_sign_record_unique_schema,
-    ensure_user_ban_schema,
-    ensure_user_dice_schema,
-    ensure_user_guess_schema,
-    ensure_user_rob_schema,
-    ensure_user_signin_schema,
-    get_engine,
     init_db,
 )
 
@@ -149,26 +135,14 @@ async def _filter_allowed_messages(event: Event) -> None:
 
 @driver.on_startup
 async def _init_database() -> None:
+    # 单一入口：init_db() 内部 create_all + 全部 ensure_* 都是 IF NOT EXISTS
+    # 幂等，新建库 / 旧库升级走同一路径，避免漏调 ensure_* 导致缺列 / 缺索引。
     if not DB_PATH.exists():
         logger.info("app.db 不存在，开始初始化数据库")
-        init_db()
-        logger.info("数据库初始化完成")
     else:
         logger.info("检测到 app.db，检查表结构")
-        Base.metadata.create_all(get_engine())
-        ensure_command_config_schema()
-        ensure_user_signin_schema()
-        ensure_sign_record_schema()
-        ensure_sign_record_unique_schema()
-        ensure_user_ban_schema()
-        ensure_user_rob_schema()
-        ensure_user_guess_schema()
-        ensure_user_dice_schema()
-        ensure_red_packet_schema()
-        ensure_warehouse_schema()
-        ensure_default_groups()
-        ensure_default_stats()
-        logger.info("表结构检查完成")
+    init_db()
+    logger.info("数据库初始化 / 表结构检查完成")
 
     sync_registered_commands_to_db()
     logger.info("命令配置同步完成")

@@ -145,12 +145,26 @@ def _check_user_perm_mutation_pola(
         return True, None
     # PMB-1.1：仅禁止自授；自撤是无害的（用户随时可主动放弃自己的权限）
     if is_grant and target_user_id == operator_id:
+        # SS-3.1：尝试自我提权也走 denied audit，便于安全监测
+        audit_permission_change(
+            actor_user_id=operator_id,
+            action=audit_action_denied,
+            target=target_user_id,
+            context={"permission": permission, "reason": "self_grant"},
+        )
         return False, reply_failure(action_label, "不能为自己添加权限")
     # PMB-1.3：registry validate（仅 grant 路径校验；
     # remove 路径需要支持清理 legacy / typo 历史 key，绕过 registry 即可）
     if is_grant and not validate_permission_key(permission):
         suggestions = suggest_permission_keys(permission)
         hint = f"。是否想说：{', '.join(suggestions)}" if suggestions else ""
+        # SS-3.1：尝试授予未知 key 也走 denied audit（"是否在试探权限模型"信号）
+        audit_permission_change(
+            actor_user_id=operator_id,
+            action=audit_action_denied,
+            target=target_user_id,
+            context={"permission": permission, "reason": "unknown_key"},
+        )
         return False, reply_failure(action_label, f"权限名称不存在{hint}")
     # PMB-1.1 dangerous-key blocklist
     if is_dangerous_permission(permission):
@@ -775,22 +789,55 @@ async def handle_sync_guest_perms_confirm(
 
     actually_added: list[str] = []
     current: set[str] = set()
+    target_count = 0
+    old_csv = ""
+    new_csv = ""
     session = get_session()
     try:
-        guest = session.query(Group).filter(Group.name == _SYNC_GROUP_NAME).first()
-        if guest is None:
-            await matcher.finish(
-                at + " " + reply_failure("同步", "guest 身份组不存在"),
-            )
+        # SS-1.1：与 重置访客权限 confirm 对齐——条件 UPDATE + retry，
+        # 避免依赖 BEGIN IMMEDIATE 全局串行化（forward-compat：未来若收窄
+        # 锁范围或换 engine，模式无需重写）。
+        committed = False
+        for _ in range(_CSV_UPDATE_RETRY):
+            guest = session.query(Group).filter(Group.name == _SYNC_GROUP_NAME).first()
+            if guest is None:
+                await matcher.finish(
+                    at + " " + reply_failure("同步", "guest 身份组不存在"),
+                )
 
-        current = set(split_csv_values(guest.permissions))
-        # Re-diff against live row in case WebUI added some of the missing keys
-        # between the preview and the confirmation.
-        actually_added = sorted(set(missing) - current)
-        if actually_added:
-            guest.permissions = join_csv_values(current | set(actually_added))
-            session.commit()
-        target_count = len(current | set(actually_added))
+            old_csv = str(guest.permissions or "")
+            current = set(split_csv_values(old_csv))
+            # Re-diff against live row in case WebUI added some of the missing keys
+            # between the preview and the confirmation.
+            actually_added = sorted(set(missing) - current)
+            if not actually_added:
+                target_count = len(current)
+                committed = True
+                break
+            new_csv = join_csv_values(current | set(actually_added))
+            rowcount = execute_rowcount(
+                session,
+                update(Group)
+                .where(
+                    Group.name == _SYNC_GROUP_NAME,
+                    Group.permissions == old_csv,
+                )
+                .values(permissions=new_csv),
+            )
+            if rowcount == 1:
+                session.commit()
+                target_count = len(current | set(actually_added))
+                committed = True
+                break
+            session.rollback()
+        if not committed:
+            logger.warning(
+                f"同步访客权限并发冲突重试耗尽 actor={operator_id} "
+                f"target={_SYNC_GROUP_NAME} retry={_CSV_UPDATE_RETRY}"
+            )
+            await matcher.finish(
+                at + " " + reply_failure("同步", "并发冲突，请稍后重试"),
+            )
     finally:
         session.close()
 
@@ -809,8 +856,8 @@ async def handle_sync_guest_perms_confirm(
         actor_user_id=operator_id,
         action="guest.permissions.sync",
         target=_SYNC_GROUP_NAME,
-        before={"count": len(current)},
-        after={"count": target_count},
+        before={"permissions": old_csv, "count": len(current)},
+        after={"permissions": new_csv, "count": target_count},
         context={"added": actually_added},
     )
     success_lines = [
@@ -911,9 +958,9 @@ async def handle_reset_guest_perms_confirm(
     if text != _RESET_CONFIRM_TOKEN:
         await matcher.finish(at + " " + reply_failure("重置", "已取消"))
 
-    extras: list[str] = matcher.state.get("reset_extras") or []
-    missing: list[str] = matcher.state.get("reset_missing") or []
-
+    # SS-5.1：preview-time 的 reset_extras / reset_missing 不再用作 audit context；
+    # 改为在 confirm-time 基于 old_csv / new_csv 重新计算，避免外部并发
+    # 修改导致 stale diff 与真实 before/after 不一致。
     new_csv = join_csv_values(DEFAULT_GUEST_PERMISSIONS)
     old_csv = ""
     no_op = False
@@ -962,6 +1009,10 @@ async def handle_reset_guest_perms_confirm(
                     committed = True
                     break
             if not committed:
+                logger.warning(
+                    f"重置访客权限并发冲突重试耗尽 actor={operator_id} "
+                    f"target={_SYNC_GROUP_NAME} retry={_CSV_UPDATE_RETRY}"
+                )
                 await matcher.finish(
                     at + " " + reply_failure("重置", "并发冲突，请稍后重试"),
                 )
@@ -979,23 +1030,30 @@ async def handle_reset_guest_perms_confirm(
             ),
         )
 
+    # SS-5.1：用 confirm-time 的 old_csv / new_csv 重新计算 diff，
+    # 避免 preview / confirm 之间外部并发修改导致 stale extras / missing
+    # 与真实 before/after 不一致。
+    before_set = set(split_csv_values(old_csv))
+    after_set = set(split_csv_values(new_csv))
+    actual_removed = sorted(before_set - after_set)
+    actual_added = sorted(after_set - before_set)
     audit_permission_change(
         actor_user_id=operator_id,
         action="guest.permissions.reset",
         target=_SYNC_GROUP_NAME,
         before={"permissions": old_csv},
         after={"permissions": new_csv},
-        context={"removed": extras, "added": missing},
+        context={"removed": actual_removed, "added": actual_added},
     )
 
     success_lines = [
         f"{EMOJI_GROUP} 身份组：{_SYNC_GROUP_NAME}",
         f"{EMOJI_CHART} 权限数：{len(DEFAULT_GUEST_PERMISSIONS)} 个",
     ]
-    if extras:
-        success_lines.append(f"{EMOJI_LOCK} 已移除：{len(extras)} 个")
-    if missing:
-        success_lines.append(f"{EMOJI_LOCK} 已新增：{len(missing)} 个")
+    if actual_removed:
+        success_lines.append(f"{EMOJI_LOCK} 已移除：{len(actual_removed)} 个")
+    if actual_added:
+        success_lines.append(f"{EMOJI_LOCK} 已新增：{len(actual_added)} 个")
     await matcher.finish(
         at + "\n" + reply_block(reply_success("重置"), success_lines),
     )

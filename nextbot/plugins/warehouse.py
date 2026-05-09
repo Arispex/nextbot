@@ -11,7 +11,6 @@ from nonebot.adapters import Bot, Event, Message
 from nonebot.adapters.onebot.v11 import MessageSegment as OBV11MessageSegment
 from nonebot.log import logger
 from nonebot.params import CommandArg
-from sqlalchemy import update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -26,7 +25,6 @@ from nextbot.db import (
     Server,
     User,
     WarehouseItem,
-    execute_rowcount,
     get_session,
 )
 from nextbot.message_parser import (
@@ -34,7 +32,7 @@ from nextbot.message_parser import (
     resolve_user_id_arg_with_fallback,
 )
 from nextbot.permissions import require_permission
-from nextbot.plugins.economy import MAX_COINS_AMOUNT
+from nextbot.plugins.economy import MAX_COINS_AMOUNT, add_coins_with_cap
 from nextbot.progression import PROGRESSION_KEY_TO_ZH, TIER_OPTIONS, parse_tier
 from nextbot.screenshot_render import render_and_send_screenshot
 from nextbot.text_utils import (
@@ -1098,24 +1096,21 @@ async def _recycle_single(
         else:
             item.quantity = current_qty - recycle_qty
             remaining = int(item.quantity)
-        # W-6.1：原子条件 UPDATE 加金币，避免 lost-update（与 economy F-2.1 同模板）
-        # NEW-9：execute_rowcount 加防御校验，rowcount != 1 仅记录日志
-        rowcount = execute_rowcount(
-            session,
-            update(User)
-            .where(User.user_id == user_id)
-            .values(coins=User.coins + refund),
-        )
-        if rowcount != 1:
-            logger.error(
-                f"[CRITICAL] 回收金币 UPDATE rowcount={rowcount} 不为 1："
-                f"user_id={user_id} refund={refund}"
+        # SF-X.1：账户上限保护——触顶时按可加余量加（partial cap）
+        requested_refund = refund
+        applied_refund, capped = add_coins_with_cap(session, user_id, refund)
+        coin_capped = capped and applied_refund < requested_refund
+        if coin_capped:
+            logger.warning(
+                f"回收金币触顶 cap：user_id={user_id} requested_refund={requested_refund} "
+                f"applied={applied_refund}"
             )
         try:
             session.commit()
         except Exception:
             session.rollback()
             raise
+        refund = applied_refund
         coins_after = int(
             session.query(User.coins).filter(User.user_id == user_id).scalar() or 0
         )
@@ -1128,26 +1123,32 @@ async def _recycle_single(
         session.close()
 
     logger.info(
-        f"回收仓库物品成功：user_id={user_id} slot={slot_index} "
-        f"item={item_id} prefix={prefix_id} qty={recycle_qty} remaining={remaining} "
-        f"unit_value={unit_value} ratio={ratio} refund={refund}"
+        f"金币变更：actor={user_id} target={user_id} action=warehouse.recycle.single "
+        f"slot={slot_index} item={item_id} prefix={prefix_id} qty={recycle_qty} "
+        f"remaining={remaining} unit_value={unit_value} ratio={ratio} "
+        f"requested={requested_refund} applied={refund} after={coins_after} reason=recycle"
     )
     slot_line = f"{EMOJI_WAREHOUSE} 格子：#{slot_index}"
     if remaining > 0:
         slot_line = f"{EMOJI_WAREHOUSE} 格子：#{slot_index}（剩余 {remaining} 件）"
+    success_lines = [
+        f"🎁 物品：{_format_item_label(item_id, prefix_id, recycle_qty)}",
+        slot_line,
+        f"{EMOJI_COIN} 单价：{unit_value} 金币",
+        f"{EMOJI_CHART} 回收比例：{int(ratio * 100)}%",
+        f"{EMOJI_COIN} 获得金币：{refund}",
+        f"{EMOJI_COIN} 当前金币：{coins_after}",
+        f"{EMOJI_CHART} 已使用：{used_after} / {WAREHOUSE_CAPACITY}",
+    ]
+    if coin_capped:
+        success_lines.append(
+            f"⚠️ 已触账户上限，{requested_refund - refund} 金币未入账",
+        )
     await bot.send(
         event,
         at + "\n" + reply_block(
             reply_success("回收"),
-            [
-                f"🎁 物品：{_format_item_label(item_id, prefix_id, recycle_qty)}",
-                slot_line,
-                f"{EMOJI_COIN} 单价：{unit_value} 金币",
-                f"{EMOJI_CHART} 回收比例：{int(ratio * 100)}%",
-                f"{EMOJI_COIN} 获得金币：{refund}",
-                f"{EMOJI_COIN} 当前金币：{coins_after}",
-                f"{EMOJI_CHART} 已使用：{used_after} / {WAREHOUSE_CAPACITY}",
-            ],
+            success_lines,
         ),
     )
 
@@ -1192,24 +1193,21 @@ async def _recycle_many(
             return
         # W-3.2：refund 上界兜底
         total_refund = min(total_refund, MAX_COINS_AMOUNT)
-        # W-6.1：原子条件 UPDATE 加金币，避免 lost-update
-        # NEW-9：execute_rowcount 加防御校验，rowcount != 1 仅记录日志
-        rowcount = execute_rowcount(
-            session,
-            update(User)
-            .where(User.user_id == user_id)
-            .values(coins=User.coins + total_refund),
-        )
-        if rowcount != 1:
-            logger.error(
-                f"[CRITICAL] 批量回收金币 UPDATE rowcount={rowcount} 不为 1："
-                f"user_id={user_id} refund={total_refund}"
+        # SF-X.1：账户上限保护——触顶时按可加余量加（partial cap）
+        requested_refund = total_refund
+        applied_refund, capped = add_coins_with_cap(session, user_id, total_refund)
+        coin_capped = capped and applied_refund < requested_refund
+        if coin_capped:
+            logger.warning(
+                f"批量回收金币触顶 cap：user_id={user_id} requested_refund={requested_refund} "
+                f"applied={applied_refund}"
             )
         try:
             session.commit()
         except Exception:
             session.rollback()
             raise
+        total_refund = applied_refund
         coins_after = int(
             session.query(User.coins).filter(User.user_id == user_id).scalar() or 0
         )
@@ -1222,9 +1220,10 @@ async def _recycle_many(
         session.close()
 
     logger.info(
-        f"批量回收仓库物品：user_id={user_id} processed={processed} "
-        f"skipped_empty={skipped_empty} skipped_no_value={skipped_no_value} "
-        f"ratio={ratio} total_refund={total_refund}"
+        f"金币变更：actor={user_id} target={user_id} action=warehouse.recycle.many "
+        f"processed={processed} skipped_empty={skipped_empty} "
+        f"skipped_no_value={skipped_no_value} ratio={ratio} "
+        f"requested={requested_refund} applied={total_refund} after={coins_after} reason=recycle_batch"
     )
     process_line = f"{EMOJI_WAREHOUSE} 处理格子：{processed} 个"
     skip_parts: list[str] = []
@@ -1234,17 +1233,22 @@ async def _recycle_many(
         skip_parts.append(f"{skipped_no_value} 个无价值")
     if skip_parts:
         process_line = f"{EMOJI_WAREHOUSE} 处理格子：{processed} 个（跳过 {'、'.join(skip_parts)}）"
+    success_lines = [
+        process_line,
+        f"{EMOJI_CHART} 回收比例：{int(ratio * 100)}%",
+        f"{EMOJI_COIN} 获得金币：{total_refund}",
+        f"{EMOJI_COIN} 当前金币：{coins_after}",
+        f"{EMOJI_CHART} 已使用：{used_after} / {WAREHOUSE_CAPACITY}",
+    ]
+    if coin_capped:
+        success_lines.append(
+            f"⚠️ 已触账户上限，{requested_refund - total_refund} 金币未入账",
+        )
     await bot.send(
         event,
         at + "\n" + reply_block(
             reply_success("回收"),
-            [
-                process_line,
-                f"{EMOJI_CHART} 回收比例：{int(ratio * 100)}%",
-                f"{EMOJI_COIN} 获得金币：{total_refund}",
-                f"{EMOJI_COIN} 当前金币：{coins_after}",
-                f"{EMOJI_CHART} 已使用：{used_after} / {WAREHOUSE_CAPACITY}",
-            ],
+            success_lines,
         ),
     )
 

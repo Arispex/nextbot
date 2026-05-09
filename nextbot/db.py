@@ -402,6 +402,11 @@ def _ensure_engine_and_factory() -> tuple[Engine, sessionmaker[Session]]:
 
         @event.listens_for(_engine, "begin")
         def _force_immediate_begin(connection):  # noqa: ANN001
+            # SH-8.2：仅在 SQLite dialect 触发 BEGIN IMMEDIATE。
+            # 未来若切到 PostgreSQL / MySQL，BEGIN IMMEDIATE 是 SQLite
+            # 专属语法，会让 connect 失败；加 dialect 守卫便于后续迁移。
+            if connection.dialect.name != "sqlite":
+                return
             # SQLAlchemy 默认 BEGIN DEFERRED；显式 BEGIN IMMEDIATE 让
             # SELECT 也持写锁，将后续 commit 排队，消除 read-modify-write
             # race 的窗口。
@@ -429,6 +434,7 @@ def init_db() -> None:
     ensure_user_guess_schema()
     ensure_user_dice_schema()
     ensure_red_packet_schema()
+    ensure_warehouse_schema()
     ensure_shop_schema()
     ensure_lottery_schema()
     ensure_user_name_unique_schema()

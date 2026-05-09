@@ -7,6 +7,7 @@ from nonebot.adapters.onebot.v11 import MessageSegment as OBV11MessageSegment
 from nonebot.log import logger
 from nonebot.params import CommandArg
 
+from nextbot.audit import audit_permission_change
 from nextbot.ban_core import (
     apply_ban_to_db,
     apply_unban_to_db,
@@ -87,6 +88,13 @@ async def handle_ban(bot: Bot, event: Event, arg: Message = CommandArg()) -> Non
         await bot.send(event, at + " " + reply_failure("封禁", "未找到该用户"))
         return
     if result.code == "owner_protected":
+        # SS-2.1：拒绝路径走 audit_permission_change，便于安全监测
+        audit_permission_change(
+            actor_user_id=operator_id,
+            action="user.ban.denied",
+            target=target_user_id,
+            context={"reason": "owner_protected"},
+        )
         await bot.send(event, at + " " + reply_failure("封禁", "不能封禁 Owner"))
         return
     if result.code == "already_banned":
@@ -97,6 +105,16 @@ async def handle_ban(bot: Bot, event: Event, arg: Message = CommandArg()) -> Non
     logger.info(
         f"用户封禁成功：operator_id={operator_id} target_user_id={result.user_qq} "
         f"target_name={result.user_name} reason={reason}"
+    )
+    # SS-2.1：手动封禁走 audit_permission_change，与 group_member_notify 的
+    # 自动封禁（user.ban.auto_on_leave）形成完整审计入口对偶
+    audit_permission_change(
+        actor_user_id=operator_id,
+        action="user.ban",
+        target=str(result.user_qq),
+        before={"is_banned": False},
+        after={"is_banned": True, "ban_reason": reason},
+        context={"target_name": result.user_name},
     )
 
     outcomes = await sync_user_to_blacklist(result.user_name, reason)
@@ -260,6 +278,15 @@ async def handle_unban(bot: Bot, event: Event, arg: Message = CommandArg()) -> N
     logger.info(
         f"用户解封成功：operator_id={operator_id} target_user_id={result.user_qq} "
         f"target_name={result.user_name}"
+    )
+    # SS-2.1：手动解封走 audit_permission_change
+    audit_permission_change(
+        actor_user_id=operator_id,
+        action="user.unban",
+        target=str(result.user_qq),
+        before={"is_banned": True},
+        after={"is_banned": False},
+        context={"target_name": result.user_name},
     )
 
     outcomes = await sync_user_blacklist_remove(result.user_name)

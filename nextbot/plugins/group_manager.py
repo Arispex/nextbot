@@ -37,6 +37,8 @@ from nextbot.db import (
 from nextbot.message_parser import parse_command_args_with_fallback
 from nextbot.permissions import (
     MAX_INHERIT_DEPTH,
+    _get_effective_permissions_in_session,
+    _get_group_permissions,
     _measure_inherit_depth,
     _would_create_inheritance_cycle,
     add_inherit,
@@ -469,6 +471,35 @@ async def handle_inherit_group(
                 ),
             )
             return
+
+        # SS-4.1：POLA 层级护栏（与 修改用户身份组 PMB-3.1 对称）。
+        # 非 owner 不能让某个组继承到一个含有自己未持有权限的父组，
+        # 防止通过组合 group.inherit.add + 修改用户身份组 绕过 hierarchy 护栏。
+        if not is_owner(operator_id):
+            operator_perms = _get_effective_permissions_in_session(session, operator_id)
+            parent_perms = _get_group_permissions(session, parent, set())
+            forbidden = parent_perms - operator_perms
+            if forbidden:
+                forbidden_preview = ",".join(sorted(forbidden)[:5])
+                audit_permission_change(
+                    actor_user_id=operator_id,
+                    action="group.inherit.add.denied",
+                    target=child,
+                    before={"inherits": str(child_group.inherits or "")},
+                    context={
+                        "attempted_parent": parent,
+                        "forbidden": sorted(forbidden),
+                        "reason": "hierarchy",
+                    },
+                )
+                await bot.send(
+                    event,
+                    at + " " + reply_failure(
+                        "修改",
+                        f"父身份组包含您不持有的权限：{forbidden_preview}",
+                    ),
+                )
+                return
 
         # PMA-4.2：lost-update conditional UPDATE
         old_inherits = str(child_group.inherits or "")

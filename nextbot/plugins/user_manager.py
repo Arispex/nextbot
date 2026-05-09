@@ -7,6 +7,7 @@ from nonebot.adapters import Bot, Event, Message
 from nonebot.adapters.onebot.v11 import MessageSegment as OBV11MessageSegment
 from nonebot.log import logger
 from nonebot.params import CommandArg
+from nextbot.audit import audit_permission_change
 from nextbot.command_config import command_control, raise_command_usage
 from nextbot.message_parser import (
     parse_command_args_with_fallback,
@@ -500,8 +501,17 @@ async def handle_rename(bot: Bot, event: Event, arg: Message = CommandArg()) -> 
     finally:
         session.close()
 
+    operator_id = event.get_user_id()
     logger.info(
         f"更改用户名称成功：user_id={target_user_id} old_name={old_name} new_name={new_name}"
+    )
+    # SH-9.1：rename 走 audit_permission_change，便于按 actor / target 追溯
+    audit_permission_change(
+        actor_user_id=operator_id,
+        action="user.rename",
+        target=str(target_user_id),
+        before={"name": old_name},
+        after={"name": new_name},
     )
 
     session = get_session()
