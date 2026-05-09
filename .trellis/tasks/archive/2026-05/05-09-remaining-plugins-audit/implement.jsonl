@@ -1,0 +1,6 @@
+{"file": ".trellis/tasks/05-09-remaining-plugins-audit/prd.md", "reason": "任务范围与全部修复模块 + 验收标准"}
+{"file": ".trellis/tasks/05-09-remaining-plugins-audit/research/lottery-findings.md", "reason": "lottery.py 21 项审计原始发现"}
+{"file": ".trellis/tasks/05-09-remaining-plugins-audit/research/leaderboard-findings.md", "reason": "leaderboard.py 25 项审计原始发现（含 6 个全表 ORM handler）"}
+{"file": ".trellis/tasks/05-09-remaining-plugins-audit/research/misc-findings.md", "reason": "about/tutorial/menu/rob_protection/group_member_notify 16 项原始发现"}
+{"file": ".trellis/tasks/05-09-remaining-plugins-audit/research/main-agent-recheck.md", "reason": "主代理复查结论：严重度调整、误判剔除、4 critical 根因 + 12 high 根因"}
+{"file": ".trellis/spec/backend/index.md", "reason": "项目后端规范索引"}
