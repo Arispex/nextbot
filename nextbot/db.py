@@ -423,6 +423,7 @@ def init_db() -> None:
     ensure_user_signin_schema()
     ensure_sign_record_schema()
     ensure_sign_record_unique_schema()
+    ensure_user_sign_record_index_schema()
     ensure_user_ban_schema()
     ensure_user_rob_schema()
     ensure_user_guess_schema()
@@ -431,6 +432,7 @@ def init_db() -> None:
     ensure_shop_schema()
     ensure_lottery_schema()
     ensure_user_name_unique_schema()
+    ensure_user_leaderboard_indexes_schema()
     ensure_warehouse_fk_schema()
     ensure_default_groups()
     ensure_default_stats()
@@ -838,6 +840,50 @@ def ensure_warehouse_fk_schema() -> None:
             logger.info("warehouse_item.user_id 索引已就绪")
         except Exception as exc:  # noqa: BLE001
             logger.warning(f"warehouse_item.user_id 索引创建失败: {exc}")
+
+
+def ensure_user_leaderboard_indexes_schema() -> None:
+    """启动时确保排行榜常用字段都有索引。
+
+    LB-1.1：ORDER BY <field> DESC LIMIT/OFFSET 大表时全表排序退化。
+    每个字段单独 try/except，单字段失败不阻断其他字段。
+    """
+    engine = get_engine()
+    with engine.begin() as conn:
+        for col in (
+            "coins",
+            "sign_streak",
+            "sign_total",
+            "rob_total_loss",
+            "rob_total_penalty",
+        ):
+            try:
+                conn.execute(sa_text(
+                    f'CREATE INDEX IF NOT EXISTS "ix_user_{col}" ON "user" ("{col}")'
+                ))
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(f"创建 user.{col} 索引失败: {exc}")
+        logger.info("user 排行榜字段索引已就绪")
+
+
+def ensure_user_sign_record_index_schema() -> None:
+    """启动时确保 user_sign_record 上有 (sign_date, created_at) 复合索引。
+
+    LB-8.1：今日签到排行榜 WHERE sign_date = today ORDER BY created_at 在
+    无组合索引时全表扫描 + 排序。失败仅 logger.warning 不阻断启动。
+    """
+    engine = get_engine()
+    with engine.begin() as conn:
+        try:
+            conn.execute(sa_text(
+                'CREATE INDEX IF NOT EXISTS "ix_sign_record_date_created" '
+                'ON "user_sign_record" ("sign_date", "created_at")'
+            ))
+            logger.info("user_sign_record (sign_date, created_at) 复合索引已就绪")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                f"user_sign_record (sign_date, created_at) 复合索引创建失败: {exc}"
+            )
 
 
 def ensure_red_packet_schema() -> None:

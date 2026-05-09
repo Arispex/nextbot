@@ -1,18 +1,17 @@
-import base64
-from pathlib import Path
+from __future__ import annotations
+
+import asyncio
 
 from nonebot import on_command
 from nonebot.adapters import Bot, Event, Message
-from nonebot.adapters.onebot.v11 import MessageSegment as OBV11MessageSegment
 from nonebot.log import logger
 from nonebot.params import CommandArg
 
 from nextbot.command_config import command_control, raise_command_usage
 from nextbot.message_parser import parse_command_args_with_fallback
 from nextbot.permissions import require_permission
-from nextbot.screenshot_temp import temp_screenshot_path
-from nextbot.text_utils import reply_failure
-from server.screenshot import RenderScreenshotError, ScreenshotOptions, screenshot_url
+from nextbot.screenshot_render import render_and_send_screenshot
+from server.screenshot import ScreenshotOptions
 from server.web_server import create_about_page
 
 about_matcher = on_command("关于")
@@ -24,11 +23,8 @@ ABOUT_SCREENSHOT_OPTIONS = ScreenshotOptions(
     fit_content_height=True,
 )
 
-
-def _to_base64_image_uri(path: Path) -> str:
-    raw = path.read_bytes()
-    encoded = base64.b64encode(raw).decode("ascii")
-    return f"base64://{encoded}"
+# MI-1.1：handler-wide semaphore，防 guest 高频刷命令导致 Playwright 进程膨胀
+_about_semaphore = asyncio.Semaphore(2)
 
 
 @about_matcher.handle()
@@ -47,27 +43,14 @@ async def handle_about(bot: Bot, event: Event, arg: Message = CommandArg()) -> N
         raise_command_usage()
 
     page_url = create_about_page()
-    logger.info(f"关于页面渲染地址：internal_url={page_url}")
+    logger.info(f"关于页面渲染：url_prefix={page_url[:80]}...")
 
-    async with temp_screenshot_path("about") as screenshot_path:
-        try:
-            await screenshot_url(
-                page_url,
-                screenshot_path,
-                options=ABOUT_SCREENSHOT_OPTIONS,
-            )
-        except RenderScreenshotError as exc:
-            await bot.send(event, reply_failure("生成", f"{exc}"))
-            return
-
-        logger.info(f"关于页面截图成功：file={screenshot_path}")
-        if bot.adapter.get_name() == "OneBot V11":
-            try:
-                image_uri = _to_base64_image_uri(screenshot_path)
-            except OSError:
-                await bot.send(event, reply_failure("生成", "读取截图文件失败"))
-                return
-            await bot.send(event, OBV11MessageSegment.image(file=image_uri))
-            return
-
-        await bot.send(event, f"✅ 截图成功，文件：{screenshot_path}")
+    # MI-1.2：base64 size cap + semaphore 通过统一 helper 处理
+    await render_and_send_screenshot(
+        bot, event,
+        page_url=page_url,
+        options=ABOUT_SCREENSHOT_OPTIONS,
+        file_prefix="about",
+        semaphore=_about_semaphore,
+        failure_action="生成",
+    )

@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-import base64
-from pathlib import Path
+import asyncio
 
 from nonebot import on_command
 from nonebot.adapters import Bot, Event, Message
-from nonebot.adapters.onebot.v11 import MessageSegment as OBV11MessageSegment
 from nonebot.log import logger
 from nonebot.params import CommandArg
 
@@ -13,9 +11,9 @@ from nextbot.command_config import command_control, raise_command_usage
 from nextbot.message_parser import parse_command_args_with_fallback
 from nextbot.permissions import require_permission
 from nextbot.plugins.tutorial_data import get_tutorial, list_tutorials
+from nextbot.screenshot_render import render_and_send_screenshot
 from nextbot.text_utils import EMOJI_GUIDE, reply_failure, reply_list
-from nextbot.screenshot_temp import temp_screenshot_path
-from server.screenshot import RenderScreenshotError, ScreenshotOptions, screenshot_url
+from server.screenshot import ScreenshotOptions
 from server.web_server import create_tutorial_page
 
 tutorial_matcher = on_command("使用教程")
@@ -27,11 +25,8 @@ TUTORIAL_SCREENSHOT_OPTIONS = ScreenshotOptions(
     fit_content_height=True,
 )
 
-
-def _to_base64_image_uri(path: Path) -> str:
-    raw = path.read_bytes()
-    encoded = base64.b64encode(raw).decode("ascii")
-    return f"base64://{encoded}"
+# MI-2.1：handler-wide semaphore，防 guest 高频刷命令导致 Playwright 进程膨胀
+_tutorial_semaphore = asyncio.Semaphore(2)
 
 
 @tutorial_matcher.handle()
@@ -94,28 +89,15 @@ async def handle_tutorial(bot: Bot, event: Event, arg: Message = CommandArg()) -
         self_user_id=user_id,
     )
     logger.info(
-        f"使用教程渲染地址：slug={target.get('slug')} user_id={user_id} internal_url={page_url}"
+        f"使用教程渲染：slug={target.get('slug')} user_id={user_id} url_prefix={page_url[:80]}..."
     )
 
-    async with temp_screenshot_path("tutorial") as screenshot_path:
-        try:
-            await screenshot_url(
-                page_url, screenshot_path, options=TUTORIAL_SCREENSHOT_OPTIONS,
-            )
-        except RenderScreenshotError as exc:
-            await bot.send(event, reply_failure("生成", str(exc)))
-            return
-
-        logger.info(
-            f"使用教程截图成功：slug={target.get('slug')} file={screenshot_path}"
-        )
-        if bot.adapter.get_name() == "OneBot V11":
-            try:
-                image_uri = _to_base64_image_uri(screenshot_path)
-            except OSError:
-                await bot.send(event, reply_failure("生成", "读取截图文件失败"))
-                return
-            await bot.send(event, OBV11MessageSegment.image(file=image_uri))
-            return
-
-        await bot.send(event, f"✅ 截图成功，文件：{screenshot_path}")
+    # MI-2.2：base64 size cap + semaphore 通过统一 helper 处理
+    await render_and_send_screenshot(
+        bot, event,
+        page_url=page_url,
+        options=TUTORIAL_SCREENSHOT_OPTIONS,
+        file_prefix="tutorial",
+        semaphore=_tutorial_semaphore,
+        failure_action="生成",
+    )

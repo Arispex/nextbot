@@ -4,7 +4,7 @@ from typing import Any
 
 import nonebot
 from nonebot import on_notice
-from nonebot.adapters import Bot
+from nonebot.adapters import Bot, Event
 from nonebot.adapters.onebot.v11 import (
     Bot as OBV11Bot,
 )
@@ -19,19 +19,32 @@ from nonebot.adapters.onebot.v11 import (
     MessageSegment as OBV11MessageSegment,
 )
 from nonebot.log import logger
+from nonebot.rule import Rule
 
-from nextbot.access_control import get_group_ids, get_owner_ids
+from nextbot.access_control import get_group_ids
+from nextbot.audit import audit_permission_change
 from nextbot.ban_core import (
     apply_ban_to_db,
     format_blacklist_add_lines,
     sync_user_to_blacklist,
 )
-from nextbot.db import User, get_session
 from nextbot.text_utils import EMOJI_USER, reply_success
 
-increase_matcher = on_notice()
-decrease_matcher = on_notice()
-auto_ban_on_leave_matcher = on_notice()
+
+# MI-5.1：on_notice() 不带 rule 时会被任何 NoticeEvent 触发，nonebot 类型注解
+# 只做 dependency hint 不会过滤事件。这里用 Rule 显式过滤，避免每条 friend_add /
+# poke / honor 都进入 3 个 handler 的 dispatch 阶段。
+async def _is_increase(event: Event) -> bool:
+    return isinstance(event, GroupIncreaseNoticeEvent)
+
+
+async def _is_decrease(event: Event) -> bool:
+    return isinstance(event, GroupDecreaseNoticeEvent)
+
+
+increase_matcher = on_notice(rule=Rule(_is_increase))
+decrease_matcher = on_notice(rule=Rule(_is_decrease))
+auto_ban_on_leave_matcher = on_notice(rule=Rule(_is_decrease))
 
 _AUTO_BAN_REASON = "退群自动封禁"
 
@@ -68,7 +81,8 @@ def _render(template: str, *, user_id: int, nickname: str) -> OBV11Message:
     parts = text.split("{at}")
     message = OBV11Message()
     for i, chunk in enumerate(parts):
-        if chunk:
+        # MI-5.5：strip() 后才判定空，避免纯空白 chunk（如模板末尾的 \n）也作为 text 段发出
+        if chunk.strip():
             message += OBV11MessageSegment.text(chunk)
         if i < len(parts) - 1:
             message += OBV11MessageSegment.at(user_id)
@@ -108,7 +122,10 @@ async def _send_group_notify(
 
 
 @increase_matcher.handle()
-async def handle_group_increase(bot: Bot, event: GroupIncreaseNoticeEvent) -> None:
+async def handle_group_increase(bot: Bot, event: Event) -> None:
+    # MI-5.4：rule 已过滤，但加 isinstance 守卫作 defense-in-depth
+    if not isinstance(event, GroupIncreaseNoticeEvent):
+        return
     config = nonebot.get_driver().config
     if not bool(getattr(config, "group_welcome_enabled", False)):
         return
@@ -123,7 +140,9 @@ async def handle_group_increase(bot: Bot, event: GroupIncreaseNoticeEvent) -> No
 
 
 @decrease_matcher.handle()
-async def handle_group_decrease(bot: Bot, event: GroupDecreaseNoticeEvent) -> None:
+async def handle_group_decrease(bot: Bot, event: Event) -> None:
+    if not isinstance(event, GroupDecreaseNoticeEvent):
+        return
     config = nonebot.get_driver().config
     if not bool(getattr(config, "group_farewell_enabled", False)):
         return
@@ -137,19 +156,11 @@ async def handle_group_decrease(bot: Bot, event: GroupDecreaseNoticeEvent) -> No
     )
 
 
-def _lookup_user_name_and_ban_status(user_id: str) -> tuple[str | None, bool]:
-    session = get_session()
-    try:
-        user = session.query(User).filter(User.user_id == user_id).first()
-        if user is None:
-            return None, False
-        return user.name, bool(user.is_banned)
-    finally:
-        session.close()
-
-
 @auto_ban_on_leave_matcher.handle()
-async def handle_auto_ban_on_leave(bot: Bot, event: GroupDecreaseNoticeEvent) -> None:
+async def handle_auto_ban_on_leave(bot: Bot, event: Event) -> None:
+    # MI-5.4：rule 已过滤，但加 isinstance 守卫作 defense-in-depth
+    if not isinstance(event, GroupDecreaseNoticeEvent):
+        return
     if not isinstance(bot, OBV11Bot):
         return
     if not _group_allowed(event.group_id):
@@ -159,33 +170,48 @@ async def handle_auto_ban_on_leave(bot: Bot, event: GroupDecreaseNoticeEvent) ->
         return
 
     user_id = str(event.user_id)
-    if user_id in get_owner_ids():
-        logger.info(
-            f"退群自动封禁跳过 Owner：group_id={event.group_id}，user_id={user_id}"
-        )
-        return
+    sub_type = str(event.sub_type or "")
+    reason = f"{_AUTO_BAN_REASON}（{sub_type}）" if sub_type else _AUTO_BAN_REASON
 
-    user_name, already_banned = _lookup_user_name_and_ban_status(user_id)
-    if user_name is None:
+    # MI-5.3：删除前置 _lookup_user_name_and_ban_status SELECT，直接调 apply_ban_to_db；
+    # 内部已通过条件 UPDATE 兜底 owner_protected / not_found / already_banned race condition。
+    result = apply_ban_to_db(user_id, reason)
+    if result.code == "not_found":
         logger.info(
             f"退群自动封禁跳过未注册用户：group_id={event.group_id}，user_id={user_id}"
         )
         return
-    if already_banned:
+    if result.code == "owner_protected":
+        logger.info(
+            f"退群自动封禁跳过 Owner：group_id={event.group_id}，user_id={user_id}"
+        )
+        return
+    if result.code == "already_banned":
         logger.info(
             f"退群自动封禁跳过已封禁用户：group_id={event.group_id}，user_id={user_id}"
         )
         return
-
-    sub_type = str(event.sub_type or "")
-    reason = f"{_AUTO_BAN_REASON}（{sub_type}）" if sub_type else _AUTO_BAN_REASON
-
-    result = apply_ban_to_db(user_id, reason)
     if result.code != "banned":
+        # 防御未来新增的状态码
         logger.warning(
-            f"退群自动封禁未落库：group_id={event.group_id}，user_id={user_id}，code={result.code}"
+            f"退群自动封禁未落库（未知 code）：group_id={event.group_id}，"
+            f"user_id={user_id}，code={result.code}"
         )
         return
+
+    # MI-5.2：被动事件触发的 ban 是最敏感的状态变更，必须走统一审计入口
+    audit_permission_change(
+        actor_user_id="system",
+        action="user.ban.auto_on_leave",
+        target=user_id,
+        before={"is_banned": False},
+        after={"is_banned": True, "ban_reason": reason},
+        context={
+            "group_id": event.group_id,
+            "sub_type": sub_type,
+            "user_name": result.user_name,
+        },
+    )
 
     outcomes = await sync_user_to_blacklist(result.user_name, reason)
     logger.info(

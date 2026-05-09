@@ -1,9 +1,9 @@
-import base64
-from pathlib import Path
+from __future__ import annotations
+
+import asyncio
 
 from nonebot import on_command
 from nonebot.adapters import Bot, Event, Message
-from nonebot.adapters.onebot.v11 import MessageSegment as OBV11MessageSegment
 from nonebot.log import logger
 from nonebot.params import CommandArg
 
@@ -14,6 +14,7 @@ from nextbot.command_config import (
 )
 from nextbot.message_parser import parse_command_args_with_fallback
 from nextbot.permissions import require_permission
+from nextbot.screenshot_render import render_and_send_screenshot
 from nextbot.text_utils import (
     EMOJI_CHART,
     EMOJI_COIN,
@@ -31,18 +32,21 @@ from nextbot.text_utils import (
     reply_failure,
     reply_list,
 )
-from nextbot.screenshot_temp import temp_screenshot_path
-from server.screenshot import RenderScreenshotError, ScreenshotOptions, screenshot_url
+from server.screenshot import ScreenshotOptions
 from server.web_server import create_menu_page
 
 menu_matcher = on_command("菜单")
 search_command_matcher = on_command("搜索命令")
+# MI-3.1：viewport_width 与项目其他截图统一为 920（之前 1920，OOM 风险更高）
 MENU_SCREENSHOT_OPTIONS = ScreenshotOptions(
-    viewport_width=1920,
+    viewport_width=920,
     viewport_height=1280,
     full_page=True,
     fit_content_height=True,
 )
+
+# MI-3.1：handler-wide semaphore，防 guest 高频刷命令导致 Playwright 进程膨胀
+_menu_semaphore = asyncio.Semaphore(2)
 
 CATEGORY_ORDER = [
     "用户系统",
@@ -82,12 +86,6 @@ CATEGORY_EMOJI = {
 }
 
 
-def _to_base64_image_uri(path: Path) -> str:
-    raw = path.read_bytes()
-    encoded = base64.b64encode(raw).decode("ascii")
-    return f"base64://{encoded}"
-
-
 async def _render_and_send_menu(
     bot: Bot,
     event: Event,
@@ -96,35 +94,18 @@ async def _render_and_send_menu(
 ) -> None:
     page_url = create_menu_page(title=title, commands=render_commands)
     logger.info(
-        f"{title}渲染地址："
-        f"command_count={len(render_commands)} "
-        f"internal_url={page_url}"
+        f"{title}渲染：command_count={len(render_commands)} url_prefix={page_url[:80]}..."
     )
 
-    async with temp_screenshot_path("menu") as screenshot_path:
-        try:
-            await screenshot_url(
-                page_url,
-                screenshot_path,
-                options=MENU_SCREENSHOT_OPTIONS,
-            )
-        except RenderScreenshotError as exc:
-            await bot.send(event, reply_failure("生成", f"{exc}"))
-            return
-
-        logger.info(
-            f"{title}截图成功：command_count={len(render_commands)} file={screenshot_path}"
-        )
-        if bot.adapter.get_name() == "OneBot V11":
-            try:
-                image_uri = _to_base64_image_uri(screenshot_path)
-            except OSError:
-                await bot.send(event, reply_failure("生成", "读取截图文件失败"))
-                return
-            await bot.send(event, OBV11MessageSegment.image(file=image_uri))
-            return
-
-        await bot.send(event, f"✅ 截图成功，文件：{screenshot_path}")
+    # MI-3.2：base64 size cap + semaphore 通过统一 helper 处理
+    await render_and_send_screenshot(
+        bot, event,
+        page_url=page_url,
+        options=MENU_SCREENSHOT_OPTIONS,
+        file_prefix="menu",
+        semaphore=_menu_semaphore,
+        failure_action="生成",
+    )
 
 
 def _group_by_category(items: list[dict]) -> tuple[list[str], dict[str, list[dict]]]:

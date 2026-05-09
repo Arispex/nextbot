@@ -77,10 +77,14 @@ async def handle_toggle_rob_protection(
     user_id = event.get_user_id()
     session = get_session()
     try:
+        # MI-4.2：capture-before 策略——把 name + 原始 coins 一次性读出来，
+        # 后续直接用 original_coins - cost 显示，省两条 commit 后 SELECT。
         user = session.query(User).filter(User.user_id == user_id).first()
         if user is None:
             await bot.send(event, at + " " + reply_failure("切换抢劫保护", "请先注册账号"))
             return
+        original_name = str(user.name or "")
+        original_coins = int(user.coins or 0)
 
         # 原子条件 UPDATE：互斥旧状态 + 余额校验 + 扣费 + 切换。
         # 并发时第二条 rowcount=0，由 SQL 层兜底。
@@ -116,12 +120,9 @@ async def handle_toggle_rob_protection(
             return
         session.commit()
 
-        current_coins = int(
-            session.query(User.coins).filter(User.user_id == user_id).scalar() or 0
-        )
-        name = str(
-            session.query(User.name).filter(User.user_id == user_id).scalar() or ""
-        )
+        # MI-4.2：直接基于 capture-before 计算，避免再次 SELECT
+        current_coins = original_coins - cost
+        name = original_name
     except Exception:  # noqa: BLE001
         logger.exception(f"切换抢劫保护处理异常：user_id={user_id}")
         try:
