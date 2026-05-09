@@ -1,0 +1,5 @@
+{"file": ".trellis/tasks/05-09-post-sweep-verify/prd.md", "reason": "8 个修复模块清单"}
+{"file": ".trellis/tasks/05-09-post-sweep-verify/research/regression-findings.md", "reason": "回归检查（含 PV-1.2 / PV-X.1 / PV-8.1）"}
+{"file": ".trellis/tasks/05-09-post-sweep-verify/research/crosscut-findings.md", "reason": "横切扫描（含 PC-1.1 / 2.1 / 3.1 / 4.1 / 6.1 / 8.1）"}
+{"file": ".trellis/tasks/05-09-post-sweep-verify/research/main-agent-recheck.md", "reason": "主代理复查 + 严重度归并"}
+{"file": ".trellis/spec/backend/index.md", "reason": "项目后端规范索引"}
