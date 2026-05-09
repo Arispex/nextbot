@@ -1,0 +1,5 @@
+{"file": ".trellis/tasks/05-09-round3-verify/prd.md", "reason": "10 项修复 + MAX_COINS 调整清单"}
+{"file": ".trellis/tasks/05-09-round3-verify/research/round3-edge-findings.md", "reason": "边角问题原始发现（含 R3E-1 high）"}
+{"file": ".trellis/tasks/05-09-round3-verify/research/round3-newcode-findings.md", "reason": "新代码 review 原始发现"}
+{"file": ".trellis/tasks/05-09-round3-verify/research/main-agent-recheck.md", "reason": "主代理复查结论"}
+{"file": ".trellis/spec/backend/index.md", "reason": "项目后端规范索引"}
