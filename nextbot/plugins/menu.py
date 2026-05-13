@@ -37,9 +37,12 @@ from server.web_server import create_menu_page
 
 menu_matcher = on_command("菜单")
 search_command_matcher = on_command("搜索命令")
-# MI-3.1：viewport_width 与项目其他截图统一为 920（之前 1920，OOM 风险更高）
+# MI-3.1 回滚：菜单是 trusted 内部模板（命令列表为项目自身静态数据），
+# 1920 实际产物 ~几百 KB，远低于 MAX_BASE64_BYTES=200MB；下游 Semaphore(2) +
+# screenshot_render.py 编码前/后双 cap 已是充分防御。窄到 920 让菜单卡片 /
+# usage 字符串频繁换行，用户体感"变窄"。
 MENU_SCREENSHOT_OPTIONS = ScreenshotOptions(
-    viewport_width=920,
+    viewport_width=1920,
     viewport_height=1280,
     full_page=True,
     fit_content_height=True,
