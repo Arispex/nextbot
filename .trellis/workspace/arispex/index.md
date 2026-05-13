@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-3.md`
-- **Total Sessions**: 125
+- **Total Sessions**: 126
 - **Last Active**: 2026-05-14
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-3.md` | ~1030 | Active |
+| `journal-3.md` | ~1061 | Active |
 | `journal-2.md` | ~1973 | Archived |
 | `journal-1.md` | ~1999 | Archived |
 <!-- @@@/auto:active-documents -->
@@ -31,6 +31,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 126 | 2026-05-14 | Dashboard R3 复审：彻底闭环（无代码改动） | - | `main` |
 | 125 | 2026-05-14 | WebUI 仪表盘 Round 2 — 跨模块 P2 回归 + dashboard 清理 | `c1a96ca` | `main` |
 | 124 | 2026-05-13 | chore: gitignore SQLite WAL 副边文件 | `bc396f4` | `main` |
 | 123 | 2026-05-13 | WebUI 仪表盘审计 + 10 项修复落地 | `c118d91` | `main` |
