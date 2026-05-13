@@ -100,6 +100,28 @@
     return meta && typeof meta === "object" ? meta : {};
   };
 
+  const REQUEST_TIMEOUT_MS = 15000;
+
+  const buildTimeoutSignal = (userSignal) => {
+    if (typeof AbortSignal === "undefined" || typeof AbortSignal.timeout !== "function") {
+      return userSignal;
+    }
+    const timeoutSignal = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+    if (!userSignal) {
+      return timeoutSignal;
+    }
+    if (typeof AbortSignal.any === "function") {
+      return AbortSignal.any([userSignal, timeoutSignal]);
+    }
+    return timeoutSignal;
+  };
+
+  const isTimeoutError = (error) => {
+    if (!error) return false;
+    if (error.name === "TimeoutError") return true;
+    return error.name === "AbortError" && /timeout/i.test(String(error.message || ""));
+  };
+
   const apiRequest = async (
     url,
     {
@@ -109,6 +131,7 @@
       action = "请求",
       expectedStatus,
       expectedStatuses,
+      signal,
     } = {}
   ) => {
     let response;
@@ -117,8 +140,15 @@
         method,
         headers,
         body,
+        signal: buildTimeoutSignal(signal),
       });
     } catch (error) {
+      if (isTimeoutError(error)) {
+        throw new ApiRequestError(buildActionFailureMessage(action, "请求超时"), {
+          code: "request_timeout",
+          reason: "请求超时",
+        });
+      }
       throw new ApiRequestError(buildNetworkErrorMessage(action, error), {
         reason: error instanceof Error ? String(error.message || "").trim() : "",
       });

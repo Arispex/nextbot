@@ -44,6 +44,19 @@ def _render_app_shell_page(  # noqa: PLR0913
     page_style_urls: tuple[str, ...] = (),
     page_script_urls: tuple[str, ...] = (),
 ) -> str:
+    """渲染 app shell 模板。
+
+    Round 9 dashboard-audit A1：明确模板信任假设——
+
+    - ``page_title`` / ``header_title`` 必须为**可信字面量**（不接受用户输入 /
+      DB 字段）。虽然函数内已用 ``html.escape(quote=True)`` 兜底，但仅作为最后
+      防线，禁止依赖该兜底来传入不可信数据。
+    - ``_load_template(content_template)`` 加载的模板内容**直接塞入
+      ``__MAIN_CONTENT__`` 占位符，不再做 escape**。内容模板（如
+      ``dashboard_content.html``）内禁止使用 ``__XXX__`` 占位符接收外部数据
+      （DB / 用户输入）；如未来需要服务端注入变量，必须在 caller 端显式
+      ``html.escape(...)`` 后再传入。
+    """
     base_template = _load_template("app_shell_base.html")
     content_html = _load_template(content_template)
     style_links_html = "\n  ".join(

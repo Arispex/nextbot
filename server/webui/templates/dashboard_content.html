@@ -10,16 +10,16 @@
           <path d="M21 12a9 9 0 1 1-2.64-6.36"></path>
           <path d="M21 3v6h-6"></path>
         </svg>
-        <span data-label>刷新数据</span>
+        <span data-label>刷新</span>
       </button>
     </div>
   </div>
 
-  <div id="status" class="alert hidden" role="status" aria-live="polite">
+  <div id="status" class="alert hidden" role="status" aria-live="polite" aria-atomic="true">
     <span id="status-message" class="alert-message"></span>
   </div>
 
-  <div id="loading" class="empty">正在拉取仪表盘数据…</div>
+  <div id="loading" class="empty">加载中…</div>
 
   <section id="stats-grid" class="dashboard-section dashboard-metrics hidden" aria-label="关键指标">
     <div class="dashboard-section-head">
@@ -68,7 +68,7 @@
         <div class="detail-content-block">
           <div class="detail-section-label">已连接的 Bot ID</div>
           <div id="connected_bot_ids" class="tag-list">
-            <span class="tag-badge none">暂未连接</span>
+            <span class="tag-badge none">无</span>
           </div>
         </div>
       </section>
@@ -82,7 +82,7 @@
     <article class="ad-card" aria-label="广告位">
       <div class="ad-banner">
         <div class="ad-main">
-          <p class="ad-kicker">Sponsored</p>
+          <p class="ad-kicker">赞助</p>
           <h3 class="ad-title">
             喵云 MiaoVPS
             <span class="ad-title-sub">高性价比云服务器</span>

@@ -41,11 +41,12 @@
 
   let loading = false;
   let hasLoaded = false;
+  let reloadButtonWasFocused = false;
 
   const formatNumber = (value) => {
     const parsed = Number(value);
     if (!Number.isFinite(parsed)) {
-      return "--";
+      return "—";
     }
     return parsed.toLocaleString("zh-CN");
   };
@@ -54,6 +55,7 @@
     const text = String(message || "").trim();
     if (!text) {
       statusNode.className = "alert hidden";
+      statusNode.setAttribute("role", "status");
       statusMessageNode.textContent = "";
       return;
     }
@@ -61,6 +63,7 @@
       ? type
       : "info";
     statusNode.className = `alert ${normalizedType}`;
+    statusNode.setAttribute("role", normalizedType === "error" ? "alert" : "status");
     statusMessageNode.textContent = text;
   };
 
@@ -75,12 +78,17 @@
   };
 
   const setLoadingState = (isLoading) => {
+    if (isLoading && !loading) {
+      reloadButtonWasFocused = document.activeElement === reloadButton;
+    }
     loading = Boolean(isLoading);
     reloadButton.disabled = loading;
-    setReloadButtonText(loading ? "刷新中..." : "刷新");
+    setReloadButtonText(loading ? "刷新中…" : "刷新");
 
     if (loading) {
       loadingNode.classList.remove("hidden");
+      statsGridNode.setAttribute("aria-busy", "true");
+      dashboardPanelsNode.setAttribute("aria-busy", "true");
       if (!hasLoaded) {
         statsGridNode.classList.add("hidden");
         dashboardPanelsNode.classList.add("hidden");
@@ -89,9 +97,21 @@
     }
 
     loadingNode.classList.add("hidden");
+    statsGridNode.removeAttribute("aria-busy");
+    dashboardPanelsNode.removeAttribute("aria-busy");
     if (hasLoaded) {
       statsGridNode.classList.remove("hidden");
       dashboardPanelsNode.classList.remove("hidden");
+    }
+
+    if (reloadButtonWasFocused) {
+      // disabled→enabled 后短延迟恢复 focus，避免被浏览器 blur
+      queueMicrotask(() => {
+        if (!reloadButton.disabled) {
+          reloadButton.focus({ preventScroll: true });
+        }
+      });
+      reloadButtonWasFocused = false;
     }
   };
 
@@ -119,14 +139,14 @@
   };
 
   const renderMetrics = (data) => {
-    runningStatusNode.textContent = String(data.running_status || "--");
+    runningStatusNode.textContent = String(data.running_status || "—");
     serverCountNode.textContent = formatNumber(data.server_count);
     userCountNode.textContent = formatNumber(data.user_count);
     groupCountNode.textContent = formatNumber(data.group_count);
     commandTotalNode.textContent = formatNumber(data.command_total);
     commandEnabledCountNode.textContent = formatNumber(data.command_enabled_count);
     commandExecuteCountNode.textContent = formatNumber(data.command_execute_count);
-    dashboardUpdatedAtNode.textContent = String(data.generated_at || "--");
+    dashboardUpdatedAtNode.textContent = String(data.generated_at || "—");
     renderConnectedBotIds(data.connected_bot_ids);
   };
 
