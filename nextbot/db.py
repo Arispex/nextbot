@@ -940,12 +940,18 @@ def ensure_red_packet_schema() -> None:
 
 
 def wal_checkpoint_truncate() -> None:
-    """R8 M-3：进程关闭前主动 checkpoint + truncate WAL 文件。
+    """R8 M-3 + R9 R9-D-4：进程关闭前主动 checkpoint + truncate WAL 文件。
 
     WAL 模式下 `app.db-wal` / `app.db-shm` 持续累积；自动 checkpoint
     需要"无活跃 reader 跨越 frame"才能完整推进，nextbot 长连接 daemon +
     BEGIN IMMEDIATE 持锁经常只能 partial 推进，WAL 文件可累积到 GB 级。
     on_shutdown 时主动 TRUNCATE 一次确保进程正常退出时 WAL 不残留。
+
+    PRAGMA wal_checkpoint(TRUNCATE) 返回 (busy, log_pages, checkpointed)：
+    - busy=0：truncate 完整成功，WAL 文件已实际清空。
+    - busy=1：有 reader 阻塞 → 仅部分 checkpoint，WAL 未实际 truncate。
+    SQLite 在 busy 时不抛异常，需主动读返回值 + 条件 warning，否则运维
+    无法观测 WAL 是否实际收尾。
 
     接线契约：本函数由 bot.py 的 @driver.on_shutdown 调用，与
     nextbot.tshock_api.close_shared_client 并列。仅负责 checkpoint，
@@ -956,6 +962,19 @@ def wal_checkpoint_truncate() -> None:
     try:
         engine = get_engine()
         with engine.begin() as conn:
-            conn.execute(sa_text("PRAGMA wal_checkpoint(TRUNCATE)"))
+            row = conn.execute(sa_text("PRAGMA wal_checkpoint(TRUNCATE)")).fetchone()
+        if row is not None:
+            busy = int(row[0])
+            log_pages = int(row[1])
+            checkpointed = int(row[2])
+            if busy != 0:
+                logger.warning(
+                    f"WAL checkpoint 部分推进：busy={busy} log_pages={log_pages} "
+                    f"checkpointed={checkpointed}（可能有 reader 持锁，WAL 文件未实际 truncate）"
+                )
+            else:
+                logger.info(
+                    f"WAL checkpoint 完成：log_pages={log_pages} checkpointed={checkpointed}"
+                )
     except Exception as exc:  # noqa: BLE001
         logger.warning(f"WAL checkpoint 失败：reason={exc!r}")
