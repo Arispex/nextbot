@@ -165,11 +165,24 @@ async def _init_database() -> None:
     start_web_server()
 
 
+# NoneBot Lifespan 以 LIFO 顺序执行 shutdown 钩子
+# （_lifespan.py:80-81 `reversed(_shutdown_funcs)`），先注册的后执行。
+# 为了让 HTTP 客户端先关再做 WAL checkpoint（避免 in-flight 请求触发的 DB 写
+# 在 checkpoint 之后产生新 WAL 帧），把 _wal_checkpoint 注册在前、
+# _close_shared_http_client 注册在后，运行时 HTTP → WAL 顺序生效。
+@driver.on_shutdown
+async def _wal_checkpoint() -> None:
+    # R8 M-3：进程正常退出时 truncate WAL，防止 app.db-wal 长跑累积
+    from nextbot.db import wal_checkpoint_truncate
+    wal_checkpoint_truncate()
+
+
 @driver.on_shutdown
 async def _close_shared_http_client() -> None:
     # I-1.3：释放 tshock_api 模块级 httpx.AsyncClient 连接池
     from nextbot.tshock_api import close_shared_client
     await close_shared_client()
+
 
 nonebot.load_plugins("nextbot/plugins")
 

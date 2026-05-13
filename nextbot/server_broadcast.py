@@ -19,7 +19,7 @@ from typing import Callable, Generic, NamedTuple, TypeVar
 from nonebot.log import logger
 
 from nextbot.db import Server
-from nextbot.large_image import semaphore_for
+from nextbot.large_image import register_server_semaphore_pool, semaphore_for
 
 R = TypeVar("R")
 
@@ -34,6 +34,7 @@ class BroadcastOutcome(NamedTuple, Generic[R]):
 # 模块级 per-server 信号量池。max_concurrent_per_server 默认 1，匹配 ban_core
 # 「先 GET /blacklist 再 POST /blacklist/add」这种连续两次往返的工作负载。
 _broadcast_semaphores: dict[int, asyncio.Semaphore] = {}
+register_server_semaphore_pool(_broadcast_semaphores)  # R8 M-5
 
 
 async def broadcast(

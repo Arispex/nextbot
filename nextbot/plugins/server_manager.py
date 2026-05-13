@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from nextbot.audit import audit_permission_change
 from nextbot.command_config import command_control, raise_command_usage
 from nextbot.db import Server, get_session
+from nextbot.large_image import release_server_semaphores_all
 from nextbot.message_parser import parse_command_args_with_fallback
 from nextbot.permissions import require_permission
 from nextbot.server_validation import (
@@ -201,6 +202,9 @@ async def handle_delete_server(
         session.commit()
     finally:
         session.close()
+
+    # R8 M-5：删除 server 后清理所有已注册 per-server semaphore pool 中的对应 entry
+    release_server_semaphores_all(deleted_id)
 
     logger.info(f"删除服务器成功：server_id={deleted_id}")
     # PC-6.1：服务器删除是基础设施级变更，走统一 audit 入口

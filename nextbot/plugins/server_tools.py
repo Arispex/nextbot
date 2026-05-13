@@ -16,6 +16,7 @@ from nextbot.db import Server, get_session
 from nextbot.large_image import (
     LONG_READ_TIMEOUT as _LONG_READ_TIMEOUT,
     MAX_BASE64_BYTES as _MAX_BASE64_BYTES,
+    register_server_semaphore_pool as _register_server_semaphore_pool,
     semaphore_for as _semaphore_for,
 )
 from nextbot.message_parser import (
@@ -50,6 +51,9 @@ _SAFE_WLD_NAME_RE = re.compile(r"[\w\-.]{1,128}\.wld")
 # 不同 server_id 互不阻塞；不同 handler（map / download）也分开避免互相挤占。
 _map_semaphores: dict[int, asyncio.Semaphore] = {}
 _download_semaphores: dict[int, asyncio.Semaphore] = {}
+# R8 M-5：注册到中央 pool 列表，server 删除时统一清理
+_register_server_semaphore_pool(_map_semaphores)
+_register_server_semaphore_pool(_download_semaphores)
 
 
 def _parse_execute_arg_text(text: str) -> tuple[int, str] | None:

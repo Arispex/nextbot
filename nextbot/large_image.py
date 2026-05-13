@@ -49,12 +49,46 @@ def release_server_semaphores(
     增删 server 会有持续小泄漏（单个 Semaphore 几百字节，量级可控但属于"只增
     不减"的资源）。提供本 helper 让删除 server 的入口主动 cleanup。
 
-    调用方应在 DELETE server 后对自己维护的所有信号量池逐一调用本函数：
+    Deprecated（Round 8 M-5）：推荐使用 `release_server_semaphores_all`，
+    各 pool 在模块顶部通过 `register_server_semaphore_pool` 注册，删除
+    server 时一次性遍历所有 pool 清理，避免 caller 各自维护清理逻辑。
 
-        release_server_semaphores(_map_semaphores, server_id)
-        release_server_semaphores(_download_semaphores, server_id)
-        ...
-
-    集中接线由 webui 同步审计任务负责；本步骤只提供 helper，不改 caller。
+    本 helper 仍保留以向后兼容（如未注册的临时 pool）。
     """
     pool.pop(server_id, None)
+
+
+# Round 8 M-5：模块级注册中心。所有 server-keyed semaphore pool 都注册在这里，
+# server 删除时调 `release_server_semaphores_all(server_id)` 一次性清理。
+# 避免各 caller 维护 8+ 个 `release_server_semaphores(pool, id)` 调用。
+_registered_server_pools: list[dict[int, asyncio.Semaphore]] = []
+
+
+def register_server_semaphore_pool(pool: dict[int, asyncio.Semaphore]) -> None:
+    """Round 8 M-5：plugin 模块级 semaphore pool 注册到中央清理列表。
+
+    server 删除时由 `release_server_semaphores_all(server_id)` 遍历所有
+    已注册 pool 调 `pool.pop(server_id, None)`，避免 caller 各自维护清理
+    逻辑。
+
+    调用方在 pool 定义后立刻调一次：
+
+        _xxx_semaphores: dict[int, asyncio.Semaphore] = {}
+        register_server_semaphore_pool(_xxx_semaphores)
+
+    幂等：重复调相同 pool 不重复注册。**注意**：使用 identity（is）而非
+    equality（==）判定，因为模块 import 阶段所有 pool 都是空 dict，
+    `{} == {}` 为 True 会导致只有第一个 pool 注册成功，后续全被去重剔除。
+    """
+    if not any(p is pool for p in _registered_server_pools):
+        _registered_server_pools.append(pool)
+
+
+def release_server_semaphores_all(server_id: int) -> None:
+    """Round 8 M-5：删除 server 时调用，清理所有已注册 pool 中对应 entry。
+
+    替代原本散落的多次 `release_server_semaphores(pool, server_id)` 调用，
+    通过模块级 `_registered_server_pools` 遍历所有已注册 pool 一次清理。
+    """
+    for pool in _registered_server_pools:
+        pool.pop(server_id, None)

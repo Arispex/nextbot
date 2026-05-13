@@ -3,7 +3,7 @@ from __future__ import annotations
 import sqlite3
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 from nonebot.log import logger
 from sqlalchemy import (
@@ -394,6 +394,13 @@ def _ensure_engine_and_factory() -> tuple[Engine, sessionmaker[Session]]:
         # 串行执行。本项目本来也是单 SQLite writer 模型，影响可控。
         @event.listens_for(_engine, "connect")
         def _set_sqlite_pragma(dbapi_connection, _connection_record):  # noqa: ANN001
+            # R8 R8-D-5：PRAGMA + isolation_level=None 都是 SQLite 专属语义；
+            # 未来切 PostgreSQL/MySQL 时 connect listener 一旦触发会立刻抛
+            # OperationalError。加 dialect 守卫便于后续迁移（与 _force_immediate_begin
+            # 内的 dialect 守卫对称）。
+            # 注意：listener 注册时 _engine 已 assign，回调触发时 _engine 必非 None。
+            if _engine is not None and _engine.dialect.name != "sqlite":
+                return
             # SQLAlchemy 2.0 SQLite 官方 recipe：禁用 pysqlite 默认 deferred 自动 BEGIN，让 begin 事件里的 BEGIN IMMEDIATE 真正生效
             dbapi_connection.isolation_level = None
             cursor = dbapi_connection.cursor()
@@ -431,25 +438,46 @@ def get_engine() -> Engine:
     return engine
 
 
+def _run_migration(name: str, func: Callable[[], None]) -> None:
+    """R8 M-2：单个 ensure_*_schema 迁移失败时 logger.warning + 继续。
+
+    旧实现下 17 个 ensure_*_schema 顺序裸调，中段失败抛异常 → init_db 整体
+    挂掉 → 第 N+1 ~ 17 个迁移未执行，留下半 migrate 状态。改造后单个迁移
+    失败仅记录 warning（保留旧 schema 不阻断启动），与现有
+    ensure_user_name_unique_schema / ensure_user_leaderboard_indexes_schema
+    已有的 try/except 风格一致。
+
+    注意：只用于幂等的 ensure_*_schema migration helpers；ensure_default_*
+    是 seeding 不是 migration，失败必须阻断启动，不要走这条路径。
+    """
+    try:
+        func()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            f"迁移失败：name={name} reason={exc!r}（保留旧 schema 不阻断启动）"
+        )
+
+
 def init_db() -> None:
     engine = get_engine()
     Base.metadata.create_all(engine)
-    ensure_command_config_schema()
-    ensure_user_signin_schema()
-    ensure_sign_record_schema()
-    ensure_sign_record_unique_schema()
-    ensure_user_sign_record_index_schema()
-    ensure_user_ban_schema()
-    ensure_user_rob_schema()
-    ensure_user_guess_schema()
-    ensure_user_dice_schema()
-    ensure_red_packet_schema()
-    ensure_warehouse_schema()
-    ensure_shop_schema()
-    ensure_lottery_schema()
-    ensure_user_name_unique_schema()
-    ensure_user_leaderboard_indexes_schema()
-    ensure_warehouse_fk_schema()
+    _run_migration("command_config", ensure_command_config_schema)
+    _run_migration("user_signin", ensure_user_signin_schema)
+    _run_migration("sign_record", ensure_sign_record_schema)
+    _run_migration("sign_record_unique", ensure_sign_record_unique_schema)
+    _run_migration("user_sign_record_index", ensure_user_sign_record_index_schema)
+    _run_migration("user_ban", ensure_user_ban_schema)
+    _run_migration("user_rob", ensure_user_rob_schema)
+    _run_migration("user_guess", ensure_user_guess_schema)
+    _run_migration("user_dice", ensure_user_dice_schema)
+    _run_migration("red_packet", ensure_red_packet_schema)
+    _run_migration("warehouse", ensure_warehouse_schema)
+    _run_migration("shop", ensure_shop_schema)
+    _run_migration("lottery", ensure_lottery_schema)
+    _run_migration("user_name_unique", ensure_user_name_unique_schema)
+    _run_migration("user_leaderboard_indexes", ensure_user_leaderboard_indexes_schema)
+    _run_migration("warehouse_fk", ensure_warehouse_fk_schema)
+    # ensure_default_* 是 seeding 不是 migration，失败必须阻断启动（业务需要这些行）
     ensure_default_groups()
     ensure_default_stats()
 
@@ -463,20 +491,19 @@ def execute_rowcount(session: Session, stmt: Executable) -> int:
     """执行 INSERT/UPDATE/DELETE 并返回 rowcount。
 
     封装类型转换：session.execute() 在类型 stub 中返回 Result[Any]，
-    但实际 INSERT/UPDATE/DELETE 返回 CursorResult，这里通过 getattr
-    让 pyright 接受 .rowcount 属性，同时对非 CursorResult（如 SELECT）
-    回退为 0，避免崩溃。
+    但实际 INSERT/UPDATE/DELETE 返回 CursorResult。
 
-    D-1.7：非 CursorResult 时 logger.warning 留 trace，避免开发者把 SELECT
-    误传进来后看到 rowcount=0 当作"未匹配到行"而走入 silent failure 分支。
+    R8 M-1：误传 SELECT 等非 mutation 语句时 raise TypeError，避免 silently
+    return 0 导致 ban_core / economy / lottery 等 50+ 处 `if rowcount == 0:`
+    走业务降级误触发（例如把"未匹配到行"误判为"已经被封禁 / 已经领取"等）。
     """
     result = session.execute(stmt)
     rowcount = getattr(result, "rowcount", None)
     if rowcount is None:
-        logger.warning(
-            f"execute_rowcount 收到非 CursorResult（可能误传 SELECT）：stmt={type(stmt).__name__}"
+        raise TypeError(  # noqa: TRY003
+            f"execute_rowcount 仅支持 INSERT/UPDATE/DELETE，"
+            f"收到 stmt={type(stmt).__name__}（可能误传 SELECT）"
         )
-        return 0
     return int(rowcount)
 
 
@@ -503,11 +530,17 @@ def ensure_default_groups() -> None:
         # D-1.6：显式 try/except: rollback。session.close() 隐式 rollback 可兜底，
         # 但显式 rollback 让"commit 失败 → 回滚"语义更清晰，并避免该 connection
         # 在 pool 内多停留一个 close 周期才被回收 / 重置事务状态。
+        # R8 R8-D-4：捕获 commit 异常变量，rollback 自身抛错时仅 logger.exception
+        # 不覆盖原 commit 异常 —— 否则裸 raise 会抛 rollback 异常，把根因
+        # 降为 __context__，让 caller 拿到的异常类型与诊断歧义。
         try:
             session.commit()
-        except Exception:
-            session.rollback()
-            raise
+        except Exception as commit_exc:
+            try:
+                session.rollback()
+            except Exception:  # noqa: BLE001
+                logger.exception("rollback 自身抛错（已保留原 commit 异常）")
+            raise commit_exc  # noqa: TRY201
     finally:
         session.close()
 
@@ -528,11 +561,16 @@ def ensure_default_stats() -> None:
                 )
             )
         # D-1.6：显式 try/except: rollback。
+        # R8 R8-D-4：捕获 commit 异常变量，rollback 自身抛错时仅 logger.exception
+        # 不覆盖原 commit 异常。
         try:
             session.commit()
-        except Exception:
-            session.rollback()
-            raise
+        except Exception as commit_exc:
+            try:
+                session.rollback()
+            except Exception:  # noqa: BLE001
+                logger.exception("rollback 自身抛错（已保留原 commit 异常）")
+            raise commit_exc  # noqa: TRY201
     finally:
         session.close()
 
@@ -899,3 +937,25 @@ def ensure_red_packet_schema() -> None:
             )
             """
         ))
+
+
+def wal_checkpoint_truncate() -> None:
+    """R8 M-3：进程关闭前主动 checkpoint + truncate WAL 文件。
+
+    WAL 模式下 `app.db-wal` / `app.db-shm` 持续累积；自动 checkpoint
+    需要"无活跃 reader 跨越 frame"才能完整推进，nextbot 长连接 daemon +
+    BEGIN IMMEDIATE 持锁经常只能 partial 推进，WAL 文件可累积到 GB 级。
+    on_shutdown 时主动 TRUNCATE 一次确保进程正常退出时 WAL 不残留。
+
+    接线契约：本函数由 bot.py 的 @driver.on_shutdown 调用，与
+    nextbot.tshock_api.close_shared_client 并列。仅负责 checkpoint，
+    不负责 engine.dispose（engine 会在进程退出时自然释放）。
+    """
+    if not DB_PATH.exists():
+        return
+    try:
+        engine = get_engine()
+        with engine.begin() as conn:
+            conn.execute(sa_text("PRAGMA wal_checkpoint(TRUNCATE)"))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"WAL checkpoint 失败：reason={exc!r}")

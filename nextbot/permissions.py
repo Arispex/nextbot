@@ -37,6 +37,13 @@ def _get_effective_permissions_in_session(session, user_id: str) -> set[str]:
     用于 handler 在已开 transaction 时查询 effective perms（例如
     层级护栏校验），避免 BEGIN IMMEDIATE 下嵌套 get_session() 死锁。
     """
+    # R8-P-1.16：runtime 守卫，防止 caller 误传 None / closed session。
+    # 当前 2 个 caller（permission_manager / group_manager）都在 `get_session()`
+    # 上下文内调用，但未来重构 / 新 caller 误用时这里 fail-hard 让错误点更清晰。
+    if session is None:
+        raise ValueError(
+            "_get_effective_permissions_in_session 的 session 参数不能为 None"
+        )
     user = session.query(User).filter(User.user_id == user_id).first()
     if user is None:
         group_name = "guest"
@@ -297,24 +304,39 @@ def require_permission(permission: str):
 
 
 def add_permission(value: str, permission: str) -> str:
+    # R8-P-1.14：permission / parent 含 CSV 分隔符 `,` 会导致存储污染
+    # （单 token 写入后再 split 会切成多个 token，使用户意外获得未授予权限）。
+    # owner 短路路径会跳过 validate_permission_key，所以 sanitize 必须在底层
+    # helper 处兜底。fail-hard 让 admin 立刻看到错误。
+    if "," in permission:
+        raise ValueError("permission key 不可含逗号（会污染 CSV 存储）")
     perms = set(split_csv_values(value))
     perms.add(permission)
     return join_csv_values(perms)
 
 
 def remove_permission(value: str, permission: str) -> str:
+    # R8-P-1.14：与 add_permission 对称，防止 caller 误传含逗号 key。
+    if "," in permission:
+        raise ValueError("permission key 不可含逗号")
     perms = set(split_csv_values(value))
     perms.discard(permission)
     return join_csv_values(perms)
 
 
 def add_inherit(value: str, parent: str) -> str:
+    # R8-P-1.14：group name 含 `,` 会污染 inherits CSV 链。
+    if "," in parent:
+        raise ValueError("group name 不可含逗号（会污染 CSV 存储）")
     parents = set(split_csv_values(value))
     parents.add(parent)
     return join_csv_values(parents)
 
 
 def remove_inherit(value: str, parent: str) -> str:
+    # R8-P-1.14：与 add_inherit 对称。
+    if "," in parent:
+        raise ValueError("group name 不可含逗号")
     parents = set(split_csv_values(value))
     parents.discard(parent)
     return join_csv_values(parents)

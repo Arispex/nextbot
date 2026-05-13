@@ -5,6 +5,7 @@ import hashlib
 import inspect
 import json
 import threading
+import time
 import typing
 from dataclasses import dataclass
 from datetime import datetime
@@ -72,6 +73,11 @@ _registry_lock = threading.RLock()
 _registry: dict[str, RegisteredCommand] = {}
 _runtime_cache: dict[str, RuntimeCommandState] = {}
 _runtime_cache_ready = False
+# R8 R8-U-B-2：DB 故障时每条消息都会触发 refresh_runtime_cache 失败，
+# 直接 logger.exception 会引发日志风暴。用 monotonic 时间戳节流：
+# 首次失败打完整 stack trace，60 秒窗口内的后续失败只打简短 warning。
+_runtime_cache_last_load_error_at: float = 0.0
+_RUNTIME_CACHE_ERROR_THROTTLE_SEC: float = 60.0
 _current_command_context: contextvars.ContextVar[RuntimeCommandState | None] = (
     contextvars.ContextVar("nextbot_current_command_context", default=None)
 )
@@ -467,14 +473,26 @@ def _ensure_runtime_cache_loaded() -> None:
 
 
 def _get_runtime_state(command_key: str) -> RuntimeCommandState:
+    global _runtime_cache_last_load_error_at
     try:
         _ensure_runtime_cache_loaded()
-    except Exception:
+    except Exception as exc:  # noqa: BLE001
         # U-2.4：runtime cache 加载失败时显式记录，避免 DB 不可用时
         # disable 操作完全失效却无任何告警的 silent failure。
-        logger.exception(
-            f"运行时命令缓存加载失败：command_key={command_key}（fallback 到 default_enabled）"
-        )
+        # R8 R8-U-B-2：DB 故障期间每条消息都会进到这里，logger.exception 会
+        # 产生日志风暴 + 完整 stack trace 把日志盘打满。改为 60 秒窗口节流：
+        # 窗口首次打完整 trace，后续打简短 warning。
+        now = time.monotonic()
+        if now - _runtime_cache_last_load_error_at >= _RUNTIME_CACHE_ERROR_THROTTLE_SEC:
+            logger.exception(
+                f"运行时命令缓存加载失败：command_key={command_key}（fallback 到 default_enabled）"
+            )
+            _runtime_cache_last_load_error_at = now
+        else:
+            logger.warning(
+                f"运行时命令缓存加载失败 (throttled): command_key={command_key} "
+                f"reason={type(exc).__name__}"
+            )
     with _registry_lock:
         runtime = _runtime_cache.get(command_key)
     if runtime is not None:
@@ -825,7 +843,31 @@ def update_command_aliases(
             except (json.JSONDecodeError, TypeError):
                 pass
 
+        # R8 M-4 (R8-U-B-1)：alias 还必须避开当前命令自己的 command_key / display_name，
+        # 否则 register_alias_matchers 会创建第二个 on_command(同名) matcher，
+        # wrapper 双执行（双计数、双扣金币、双发消息）。
+        # 同时校验 batch 内不重复，防御 UI 重复输入。
+        self_conflict_names: set[str] = {normalized_key, row.display_name}
+
+        seen_in_batch: set[str] = set()
         for alias in cleaned:
+            if alias in self_conflict_names:
+                raise CommandConfigValidationError(
+                    "保存失败",
+                    errors=[{
+                        "field": "aliases",
+                        "message": f"别名 \"{alias}\" 不能与命令自身的 command_key / 名称相同",
+                    }],
+                )
+            if alias in seen_in_batch:
+                raise CommandConfigValidationError(
+                    "保存失败",
+                    errors=[{
+                        "field": "aliases",
+                        "message": f"别名 \"{alias}\" 在本次 batch 内重复",
+                    }],
+                )
+            seen_in_batch.add(alias)
             if alias in conflict_names:
                 raise CommandConfigValidationError(
                     "保存失败",

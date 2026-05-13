@@ -21,6 +21,7 @@ from nextbot.db import Server, User, get_session
 from nextbot.large_image import (
     LONG_READ_TIMEOUT as _LONG_READ_TIMEOUT,
     MAX_BASE64_BYTES as _MAX_BASE64_BYTES,
+    register_server_semaphore_pool as _register_server_semaphore_pool,
     semaphore_for as _semaphore_for,
 )
 from nextbot.message_parser import (
@@ -72,6 +73,12 @@ _progress_semaphores: dict[int, "asyncio.Semaphore"] = {}
 _my_map_semaphores: dict[int, "asyncio.Semaphore"] = {}
 _user_map_semaphores: dict[int, "asyncio.Semaphore"] = {}
 _explored_map_semaphores: dict[int, "asyncio.Semaphore"] = {}
+# R8 M-5：注册到中央 pool 列表，server 删除时统一清理
+_register_server_semaphore_pool(_inventory_semaphores)
+_register_server_semaphore_pool(_progress_semaphores)
+_register_server_semaphore_pool(_my_map_semaphores)
+_register_server_semaphore_pool(_user_map_semaphores)
+_register_server_semaphore_pool(_explored_map_semaphores)
 
 
 def _to_non_negative_int(value: object) -> int | None:

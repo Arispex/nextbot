@@ -10,12 +10,21 @@ import httpx
 from nonebot.log import logger
 
 from nextbot.db import Server
+from nextbot.large_image import MAX_BASE64_BYTES
 
 
 # Round 7 H-4 (I-1.2)：响应体硬上限。略大于 large_image.MAX_BASE64_BYTES=200MB，
 # 给 base64 图片 / 大型世界文件 base64 payload 留 25% overhead。超出即拒绝，
 # 防止恶意 / 故障 TShock 后端通过任意大 body 让 httpx 在内存里缓冲 GB 级数据导致 OOM。
 MAX_RESPONSE_BYTES: int = 250 * 1024 * 1024
+
+# Round 8 R8-IO-B-2：invariant assert，base64 编码后约为原始字节的 4/3，cap 必须
+# >= MAX_BASE64_BYTES * 5/4，留 25% overhead。未来调任一常量时立即报错，
+# 防止漂移导致下游 base64 cap 被上游 cap 静默卡住。
+assert MAX_RESPONSE_BYTES >= MAX_BASE64_BYTES * 5 // 4, (
+    f"MAX_RESPONSE_BYTES({MAX_RESPONSE_BYTES}) 必须 >= "
+    f"MAX_BASE64_BYTES({MAX_BASE64_BYTES}) * 5/4"
+)
 
 
 TShockErrorKind = Literal[
@@ -158,7 +167,6 @@ async def request_server_api(
                         kind="oversize",
                     )
             status_code = response.status_code
-        body = bytes(chunks)
     except TShockRequestError:
         # oversize 路径自己已设置 kind，直接重抛
         raise
@@ -174,12 +182,14 @@ async def request_server_api(
         raise TShockRequestError(str(exc), kind="unknown") from exc
 
     # Round 7 I-1.5：非 JSON 响应静默兜底改为带诊断日志，方便排障
+    # Round 8 R8-IO-B-3 + A-1.1：json.loads 直接吃 bytearray，省去 bytes(chunks)
+    # 的复制（接近 cap 时省一倍内存峰值）。Python 3.6+ json.loads 接受 bytes/bytearray/str。
     try:
-        payload = json.loads(body.decode("utf-8")) if body else {}
+        payload = json.loads(chunks) if chunks else {}
     except (ValueError, UnicodeDecodeError):
         logger.warning(
             f"TShock 响应非 JSON：server_id={server.id} "
-            f"server_ip={server.ip} content_length={len(body)} status={status_code}"
+            f"server_ip={server.ip} content_length={len(chunks)} status={status_code}"
         )
         payload = {}
 

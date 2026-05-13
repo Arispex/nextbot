@@ -8,6 +8,7 @@ from nonebot.log import logger
 from sqlalchemy import func
 
 from nextbot.db import Server, get_session
+from nextbot.large_image import release_server_semaphores_all
 from nextbot.server_validation import (
     ServerPayloadValidationError,
     ValidatedServerPayload,
@@ -210,6 +211,8 @@ async def webui_servers_delete(server_id: int) -> JSONResponse:
             synchronize_session=False,
         )
         session.commit()
+        # R8 M-5：删除 server 后清理所有已注册 per-server semaphore pool 中的对应 entry
+        release_server_semaphores_all(deleted_id)
         logger.info(f"删除服务器成功：server_id={deleted_id}，name={deleted_name}")
         return Response(status_code=204)
     except Exception as exc:
