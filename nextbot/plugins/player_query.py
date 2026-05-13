@@ -244,9 +244,22 @@ async def handle_online(
         out.append(",".join(nicknames))
         return out
 
-    results = await asyncio.gather(
-        *(_query_one(s) for s in servers), return_exceptions=False
+    # R5-B.1：return_exceptions=True 防止任一 task 抛非 TShockRequestError 异常
+    # （如 CancelledError、内部 bug）时整个 gather cancel 其他任务，与 R4 M3
+    # user_manager / leaderboard / lottery 的 fan-out 模板对齐。
+    raw_results = await asyncio.gather(
+        *(_query_one(s) for s in servers), return_exceptions=True
     )
+
+    results: list[list[str]] = []
+    for server, raw in zip(servers, raw_results, strict=True):
+        if isinstance(raw, BaseException):
+            logger.warning(
+                f"在线查询异常：server_id={server.id} reason={raw!r}"
+            )
+            results.append([f"{server.id}.{server.name}", "❌ 查询失败，查询异常"])
+        else:
+            results.append(raw)
 
     lines: list[str] = []
     for i, server_lines in enumerate(results):
@@ -315,9 +328,20 @@ async def handle_self_kick(
             return f"{server.id}.{server.name}：✅ 执行成功"
         return f"{server.id}.{server.name}：❌ 执行失败，{get_error_reason(response)}"
 
-    lines = list(
-        await asyncio.gather(*(_kick_one(s) for s in servers), return_exceptions=False)
+    # R5-B.1：return_exceptions=True 防止任一 task 抛非 TShockRequestError 异常
+    # 时整个 gather cancel 其他任务。/kick 对已下线玩家幂等，部分失败可接受。
+    raw_results = await asyncio.gather(
+        *(_kick_one(s) for s in servers), return_exceptions=True
     )
+    lines: list[str] = []
+    for server, raw in zip(servers, raw_results, strict=True):
+        if isinstance(raw, BaseException):
+            logger.warning(
+                f"自踢执行异常：server_id={server.id} user_id={user_id} reason={raw!r}"
+            )
+            lines.append(f"{server.id}.{server.name}：❌ 执行失败，执行异常")
+        else:
+            lines.append(raw)
 
     logger.info(
         f"自踢执行完成：user_id={user_id} name={user.name} server_count={len(servers)}"

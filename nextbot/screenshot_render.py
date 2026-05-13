@@ -104,6 +104,16 @@ async def _render_and_send_inner(
             await bot.send(event, reply_failure(failure_action, "读取截图文件失败"))
             return False
 
+        # R5-3.1：file_size <= 0 时早返回，避免 b64encode(b"") = "" 后发送
+        # `base64://` 空 src 给 V11 适配器。0 字节通常意味着 playwright 内部异常
+        # 未抛但磁盘写失败（极罕见）；显式回 "截图为空" 比静默发空图更明确。
+        if file_size <= 0:
+            logger.warning(
+                f"截图文件为 0 字节：file_prefix={file_prefix} file={screenshot_path}"
+            )
+            await bot.send(event, reply_failure(failure_action, "截图为空"))
+            return False
+
         # base64 编码后体积约为原始字节的 4/3
         if file_size * 4 // 3 > MAX_BASE64_BYTES:
             logger.warning(

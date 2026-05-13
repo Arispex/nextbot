@@ -166,6 +166,12 @@
       line-height: 1.2;
       color: var(--color-ink);
       font-feature-settings: "tnum";
+      /* R5-5.0：对齐 R4 M5 模板（lottery_result.html / user_info.html）。
+       * stat-value 显示 `${remainingAmount} / ${totalAmount}` 在 100 亿 cap 下可达
+       * "10000000000 / 10000000000"（23 字符），窄卡片下可能溢出 stat 容器。
+       * break-word 在 Chromium 对长数字串不可靠，用 break-all 强制换行。 */
+      overflow-wrap: break-word;
+      word-break: break-all;
     }
 
     .stat-total {

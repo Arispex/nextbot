@@ -302,8 +302,10 @@ async def handle_rob(bot: Bot, event: Event, arg: Message = CommandArg()) -> Non
                     await bot.send(event, at + " " + reply_failure("抢劫", "对方身无分文"))
                 return
 
-            # 2) attacker 冷却 / 保护守护 + 统计字段（不含 coins，coins 通过 helper 受 cap 保护）
-            #    先尝试条件 UPDATE，若 attacker 状态变更则回退 victim
+            # 2) attacker 冷却 / 保护守护 + 统计字段（不含 coins / rob_total_gain）
+            #    coins 通过 helper 受 cap 保护；rob_total_gain 在 helper 之后用
+            #    applied_amount 真实值入账（R5-2.1：cap-stats drift 家族第 4 处闭合）。
+            #    先尝试条件 UPDATE，若 attacker 状态变更则回退 victim。
             a_rows = execute_rowcount(
                 session,
                 update(User)
@@ -311,18 +313,19 @@ async def handle_rob(bot: Bot, event: Event, arg: Message = CommandArg()) -> Non
                 .values(
                     rob_total_count=User.rob_total_count + 1,
                     rob_success_count=User.rob_success_count + 1,
-                    rob_total_gain=User.rob_total_gain + amount,
                     last_rob_time=now,
                 ),
             )
             if a_rows == 0:
                 # 回滚 victim 扣款（PC-8.1：refund 也走 helper 受 cap 保护）
                 refund_applied, refund_capped = add_coins_with_cap(session, target_user_id, amount)
+                # R5-2.2：rob_total_loss 用 refund_applied 真实值回撤，
+                # 触顶时差额留作 victim 的经济沉淀（与 user.coins 实际增量一致）。
                 session.execute(
                     update(User)
                     .where(User.user_id == target_user_id)
                     .values(
-                        rob_total_loss=User.rob_total_loss - amount,
+                        rob_total_loss=User.rob_total_loss - refund_applied,
                     )
                 )
                 if refund_capped and refund_applied < amount:
@@ -341,6 +344,15 @@ async def handle_rob(bot: Bot, event: Event, arg: Message = CommandArg()) -> Non
                 logger.warning(
                     f"抢劫成功派金触顶 cap：robber={robber_id} requested={amount} applied={applied_amount}"
                 )
+            # R5-2.1：rob_total_gain 用 applied_amount 真实值累加，与 user.coins
+            # delta 一致（dice/guess R4R-7.1 同模板）。触顶时差额为经济沉淀。
+            session.execute(
+                update(User)
+                .where(User.user_id == robber_id)
+                .values(
+                    rob_total_gain=User.rob_total_gain + applied_amount,
+                )
+            )
 
         elif roll <= success_rate + counter_rate:
             result_type = "counter"
@@ -375,11 +387,13 @@ async def handle_rob(bot: Bot, event: Event, arg: Message = CommandArg()) -> Non
                     f"抢劫反抢 victim 派金触顶 cap：victim={target_user_id} "
                     f"requested={amount} applied={applied_amount}"
                 )
+            # R5-2.3：rob_total_gain 用 applied_amount 真实值累加，与 user.coins
+            # delta 一致；触顶时差额为经济沉淀。
             session.execute(
                 update(User)
                 .where(User.user_id == target_user_id)
                 .values(
-                    rob_total_gain=User.rob_total_gain + amount,
+                    rob_total_gain=User.rob_total_gain + applied_amount,
                 )
             )
 
