@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
+import os
 import secrets
 import threading
 from dataclasses import dataclass
 
 from nonebot import get_driver
+from nonebot.log import logger
 
 from nextbot.data_dir import DATA_DIR
 
@@ -96,6 +98,21 @@ def _load_or_create_webui_auth() -> tuple[str, str, bool]:
             sort_keys=True,
         )
         _WEBUI_AUTH_FILE.write_text(payload_text + "\n", encoding="utf-8")
+
+    # H-A1：token 永久 + URL 通道暴露 = 文件泄漏 = 永久接管，必须严格保护文件权限
+    # 无论是新建还是已存在的文件 / 目录，都尽力收紧权限；Windows 上 chmod 行为有限但调用本身无害
+    try:
+        os.chmod(_WEBUI_AUTH_FILE, 0o600)
+    except OSError as exc:
+        logger.warning(
+            f"收紧 webui 认证文件权限失败：path={str(_WEBUI_AUTH_FILE)!r} reason={exc!r}"
+        )
+    try:
+        os.chmod(_WEBUI_AUTH_FILE.parent, 0o700)
+    except OSError as exc:
+        logger.warning(
+            f"收紧 webui 认证目录权限失败：path={str(_WEBUI_AUTH_FILE.parent)!r} reason={exc!r}"
+        )
 
     return token, session_secret, created
 

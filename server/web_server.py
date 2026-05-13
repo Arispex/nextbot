@@ -21,7 +21,11 @@ from server.routes.webui_users import router as webui_users_router
 from server.routes.webui_lottery import router as webui_lottery_router
 from server.routes.webui_shop import router as webui_shop_router
 from server.routes.webui_warehouse import router as webui_warehouse_router
-from server.routes.webui import add_webui_auth_middleware, router as webui_router
+from server.routes.webui import (
+    add_security_headers_middleware,
+    add_webui_auth_middleware,
+    router as webui_router,
+)
 from server.server_config import WebServerSettings, get_server_settings
 
 _server_started = False
@@ -362,6 +366,9 @@ def create_app(settings: WebServerSettings | None = None) -> FastAPI:
     )
     app.state.server_settings = runtime_settings
 
+    # M-A3：安全响应头先注册，使其在中间件 LIFO 链最外层执行，保证 auth 重定向
+    # 等所有 webui 响应都带上 CSP / X-Frame-Options 等头
+    add_security_headers_middleware(app)
     add_webui_auth_middleware(app, runtime_settings)
     app.include_router(render_router)
     app.include_router(webui_router)

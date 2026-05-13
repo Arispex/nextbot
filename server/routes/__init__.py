@@ -33,6 +33,7 @@ def api_error(
     code: str,
     message: str,
     details: list[dict[str, Any]] | None = None,
+    headers: dict[str, str] | None = None,
 ) -> JSONResponse:
     error: dict[str, Any] = {
         "code": code,
@@ -40,7 +41,11 @@ def api_error(
     }
     if details:
         error["details"] = details
-    return JSONResponse(status_code=status_code, content={"error": error})
+    return JSONResponse(
+        status_code=status_code,
+        content={"error": error},
+        headers=headers,
+    )
 
 
 async def read_json_object(request: Request) -> tuple[dict[str, Any] | None, JSONResponse | None]:
