@@ -962,3 +962,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 124: chore: gitignore SQLite WAL 副边文件
+
+**Date**: 2026-05-13
+**Task**: chore: gitignore SQLite WAL 副边文件
+**Branch**: `main`
+
+### Summary
+
+Round 7 启用 SQLite WAL 后，运行时产生 app.db-shm / app.db-wal 副边文件，.gitignore 只忽略 app.db 导致每次 git status 都显示 untracked。追加两行 (.gitignore:148-149)，git status 干净。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `bc396f4` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
