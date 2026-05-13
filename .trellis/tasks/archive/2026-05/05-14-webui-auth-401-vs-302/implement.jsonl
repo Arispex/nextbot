@@ -1,0 +1,4 @@
+{"file": ".trellis/tasks/05-14-webui-auth-401-vs-302/prd.md", "reason": "M-2 scope + 修复方案（后端 middleware split + 前端 401 跳转） + acceptance criteria"}
+{"file": ".trellis/tasks/archive/2026-05/05-13-webui-login-audit/research/verify-pass2.md", "reason": "login-audit prior art：cookie session store / brute-force / _client_ip helper / 安全响应头 middleware（不要破坏）"}
+{"file": ".trellis/tasks/archive/2026-05/05-13-webui-dashboard-audit/research/verify-pass2.md", "reason": "dashboard-audit Round 1 prior art：M-2 deferred 原因 + scope 定义"}
+{"file": ".trellis/spec/backend/index.md", "reason": "项目 backend spec 索引（api-design + 日志规范）"}

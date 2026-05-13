@@ -1,0 +1,4 @@
+{"file": ".trellis/tasks/05-14-webui-auth-401-vs-302/prd.md", "reason": "acceptance criteria"}
+{"file": ".trellis/tasks/archive/2026-05/05-13-webui-login-audit/research/verify-pass2.md", "reason": "login-audit 不被破坏校对"}
+{"file": ".trellis/tasks/archive/2026-05/05-13-webui-dashboard-audit/research/verify-pass2.md", "reason": "dashboard 不被破坏校对"}
+{"file": ".trellis/spec/backend/index.md", "reason": "spec 索引"}
