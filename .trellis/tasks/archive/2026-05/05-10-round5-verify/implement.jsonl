@@ -1,0 +1,4 @@
+{"file": ".trellis/tasks/05-10-round5-verify/prd.md", "reason": "4 模块修复清单"}
+{"file": ".trellis/tasks/05-10-round5-verify/research/round5-findings.md", "reason": "Round 5 原始发现（含 R5-2.x / R5-3.1 / R5-5.0 / R5-B.1 详细）"}
+{"file": ".trellis/tasks/05-10-round5-verify/research/main-agent-recheck.md", "reason": "主代理复查 + 严重度归并"}
+{"file": ".trellis/spec/backend/index.md", "reason": "项目后端规范索引"}
