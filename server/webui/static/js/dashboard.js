@@ -42,6 +42,8 @@
   let loading = false;
   let hasLoaded = false;
   let reloadButtonWasFocused = false;
+  // R2-B-4：模块级 AbortController，新 reload 时 abort 旧请求，避免切 tab / 关页面后 fetch 资源残留。
+  let currentReloadController = null;
 
   const formatNumber = (value) => {
     const parsed = Number(value);
@@ -155,6 +157,18 @@
       return;
     }
 
+    // R2-B-4：abort 任何尚未完成的旧请求
+    if (currentReloadController) {
+      try {
+        currentReloadController.abort();
+      } catch (_err) {
+        // ignore
+      }
+    }
+    const localController =
+      typeof AbortController !== "undefined" ? new AbortController() : null;
+    currentReloadController = localController;
+
     setLoadingState(true);
     setStatus("");
 
@@ -166,14 +180,25 @@
         },
         action: "加载",
         expectedStatus: 200,
+        signal: localController ? localController.signal : undefined,
       });
+
+      if (localController && localController.signal.aborted) {
+        return;
+      }
 
       renderMetrics(api.unwrapData(payload));
       hasLoaded = true;
       setStatus("");
     } catch (error) {
+      if (localController && localController.signal.aborted) {
+        return;
+      }
       setStatus(error instanceof Error ? error.message : "加载失败", "error");
     } finally {
+      if (currentReloadController === localController) {
+        currentReloadController = null;
+      }
       setLoadingState(false);
     }
   };

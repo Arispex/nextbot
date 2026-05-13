@@ -430,8 +430,9 @@ async def webui_servers_plugin_config_verify_nextbot(
         return api_error(status_code=404, code="not_found", message="服务器不存在")
 
     try:
+        # R2-T-3：后端 timeout 降到 10s，给前端 15s cap 留 5s 缓冲，避免 race。
         response = await request_server_api(
-            server, "/nextbot/config/verify-nextbot", timeout=15.0
+            server, "/nextbot/config/verify-nextbot", timeout=10.0
         )
     except TShockRequestError:
         logger.warning(

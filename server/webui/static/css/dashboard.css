@@ -121,13 +121,6 @@
   color: var(--text-muted);
 }
 
-.dashboard-section-desc {
-  margin: 4px 0 0;
-  font-size: 13px;
-  line-height: 1.55;
-  color: var(--text-muted);
-}
-
 /* ── Stats tiles (cream-card, Inter tnum numbers) ─────── */
 .stats-grid-list {
   display: grid;

@@ -871,7 +871,9 @@
       restartButton.disabled = true;
       setStatus("正在重启…", "info");
       try {
-        await api.apiRequest("/webui/api/restart", { method: "POST" });
+        // R2-T-6：restart 端点会触发进程 execv，HTTP 响应可能在 execv 前发出但 TCP 关闭时序不定，
+        // 给前端 60s timeout 余量，避免在罕见慢回包场景下被默认 15s cap 误判超时。
+        await api.apiRequest("/webui/api/restart", { method: "POST", timeoutMs: 60000 });
         setStatus("重启中，页面即将自动刷新…", "success");
         setTimeout(() => location.reload(), 3000);
       } catch (error) {

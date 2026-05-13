@@ -102,18 +102,72 @@
 
   const REQUEST_TIMEOUT_MS = 15000;
 
-  const buildTimeoutSignal = (userSignal) => {
-    if (typeof AbortSignal === "undefined" || typeof AbortSignal.timeout !== "function") {
-      return userSignal;
-    }
-    const timeoutSignal = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
-    if (!userSignal) {
+  // R2-T-4 / R2-T-5：老浏览器 fallback + AbortSignal.any 缺失时手动转发 userSignal。
+  // R2-T-6：支持 per-call timeoutMs override（如 restart 路径需要 60s）。
+  const buildTimeoutSignal = (userSignal, timeoutMs) => {
+    const timeoutValue = Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : REQUEST_TIMEOUT_MS;
+
+    // 优先用原生 AbortSignal.timeout（Chrome 103+/Firefox 100+/Safari 16.4+）
+    if (typeof AbortSignal !== "undefined" && typeof AbortSignal.timeout === "function") {
+      const timeoutSignal = AbortSignal.timeout(timeoutValue);
+      if (!userSignal) {
+        return timeoutSignal;
+      }
+      if (typeof AbortSignal.any === "function") {
+        return AbortSignal.any([userSignal, timeoutSignal]);
+      }
+      // AbortSignal.any 不可用：构造合并 controller 手动转发任一 abort
+      if (typeof AbortController !== "undefined") {
+        const merged = new AbortController();
+        const onTimeout = () => merged.abort(timeoutSignal.reason);
+        const onUserAbort = () => merged.abort(userSignal.reason);
+        if (timeoutSignal.aborted) {
+          merged.abort(timeoutSignal.reason);
+        } else {
+          timeoutSignal.addEventListener("abort", onTimeout, { once: true });
+        }
+        if (userSignal.aborted) {
+          merged.abort(userSignal.reason);
+        } else {
+          userSignal.addEventListener("abort", onUserAbort, { once: true });
+        }
+        return merged.signal;
+      }
+      // 极端兜底：放弃 userSignal，至少保住 timeout
       return timeoutSignal;
     }
-    if (typeof AbortSignal.any === "function") {
-      return AbortSignal.any([userSignal, timeoutSignal]);
+
+    // 老浏览器降级：用 AbortController + setTimeout 兜底
+    if (typeof AbortController !== "undefined") {
+      const controller = new AbortController();
+      const timer = setTimeout(() => {
+        try {
+          const TimeoutErrorCtor = typeof DOMException !== "undefined" ? DOMException : Error;
+          controller.abort(new TimeoutErrorCtor("Timeout", "TimeoutError"));
+        } catch (_err) {
+          controller.abort();
+        }
+      }, timeoutValue);
+      if (userSignal) {
+        if (userSignal.aborted) {
+          clearTimeout(timer);
+          controller.abort(userSignal.reason);
+        } else {
+          userSignal.addEventListener(
+            "abort",
+            () => {
+              clearTimeout(timer);
+              controller.abort(userSignal.reason);
+            },
+            { once: true },
+          );
+        }
+      }
+      return controller.signal;
     }
-    return timeoutSignal;
+
+    // 极端兜底：无 AbortController（理论不应出现）
+    return userSignal;
   };
 
   const isTimeoutError = (error) => {
@@ -132,6 +186,7 @@
       expectedStatus,
       expectedStatuses,
       signal,
+      timeoutMs,
     } = {}
   ) => {
     let response;
@@ -140,7 +195,7 @@
         method,
         headers,
         body,
-        signal: buildTimeoutSignal(signal),
+        signal: buildTimeoutSignal(signal, timeoutMs),
       });
     } catch (error) {
       if (isTimeoutError(error)) {

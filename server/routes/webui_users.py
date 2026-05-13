@@ -12,6 +12,7 @@ from sqlalchemy import func
 
 from nextbot.access_control import get_owner_ids
 from nextbot.db import Group, Server, User, get_session
+from nextbot.server_broadcast import BroadcastOutcome, broadcast
 from nextbot.time_utils import db_now_utc_naive, format_beijing_datetime
 from nextbot.tshock_api import (
     TShockRequestError,
@@ -202,45 +203,43 @@ async def _sync_user_whitelist(user: User) -> list[dict[str, Any]]:
     finally:
         session.close()
 
-    results: list[dict[str, Any]] = []
-    for server in servers:
+    # R2-T-1：原 `for server in servers:` 串行（N×5s timeout）改为 broadcast 并行，
+    # 避免前端 15s timeout 在 N≥3 服务器场景必触发的回归。
+    user_name = str(user.name)
+
+    async def _one(server: Server) -> BroadcastOutcome[str]:
         try:
             response = await request_server_api(
                 server,
                 "/v3/server/rawcmd",
-                params={"cmd": f"/bwl add {user.name}"},
+                params={"cmd": f"/bwl add {user_name}"},
             )
         except TShockRequestError:
-            results.append(
-                {
-                    "server_id": int(server.id),
-                    "server_name": str(server.name),
-                    "success": False,
-                    "reason": "无法连接服务器",
-                }
+            return BroadcastOutcome(
+                server=server, ok=False, detail="无法连接服务器", payload=None
             )
-            continue
 
         if is_success(response):
-            results.append(
-                {
-                    "server_id": int(server.id),
-                    "server_name": str(server.name),
-                    "success": True,
-                    "reason": "",
-                }
+            return BroadcastOutcome(
+                server=server, ok=True, detail="", payload=None
             )
-            continue
-
-        results.append(
-            {
-                "server_id": int(server.id),
-                "server_name": str(server.name),
-                "success": False,
-                "reason": get_error_reason(response),
-            }
+        return BroadcastOutcome(
+            server=server,
+            ok=False,
+            detail=get_error_reason(response),
+            payload=None,
         )
-    return results
+
+    outcomes = await broadcast(servers, _one)
+    return [
+        {
+            "server_id": int(o.server.id),
+            "server_name": str(o.server.name),
+            "success": o.ok,
+            "reason": "" if o.ok else o.detail,
+        }
+        for o in outcomes
+    ]
 
 
 def _validation_error(exc: UserPayloadValidationError) -> JSONResponse:
@@ -589,51 +588,58 @@ async def webui_users_ban(user_id: int, request: Request) -> JSONResponse:
     finally:
         session.close()
 
-    server_results: list[dict[str, Any]] = []
-    for server in servers:
+    # R2-T-2：原串行 `for server in servers:` 改为 broadcast 并行，
+    # 避免 N≥4 服务器场景下前端 15s timeout 必触发的回归。
+    async def _ban_one(server: Server) -> BroadcastOutcome[str]:
         try:
             check_response = await request_server_api(server, "/nextbot/blacklist")
         except TShockRequestError:
-            server_results.append({
-                "server_id": int(server.id), "server_name": str(server.name),
-                "success": False, "reason": "无法连接服务器",
-            })
-            continue
+            return BroadcastOutcome(
+                server=server, ok=False, detail="无法连接服务器", payload=None
+            )
 
         if is_success(check_response):
-            entries = check_response.payload.get("entries", [])
+            payload = check_response.payload if isinstance(check_response.payload, dict) else {}
+            entries = payload.get("entries", [])
             already_exists = any(
-                str(e.get("username", "")).lower() == user_name.lower()
-                for e in entries if isinstance(e, dict)
+                isinstance(e, dict)
+                and str(e.get("username", "")).lower() == user_name.lower()
+                for e in (entries if isinstance(entries, list) else [])
             )
             if already_exists:
-                server_results.append({
-                    "server_id": int(server.id), "server_name": str(server.name),
-                    "success": True, "reason": "已存在于黑名单中",
-                })
-                continue
+                return BroadcastOutcome(
+                    server=server, ok=True, detail="已存在于黑名单中", payload=None
+                )
 
         try:
             response = await request_server_api(
-                server, f"/nextbot/blacklist/add/{user_name}", params={"reason": reason},
+                server,
+                f"/nextbot/blacklist/add/{user_name}",
+                params={"reason": reason},
             )
         except TShockRequestError:
-            server_results.append({
-                "server_id": int(server.id), "server_name": str(server.name),
-                "success": False, "reason": "无法连接服务器",
-            })
-            continue
+            return BroadcastOutcome(
+                server=server, ok=False, detail="无法连接服务器", payload=None
+            )
 
         if is_success(response):
-            server_results.append({
-                "server_id": int(server.id), "server_name": str(server.name),
-                "success": True, "reason": "",
-            })
-        else:
-            server_results.append({
-                "server_id": int(server.id), "server_name": str(server.name),
-                "success": False, "reason": get_error_reason(response),
-            })
+            return BroadcastOutcome(
+                server=server, ok=True, detail="", payload=None
+            )
+        return BroadcastOutcome(
+            server=server, ok=False, detail=get_error_reason(response), payload=None
+        )
+
+    outcomes = await broadcast(servers, _ban_one)
+    server_results: list[dict[str, Any]] = [
+        {
+            "server_id": int(o.server.id),
+            "server_name": str(o.server.name),
+            "success": o.ok,
+            "reason": o.detail,
+        }
+        for o in outcomes
+    ]
 
     logger.info(f"WebUI 封禁用户黑名单同步完成：user_id={user_qq} name={user_name} server_count={len(servers)}")
 
@@ -679,49 +685,56 @@ async def webui_users_unban(user_id: int) -> JSONResponse:
     finally:
         session.close()
 
-    server_results: list[dict[str, Any]] = []
-    for server in servers:
+    # R2-T-2：原串行 `for server in servers:` 改为 broadcast 并行，
+    # 避免 N≥4 服务器场景下前端 15s timeout 必触发的回归。
+    async def _unban_one(server: Server) -> BroadcastOutcome[str]:
         try:
             check_response = await request_server_api(server, "/nextbot/blacklist")
         except TShockRequestError:
-            server_results.append({
-                "server_id": int(server.id), "server_name": str(server.name),
-                "success": False, "reason": "无法连接服务器",
-            })
-            continue
+            return BroadcastOutcome(
+                server=server, ok=False, detail="无法连接服务器", payload=None
+            )
 
         if is_success(check_response):
-            entries = check_response.payload.get("entries", [])
+            payload = check_response.payload if isinstance(check_response.payload, dict) else {}
+            entries = payload.get("entries", [])
             exists = any(
-                str(e.get("username", "")).lower() == user_name.lower()
-                for e in entries if isinstance(e, dict)
+                isinstance(e, dict)
+                and str(e.get("username", "")).lower() == user_name.lower()
+                for e in (entries if isinstance(entries, list) else [])
             )
             if not exists:
-                server_results.append({
-                    "server_id": int(server.id), "server_name": str(server.name),
-                    "success": True, "reason": "不在黑名单中",
-                })
-                continue
+                return BroadcastOutcome(
+                    server=server, ok=True, detail="不在黑名单中", payload=None
+                )
 
         try:
-            response = await request_server_api(server, f"/nextbot/blacklist/remove/{user_name}")
+            response = await request_server_api(
+                server, f"/nextbot/blacklist/remove/{user_name}"
+            )
         except TShockRequestError:
-            server_results.append({
-                "server_id": int(server.id), "server_name": str(server.name),
-                "success": False, "reason": "无法连接服务器",
-            })
-            continue
+            return BroadcastOutcome(
+                server=server, ok=False, detail="无法连接服务器", payload=None
+            )
 
         if is_success(response):
-            server_results.append({
-                "server_id": int(server.id), "server_name": str(server.name),
-                "success": True, "reason": "",
-            })
-        else:
-            server_results.append({
-                "server_id": int(server.id), "server_name": str(server.name),
-                "success": False, "reason": get_error_reason(response),
-            })
+            return BroadcastOutcome(
+                server=server, ok=True, detail="", payload=None
+            )
+        return BroadcastOutcome(
+            server=server, ok=False, detail=get_error_reason(response), payload=None
+        )
+
+    outcomes = await broadcast(servers, _unban_one)
+    server_results: list[dict[str, Any]] = [
+        {
+            "server_id": int(o.server.id),
+            "server_name": str(o.server.name),
+            "success": o.ok,
+            "reason": o.detail,
+        }
+        for o in outcomes
+    ]
 
     logger.info(f"WebUI 解封用户黑名单同步完成：user_id={user_qq} name={user_name} server_count={len(servers)}")
 
