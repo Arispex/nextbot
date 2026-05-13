@@ -1,0 +1,8 @@
+{"file": ".trellis/tasks/05-13-nextbot-infra-audit-r8/prd.md", "reason": "Round 8 scope + acceptance criteria + Round 7 修复清单"}
+{"file": ".trellis/tasks/05-13-nextbot-infra-audit-r8/research/r8-verify-pass2.md", "reason": "主代理二次审核终判：5 Medium + 11 Low 终判清单 + False positive 标注 + 优先级建议"}
+{"file": ".trellis/tasks/05-13-nextbot-infra-audit-r8/research/r8-db.md", "reason": "DB 桶 finding 详情：M-1/M-2/M-3 + Low R8-D-4/D-5（D-7/D-8 已下调 Low，仅修必要项）"}
+{"file": ".trellis/tasks/05-13-nextbot-infra-audit-r8/research/r8-permission.md", "reason": "权限桶 finding 详情：R8-P-1.14/1.15/1.16 + 跳过 P-1.17 race（同 Round 7 P-1.12）"}
+{"file": ".trellis/tasks/05-13-nextbot-infra-audit-r8/research/r8-io.md", "reason": "IO 桶 finding 详情：M-5 (B-1) + Low B-2/B-3/A-1.1"}
+{"file": ".trellis/tasks/05-13-nextbot-infra-audit-r8/research/r8-utils.md", "reason": "Utils 桶 finding 详情：M-4 (B-1) + Low B-2 throttle"}
+{"file": ".trellis/tasks/archive/2026-05/05-13-nextbot-infra-audit/research/verify-pass2.md", "reason": "Round 7 修复终判（prior art），避免 R8 实施时回退 Round 7 行为"}
+{"file": ".trellis/spec/backend/index.md", "reason": "项目 backend spec 索引"}

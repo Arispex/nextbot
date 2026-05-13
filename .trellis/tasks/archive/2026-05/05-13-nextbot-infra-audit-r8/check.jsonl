@@ -1,0 +1,8 @@
+{"file": ".trellis/tasks/05-13-nextbot-infra-audit-r8/prd.md", "reason": "Round 8 acceptance criteria"}
+{"file": ".trellis/tasks/05-13-nextbot-infra-audit-r8/research/r8-verify-pass2.md", "reason": "严重度终判清单，check 阶段逐条核对修复 + 未引入新问题"}
+{"file": ".trellis/tasks/05-13-nextbot-infra-audit-r8/research/r8-db.md", "reason": "DB 桶 finding 原始描述 + 修复方向"}
+{"file": ".trellis/tasks/05-13-nextbot-infra-audit-r8/research/r8-permission.md", "reason": "权限桶 finding 原始描述"}
+{"file": ".trellis/tasks/05-13-nextbot-infra-audit-r8/research/r8-io.md", "reason": "IO 桶 finding 原始描述"}
+{"file": ".trellis/tasks/05-13-nextbot-infra-audit-r8/research/r8-utils.md", "reason": "Utils 桶 finding 原始描述"}
+{"file": ".trellis/tasks/archive/2026-05/05-13-nextbot-infra-audit/research/verify-pass2.md", "reason": "Round 7 修复终判 prior art，check 时确认 Round 7 行为没被 R8 修复破坏"}
+{"file": ".trellis/spec/backend/index.md", "reason": "项目 backend spec 索引"}
