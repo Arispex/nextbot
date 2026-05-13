@@ -1,0 +1,5 @@
+{"file": ".trellis/tasks/05-13-nextbot-infra-audit-r9/prd.md", "reason": "Round 9 acceptance criteria"}
+{"file": ".trellis/tasks/05-13-nextbot-infra-audit-r9/research/r9-verify-pass2.md", "reason": "严重度终判清单，check 阶段确认 R9-D-4 修复完整 + 未引入新问题"}
+{"file": ".trellis/tasks/05-13-nextbot-infra-audit-r9/research/r9-db.md", "reason": "R9-D-4 原始 finding + 修复后行为对照"}
+{"file": ".trellis/tasks/archive/2026-05/05-13-nextbot-infra-audit-r8/research/r8-verify-pass2.md", "reason": "Round 8 M-3 prior art，校对未破坏原设计意图"}
+{"file": ".trellis/spec/backend/index.md", "reason": "项目 backend spec 索引"}

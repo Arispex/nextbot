@@ -1,0 +1,5 @@
+{"file": ".trellis/tasks/05-13-nextbot-infra-audit-r9/prd.md", "reason": "Round 9 scope + Round 7/8 修复清单 + 不重复挖项"}
+{"file": ".trellis/tasks/05-13-nextbot-infra-audit-r9/research/r9-verify-pass2.md", "reason": "主代理终判：仅 R9-D-4 一条 Medium 进入本轮实施，3 Low 全不修，2 false positive 已剔除"}
+{"file": ".trellis/tasks/05-13-nextbot-infra-audit-r9/research/r9-db.md", "reason": "R9-D-4 finding 详情 + 修复后行为建议（fetchone + busy 条件 warning）"}
+{"file": ".trellis/tasks/archive/2026-05/05-13-nextbot-infra-audit-r8/research/r8-verify-pass2.md", "reason": "Round 8 prior art：M-3 wal_checkpoint_truncate 设计意图（避免实施时回退 Round 8 行为）"}
+{"file": ".trellis/spec/backend/index.md", "reason": "项目 backend spec 索引（日志规范 / 错误处理）"}
