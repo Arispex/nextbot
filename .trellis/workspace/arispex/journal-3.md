@@ -995,3 +995,36 @@ Round 7 启用 SQLite WAL 后，运行时产生 app.db-shm / app.db-wal 副边�
 ### Next Steps
 
 - None - task complete
+
+
+## Session 125: WebUI 仪表盘 Round 2 — 跨模块 P2 回归 + dashboard 清理
+
+**Date**: 2026-05-14
+**Task**: WebUI 仪表盘 Round 2 — 跨模块 P2 回归 + dashboard 清理
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `c1a96ca` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
