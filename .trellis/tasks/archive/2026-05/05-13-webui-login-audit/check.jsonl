@@ -1,0 +1,5 @@
+{"file": ".trellis/tasks/05-13-webui-login-audit/prd.md", "reason": "审计 acceptance criteria"}
+{"file": ".trellis/tasks/05-13-webui-login-audit/research/verify-pass2.md", "reason": "终判清单，check 时核对：仅修 5 项 / 不动设计约束 / 不修 3 项排除项"}
+{"file": ".trellis/tasks/05-13-webui-login-audit/research/backend.md", "reason": "后端 finding 详情，校对修复完整性 + 未引入新问题"}
+{"file": ".trellis/tasks/05-13-webui-login-audit/research/frontend.md", "reason": "前端 finding"}
+{"file": ".trellis/spec/backend/index.md", "reason": "项目 backend spec 索引"}
