@@ -203,6 +203,21 @@ def add_webui_auth_middleware(app: FastAPI, settings: WebServerSettings) -> None
         )
         if path.startswith("/webui") and not is_webui_auth_free_path:
             if not _is_authenticated(request, settings):
+                # M-2：区分 API vs HTML 路径
+                # - /webui/api/* 返回 401 JSON，让 fetch / XHR 能正确解析
+                # - /webui/* HTML 页面继续 302 重定向到登录页
+                if path.startswith("/webui/api/"):
+                    client_ip = _client_ip(request)
+                    user_agent = request.headers.get("user-agent", "")[:200]
+                    logger.warning(
+                        f"拒绝未授权 API 访问：path={path} "
+                        f"client_ip={client_ip} user_agent={user_agent!r}"
+                    )
+                    return api_error(
+                        status_code=401,
+                        code="unauthorized",
+                        message="未登录",
+                    )
                 next_path = path
                 if request.url.query:
                     next_path = f"{next_path}?{request.url.query}"

@@ -215,6 +215,26 @@
     if (!response.ok) {
       const detailReason = buildDetailReason(details);
       const finalReason = detailReason || reason || buildFallbackReason(response.status);
+
+      // M-2: 401 unauthorized 时自动跳转登录页（保留 next 参数）
+      // 仅 code === "unauthorized" 才跳转，避免业务端点用 401 + 其他 code 时误跳
+      // 已在 /webui/login 页面时不跳转，避免重定向循环 + 让登录表单本身的 401（Token 错误）走原错误展示路径
+      if (
+        response.status === 401 &&
+        code === "unauthorized" &&
+        !window.location.pathname.startsWith("/webui/login")
+      ) {
+        const currentPath = window.location.pathname + window.location.search;
+        const loginUrl = "/webui/login?next=" + encodeURIComponent(currentPath);
+        window.location.assign(loginUrl);
+        // 仍抛错让 caller finally / catch 链能执行（实际页面已开始卸载）
+        throw new ApiRequestError("登录已过期，正在跳转登录页", {
+          status: 401,
+          code: "unauthorized",
+          reason: "登录已过期",
+        });
+      }
+
       throw new ApiRequestError(buildActionFailureMessage(action, finalReason), {
         status: response.status,
         code,
