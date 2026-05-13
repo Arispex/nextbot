@@ -1,0 +1,2 @@
+{"file": ".trellis/tasks/05-13-menu-screenshot-width/prd.md", "reason": "回滚 commit e7f9ae9 MI-3.1 viewport_width 改动的 scope + 根因 + 已有 OOM 防线说明"}
+{"file": ".trellis/spec/backend/index.md", "reason": "项目 backend spec 索引"}
