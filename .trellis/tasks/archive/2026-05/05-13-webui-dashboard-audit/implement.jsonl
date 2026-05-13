@@ -1,0 +1,6 @@
+{"file": ".trellis/tasks/05-13-webui-dashboard-audit/prd.md", "reason": "审计 scope + Round 7-9 + login-audit prior art"}
+{"file": ".trellis/tasks/05-13-webui-dashboard-audit/research/verify-pass2.md", "reason": "主代理终判 + 用户决策（D3/A1/5 P1 文案/P2 aria-busy/P2 timeout/P3 role=alert/P3 Sponsored/P3 focus 全修，排除 C3/M-1/M-2）"}
+{"file": ".trellis/tasks/05-13-webui-dashboard-audit/research/backend.md", "reason": "后端 finding 详情 + 修复方向"}
+{"file": ".trellis/tasks/05-13-webui-dashboard-audit/research/frontend.md", "reason": "前端 finding 详情 + 文案对比表"}
+{"file": ".trellis/tasks/archive/2026-05/05-13-webui-login-audit/research/verify-pass2.md", "reason": "login-audit prior art：_client_ip helper 已在 webui.py 落地，D3 可复用模式"}
+{"file": ".trellis/spec/backend/index.md", "reason": "项目 backend spec 索引（日志规范 + 文案规范）"}
