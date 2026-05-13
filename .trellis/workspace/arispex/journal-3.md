@@ -700,3 +700,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 116: Round 5 复查 + 4 项修复 (cap-stats 家族闭合)
+
+**Date**: 2026-05-13
+**Task**: Round 5 复查 + 4 项修复 (cap-stats 家族闭合)
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `565736e` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
