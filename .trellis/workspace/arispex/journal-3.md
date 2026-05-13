@@ -1059,3 +1059,36 @@ Round 7 启用 SQLite WAL 后，运行时产生 app.db-shm / app.db-wal 副边�
 ### Next Steps
 
 - None - task complete
+
+
+## Session 127: fix: WebUI auth middleware 区分 API 401 vs HTML 302
+
+**Date**: 2026-05-14
+**Task**: fix: WebUI auth middleware 区分 API 401 vs HTML 302
+**Branch**: `main`
+
+### Summary
+
+修复 dashboard-audit Round 1 M-2：未登录访问 /webui/api/* 端点统一被 302 到 HTML 登录页，fetch/XHR 解析失败。middleware 增加 path.startswith('/webui/api/') 分支返回 401 JSON（含 client_ip/UA 日志），HTML 路径保留 302+next。前端 api.js 401+code=unauthorized 自动 window.location.assign 跳转 + 防 login 页重定向循环（trellis-check 关键 self-fix）。影响所有 webui 模块。+35 行 / 2 文件。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `9df669b` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
