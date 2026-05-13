@@ -145,6 +145,8 @@ dmypy.json
 
 # Project local
 app.db
+app.db-shm
+app.db-wal
 .webui_auth.json
 .vscode/
 .DS_Store
