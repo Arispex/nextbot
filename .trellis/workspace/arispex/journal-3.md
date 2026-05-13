@@ -863,3 +863,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 121: fix: 菜单截图样式恢复为 1920 宽版
+
+**Date**: 2026-05-13
+**Task**: fix: 菜单截图样式恢复为 1920 宽版
+**Branch**: `main`
+
+### Summary
+
+回滚 commit e7f9ae9 的 MI-3.1 viewport_width=920 改动，nextbot/plugins/menu.py:40-46 恢复 1920px。MI-3.1 audit 的 OOM 担忧属于过度防御，下游 Semaphore(2) + 编码前后双 cap 已是充分防线；菜单 trusted 内部模板 1920×1280 PNG ~几百 KB << MAX_BASE64_BYTES=200MB。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `788f781` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
