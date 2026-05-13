@@ -1,0 +1,7 @@
+{"file": ".trellis/tasks/05-13-nextbot-infra-audit/prd.md", "reason": "审计 + 修复 acceptance criteria"}
+{"file": ".trellis/tasks/05-13-nextbot-infra-audit/research/verify-pass2.md", "reason": "严重度终判清单，check 阶段需逐条对应确认修了 + 未引入新问题"}
+{"file": ".trellis/tasks/05-13-nextbot-infra-audit/research/db.md", "reason": "DB 桶原始 finding 与建议 diff，check 时校对修复完整性"}
+{"file": ".trellis/tasks/05-13-nextbot-infra-audit/research/permission.md", "reason": "Permission 桶原始 finding"}
+{"file": ".trellis/tasks/05-13-nextbot-infra-audit/research/io.md", "reason": "IO 桶原始 finding"}
+{"file": ".trellis/tasks/05-13-nextbot-infra-audit/research/utils.md", "reason": "Utils 桶原始 finding"}
+{"file": ".trellis/spec/backend/index.md", "reason": "项目 backend spec 索引"}

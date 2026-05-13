@@ -1,0 +1,7 @@
+{"file": ".trellis/tasks/05-13-nextbot-infra-audit/prd.md", "reason": "审计范围、约束、不修复内容、acceptance criteria 单一真源"}
+{"file": ".trellis/tasks/05-13-nextbot-infra-audit/research/verify-pass2.md", "reason": "主代理二次审核后的严重度终判 + False positive 标注，实施方按此优先级修复，不要回到 db.md 之类的原始报告"}
+{"file": ".trellis/tasks/05-13-nextbot-infra-audit/research/db.md", "reason": "DB / 锁 / 持久化桶 raw findings，含每条 finding 的修复后行为 / 建议 diff"}
+{"file": ".trellis/tasks/05-13-nextbot-infra-audit/research/permission.md", "reason": "权限 / 审计 / 访问控制桶 raw findings + 修复方向"}
+{"file": ".trellis/tasks/05-13-nextbot-infra-audit/research/io.md", "reason": "HTTP / IO / 外部边界桶 raw findings + 修复方向"}
+{"file": ".trellis/tasks/05-13-nextbot-infra-audit/research/utils.md", "reason": "Utils / Misc / Entry 桶 raw findings + 修复方向"}
+{"file": ".trellis/spec/backend/index.md", "reason": "项目 backend spec 索引（Pre-Development Checklist 入口）"}
