@@ -1,0 +1,7 @@
+{"file": ".trellis/tasks/05-13-webui-dashboard-audit-r2/prd.md", "reason": "R2 scope + Round 1 已修清单 + 排除项"}
+{"file": ".trellis/tasks/05-13-webui-dashboard-audit-r2/research/verify-pass2.md", "reason": "主代理终判 + 用户决策：全修 3 P2 跨模块 + 3 P3 + 4 P4/P5 dashboard 内剩余 finding"}
+{"file": ".trellis/tasks/05-13-webui-dashboard-audit-r2/research/frontend.md", "reason": "前端 finding 详情：P2 timeout 跨模块回归 + 老浏览器降级 + AT 缺口 + CSS dead code"}
+{"file": ".trellis/tasks/05-13-webui-dashboard-audit-r2/research/backend.md", "reason": "后端复审 PASS（0 finding），用于校对 P2 跨模块修复不破坏 D3/A1"}
+{"file": ".trellis/tasks/archive/2026-05/05-13-webui-dashboard-audit/research/verify-pass2.md", "reason": "Round 1 prior art：P2 timeout 共享改造原始设计意图"}
+{"file": ".trellis/tasks/archive/2026-05/05-13-webui-login-audit/research/verify-pass2.md", "reason": "login-audit prior art：H-A3 rate limit / server_broadcast.broadcast 等可借鉴的并行模式"}
+{"file": ".trellis/spec/backend/index.md", "reason": "项目 backend spec 索引（日志格式 / 错误处理 / 文案规范）"}

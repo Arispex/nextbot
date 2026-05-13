@@ -1,0 +1,6 @@
+{"file": ".trellis/tasks/05-13-webui-dashboard-audit-r2/prd.md", "reason": "acceptance criteria"}
+{"file": ".trellis/tasks/05-13-webui-dashboard-audit-r2/research/verify-pass2.md", "reason": "终判清单：全修不动 C3/M-1/M-2 + R2 dashboard 内 0 finding 不修"}
+{"file": ".trellis/tasks/05-13-webui-dashboard-audit-r2/research/frontend.md", "reason": "前端 finding 原始描述"}
+{"file": ".trellis/tasks/05-13-webui-dashboard-audit-r2/research/backend.md", "reason": "后端 PASS 校对"}
+{"file": ".trellis/tasks/archive/2026-05/05-13-webui-dashboard-audit/research/verify-pass2.md", "reason": "Round 1 prior art"}
+{"file": ".trellis/spec/backend/index.md", "reason": "spec 索引"}
