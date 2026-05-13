@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-3.md`
-- **Total Sessions**: 117
+- **Total Sessions**: 118
 - **Last Active**: 2026-05-13
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-3.md` | ~766 | Active |
+| `journal-3.md` | ~799 | Active |
 | `journal-2.md` | ~1973 | Archived |
 | `journal-1.md` | ~1999 | Archived |
 <!-- @@@/auto:active-documents -->
@@ -31,6 +31,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 118 | 2026-05-13 | Round 7 — nextbot 基础设施层（plugins 外）首轮系统审计 + 全修 | `66b4d6c` | `main` |
 | 117 | 2026-05-13 | Round 6 复查 — plugins sweep 收敛 | - | `main` |
 | 116 | 2026-05-13 | Round 5 复查 + 4 项修复 (cap-stats 家族闭合) | `565736e` | `main` |
 | 115 | 2026-05-09 | Round 4 复查 + 5 项修复 | `a9ecbc1` | `main` |
