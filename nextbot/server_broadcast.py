@@ -49,19 +49,24 @@ async def broadcast(
     """
 
     async def _wrap(srv: Server) -> BroadcastOutcome[R]:
-        sem = semaphore_for(
-            _broadcast_semaphores, srv.id, max_concurrent=max_concurrent_per_server
-        )
-        async with sem:
-            try:
+        # Round 7 I-3.1：把 semaphore_for(...) 与 async with sem 都纳入 try/except，
+        # 防止 sem 获取 / acquire 阶段未来重构引入抛错时让 gather(return_exceptions=False)
+        # cancel 其它 task。当前 dict.get / Semaphore.acquire 不抛错，但 defense-in-depth。
+        try:
+            sem = semaphore_for(
+                _broadcast_semaphores,
+                srv.id,
+                max_concurrent=max_concurrent_per_server,
+            )
+            async with sem:
                 return await fn(srv)
-            except Exception as exc:  # noqa: BLE001
-                logger.warning(
-                    f"广播任务异常：server_id={srv.id} reason={exc!r}"
-                )
-                return BroadcastOutcome(
-                    server=srv, ok=False, detail=str(exc) or "异常", payload=None
-                )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                f"广播任务异常：server_id={srv.id} reason={exc!r}"
+            )
+            return BroadcastOutcome(
+                server=srv, ok=False, detail=str(exc) or "异常", payload=None
+            )
 
     results = await asyncio.gather(
         *(_wrap(s) for s in servers), return_exceptions=False

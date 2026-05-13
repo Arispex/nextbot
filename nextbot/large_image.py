@@ -37,3 +37,24 @@ def semaphore_for(
         sem = asyncio.Semaphore(max_concurrent)
         pool[server_id] = sem
     return sem
+
+
+def release_server_semaphores(
+    pool: dict[int, asyncio.Semaphore],
+    server_id: int,
+) -> None:
+    """webui / bot 删除 server 时调用，回收对应信号量条目。
+
+    Round 7 I-2.1：`semaphore_for` 创建的条目永不自动清理，长期运行 + 频繁
+    增删 server 会有持续小泄漏（单个 Semaphore 几百字节，量级可控但属于"只增
+    不减"的资源）。提供本 helper 让删除 server 的入口主动 cleanup。
+
+    调用方应在 DELETE server 后对自己维护的所有信号量池逐一调用本函数：
+
+        release_server_semaphores(_map_semaphores, server_id)
+        release_server_semaphores(_download_semaphores, server_id)
+        ...
+
+    集中接线由 webui 同步审计任务负责；本步骤只提供 helper，不改 caller。
+    """
+    pool.pop(server_id, None)

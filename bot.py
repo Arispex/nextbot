@@ -2,7 +2,7 @@ import json
 import nonebot
 from nonebot.adapters.console import Adapter as ConsoleAdapter
 from nonebot.adapters.onebot.v11 import Adapter as OneBotV11Adapter
-from nonebot.adapters import Event
+from nonebot.adapters import Bot, Event
 from nonebot.exception import IgnoredException
 from nonebot.log import logger
 from nonebot.message import event_preprocessor
@@ -78,8 +78,15 @@ def ensure_env_file() -> None:
     if ENV_PATH.exists():
         return
 
-    ENV_PATH.write_text(DEFAULT_ENV_CONTENT, encoding="utf-8")
-    logger.warning(".env 不存在，已创建默认 .env 文件：%s", ENV_PATH)
+    try:
+        ENV_PATH.write_text(DEFAULT_ENV_CONTENT, encoding="utf-8")
+    except OSError as exc:
+        logger.error(
+            f".env 创建失败（可能权限不足 / 磁盘满 / RO mount）：path={ENV_PATH} reason={exc}"
+        )
+        return
+
+    logger.warning(f".env 不存在，已创建默认 .env 文件：{ENV_PATH}")
 
 
 ensure_env_file()
@@ -98,7 +105,7 @@ else:
 
 
 @event_preprocessor
-async def _filter_allowed_messages(event: Event) -> None:
+async def _filter_allowed_messages(bot: Bot, event: Event) -> None:
     if event.get_type() != "message":
         return
 
@@ -122,7 +129,14 @@ async def _filter_allowed_messages(event: Event) -> None:
         )
         raise IgnoredException("group message blocked by group_id allowlist")
 
-    if event.get_user_id() == "user":
+    # MH-1 (U-1.2): console bypass 增加 adapter guard，防止第三方 adapter 推出
+    # user_id="user" 绕过 owner / group allowlist。
+    adapter_name = ""
+    try:
+        adapter_name = bot.adapter.get_name()
+    except Exception:  # noqa: BLE001
+        pass
+    if adapter_name == "Console" and event.get_user_id() == "user":
         return
 
     user_id = event.get_user_id()
@@ -149,6 +163,13 @@ async def _init_database() -> None:
     from nextbot.command_config import register_alias_matchers
     register_alias_matchers()
     start_web_server()
+
+
+@driver.on_shutdown
+async def _close_shared_http_client() -> None:
+    # I-1.3：释放 tshock_api 模块级 httpx.AsyncClient 连接池
+    from nextbot.tshock_api import close_shared_client
+    await close_shared_client()
 
 nonebot.load_plugins("nextbot/plugins")
 

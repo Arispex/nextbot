@@ -233,6 +233,20 @@ def require_permission(permission: str):
         from functools import wraps
 
         signature = inspect.signature(func)
+
+        # H-3 (P-1.1) import-time 校验：require_permission 依赖 wrapper 通过形参
+        # 名 "bot" / "event" 提取注入对象。若被装饰 handler 缺少这两个形参，
+        # wrapper 在 runtime 无法定位上下文，权限校验会被静默跳过。这里在
+        # plugin import 阶段 fail-hard，避免命名漂移导致 fail-open。
+        param_names = set(signature.parameters.keys())
+        missing = {"bot", "event"} - param_names
+        if missing:
+            raise RuntimeError(
+                f"@require_permission 装饰的 {func.__qualname__} "
+                f"必须有 bot 和 event 形参，否则权限校验会被静默跳过"
+                f"（缺少：{sorted(missing)}）"
+            )
+
         try:
             # include_extras=True preserves Annotated metadata (e.g. NoneBot2's
             # `T_State = Annotated[Dict, _STATE_FLAG]`) so downstream injectors
@@ -258,7 +272,14 @@ def require_permission(permission: str):
             bot = bound.arguments.get("bot")
             event = bound.arguments.get("event")
             if bot is None or event is None:
-                return await func(*args, **kwargs)
+                # H-3 (P-1.1) runtime fail-closed：import-time 校验已保证形参
+                # 存在，此处兜底未来动态 wrapper 链导致的运行期注入失败。
+                # 早期版本静默 `await func(...)`，存在权限旁路风险。
+                logger.warning(
+                    f"权限校验跳过（缺 bot/event）：func={func.__qualname__} "
+                    f"args_keys={list(bound.arguments.keys())}"
+                )
+                return
 
             user_id = event.get_user_id()
             if not has_permission(user_id, permission):

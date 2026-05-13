@@ -13,6 +13,7 @@ from nextbot.server_broadcast import BroadcastOutcome, aggregate, broadcast
 from nextbot.time_utils import db_now_utc_naive
 from nextbot.tshock_api import (
     TShockRequestError,
+    TShockResponse,
     get_error_reason,
     is_success,
     request_server_api,
@@ -134,6 +135,23 @@ def _load_servers() -> list[Server]:
         session.close()
 
 
+def _extract_blacklist_entries(check: TShockResponse) -> list[dict]:
+    """P-1.13：防御 TShock 返回 payload 形态异常。
+
+    原代码 `check.payload.get("entries", [])` 仅对单个 element 做
+    isinstance(dict) 过滤，但若 entries 本身是字符串（例如 server bug
+    返回 `{"entries": "string"}`），`for e in "string"` 会按字符迭代，下游
+    `e.get("username", "")` 抛 AttributeError，整个 _add_one / _remove_one
+    task 异常上抛至 broadcast 层。这里在 helper 内统一约束 entries 为
+    list[dict] 形态，保证调用方逻辑稳定。
+    """
+    payload = check.payload if isinstance(check.payload, dict) else {}
+    entries = payload.get("entries")
+    if not isinstance(entries, list):
+        return []
+    return [e for e in entries if isinstance(e, dict)]
+
+
 async def sync_user_to_blacklist(
     user_name: str, reason: str
 ) -> list[BroadcastOutcome[str]]:
@@ -160,11 +178,10 @@ async def sync_user_to_blacklist(
             )
 
         if is_success(check):
-            entries = check.payload.get("entries", [])
+            entries = _extract_blacklist_entries(check)
             already_exists = any(
                 str(e.get("username", "")).lower() == user_name.lower()
                 for e in entries
-                if isinstance(e, dict)
             )
             if already_exists:
                 return BroadcastOutcome(
@@ -230,11 +247,10 @@ async def sync_user_blacklist_remove(
             )
 
         if is_success(check):
-            entries = check.payload.get("entries", [])
+            entries = _extract_blacklist_entries(check)
             exists = any(
                 str(e.get("username", "")).lower() == user_name.lower()
                 for e in entries
-                if isinstance(e, dict)
             )
             if not exists:
                 return BroadcastOutcome(

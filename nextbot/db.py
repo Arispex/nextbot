@@ -394,9 +394,14 @@ def _ensure_engine_and_factory() -> tuple[Engine, sessionmaker[Session]]:
         # 串行执行。本项目本来也是单 SQLite writer 模型，影响可控。
         @event.listens_for(_engine, "connect")
         def _set_sqlite_pragma(dbapi_connection, _connection_record):  # noqa: ANN001
+            # SQLAlchemy 2.0 SQLite 官方 recipe：禁用 pysqlite 默认 deferred 自动 BEGIN，让 begin 事件里的 BEGIN IMMEDIATE 真正生效
+            dbapi_connection.isolation_level = None
             cursor = dbapi_connection.cursor()
             try:
                 cursor.execute("PRAGMA busy_timeout = 5000")
+                # WAL 让 reader 不阻塞 writer / writer 不阻塞 reader；synchronous=NORMAL 是 WAL 模式的常见组合，丢失最近一次 commit 概率极低但写性能显著好于 FULL
+                cursor.execute("PRAGMA journal_mode = WAL")
+                cursor.execute("PRAGMA synchronous = NORMAL")
             finally:
                 cursor.close()
 
@@ -410,6 +415,11 @@ def _ensure_engine_and_factory() -> tuple[Engine, sessionmaker[Session]]:
             # SQLAlchemy 默认 BEGIN DEFERRED；显式 BEGIN IMMEDIATE 让
             # SELECT 也持写锁，将后续 commit 排队，消除 read-modify-write
             # race 的窗口。
+            #
+            # 调用方禁止在 session 生命周期内 await 非 DB I/O（如 bot.send）；
+            # 该约束已在 plugin 层 6 轮 sweep 闭环，未来回归需在此处守门 —
+            # BEGIN IMMEDIATE 让全 DB 写入串行在最慢的 await 上，违反约束会
+            # 让其他命令在 busy_timeout=5000ms 内排队，超时即 OperationalError。
             connection.exec_driver_sql("BEGIN IMMEDIATE")
 
         _session_factory = sessionmaker(bind=_engine, autoflush=False, autocommit=False)
@@ -456,9 +466,18 @@ def execute_rowcount(session: Session, stmt: Executable) -> int:
     但实际 INSERT/UPDATE/DELETE 返回 CursorResult，这里通过 getattr
     让 pyright 接受 .rowcount 属性，同时对非 CursorResult（如 SELECT）
     回退为 0，避免崩溃。
+
+    D-1.7：非 CursorResult 时 logger.warning 留 trace，避免开发者把 SELECT
+    误传进来后看到 rowcount=0 当作"未匹配到行"而走入 silent failure 分支。
     """
     result = session.execute(stmt)
-    return int(getattr(result, "rowcount", 0))
+    rowcount = getattr(result, "rowcount", None)
+    if rowcount is None:
+        logger.warning(
+            f"execute_rowcount 收到非 CursorResult（可能误传 SELECT）：stmt={type(stmt).__name__}"
+        )
+        return 0
+    return int(rowcount)
 
 
 def ensure_default_groups() -> None:
@@ -481,7 +500,14 @@ def ensure_default_groups() -> None:
                     inherits="guest",
                 )
             )
-        session.commit()
+        # D-1.6：显式 try/except: rollback。session.close() 隐式 rollback 可兜底，
+        # 但显式 rollback 让"commit 失败 → 回滚"语义更清晰，并避免该 connection
+        # 在 pool 内多停留一个 close 周期才被回收 / 重置事务状态。
+        try:
+            session.commit()
+        except Exception:
+            session.rollback()
+            raise
     finally:
         session.close()
 
@@ -501,7 +527,12 @@ def ensure_default_stats() -> None:
                     stat_value=0,
                 )
             )
-        session.commit()
+        # D-1.6：显式 try/except: rollback。
+        try:
+            session.commit()
+        except Exception:
+            session.rollback()
+            raise
     finally:
         session.close()
 
@@ -510,56 +541,42 @@ def ensure_command_config_schema() -> None:
     if not DB_PATH.exists():
         return
 
-    conn = sqlite3.connect(str(DB_PATH))
-    try:
-        rows = conn.execute('PRAGMA table_info("command_config")').fetchall()
+    engine = get_engine()
+    with engine.begin() as conn:
+        rows = conn.execute(sa_text('PRAGMA table_info("command_config")')).fetchall()
         if not rows:
             return
 
         columns = {str(row[1]) for row in rows}
-        changed = False
         if "usage" not in columns:
-            conn.execute(
+            conn.execute(sa_text(
                 'ALTER TABLE "command_config" ADD COLUMN "usage" TEXT NOT NULL DEFAULT ""'
-            )
-            changed = True
+            ))
         if "aliases_json" not in columns:
-            conn.execute(
+            conn.execute(sa_text(
                 'ALTER TABLE "command_config" ADD COLUMN "aliases_json" TEXT NOT NULL DEFAULT \'[]\''
-            )
-            changed = True
+            ))
         if "category" not in columns:
-            conn.execute(
+            conn.execute(sa_text(
                 'ALTER TABLE "command_config" ADD COLUMN "category" TEXT NOT NULL DEFAULT \'\''
-            )
-            changed = True
-        if changed:
-            conn.commit()
-    finally:
-        conn.close()
+            ))
 
 
 def ensure_warehouse_schema() -> None:
     if not DB_PATH.exists():
         return
 
-    conn = sqlite3.connect(str(DB_PATH))
-    try:
-        rows = conn.execute('PRAGMA table_info("warehouse_item")').fetchall()
+    engine = get_engine()
+    with engine.begin() as conn:
+        rows = conn.execute(sa_text('PRAGMA table_info("warehouse_item")')).fetchall()
         if not rows:
             return
 
         columns = {str(row[1]) for row in rows}
-        changed = False
         if "value" not in columns:
-            conn.execute(
+            conn.execute(sa_text(
                 'ALTER TABLE "warehouse_item" ADD COLUMN "value" INTEGER NOT NULL DEFAULT 0'
-            )
-            changed = True
-        if changed:
-            conn.commit()
-    finally:
-        conn.close()
+            ))
 
 
 def ensure_lottery_schema() -> None:
@@ -578,35 +595,28 @@ def ensure_shop_schema() -> None:
     # patches existing tables when new columns are added.
     if not DB_PATH.exists():
         return
-    conn = sqlite3.connect(str(DB_PATH))
-    try:
-        rows = conn.execute('PRAGMA table_info("shop_item")').fetchall()
+    engine = get_engine()
+    with engine.begin() as conn:
+        rows = conn.execute(sa_text('PRAGMA table_info("shop_item")')).fetchall()
         if not rows:
             return
         columns = {str(row[1]) for row in rows}
-        changed = False
         if "show_command" not in columns:
-            conn.execute(
+            conn.execute(sa_text(
                 'ALTER TABLE "shop_item" ADD COLUMN "show_command" BOOLEAN NOT NULL DEFAULT 0'
-            )
-            changed = True
+            ))
         if "require_online" not in columns:
-            conn.execute(
+            conn.execute(sa_text(
                 'ALTER TABLE "shop_item" ADD COLUMN "require_online" BOOLEAN NOT NULL DEFAULT 0'
-            )
-            changed = True
+            ))
         if "actual_value" not in columns:
-            conn.execute('ALTER TABLE "shop_item" ADD COLUMN "actual_value" INTEGER')
-            changed = True
+            conn.execute(sa_text(
+                'ALTER TABLE "shop_item" ADD COLUMN "actual_value" INTEGER'
+            ))
         if "is_mystery" not in columns:
-            conn.execute(
+            conn.execute(sa_text(
                 'ALTER TABLE "shop_item" ADD COLUMN "is_mystery" BOOLEAN NOT NULL DEFAULT 0'
-            )
-            changed = True
-        if changed:
-            conn.commit()
-    finally:
-        conn.close()
+            ))
 
 
 def ensure_user_signin_schema() -> None:
@@ -629,8 +639,8 @@ def ensure_user_signin_schema() -> None:
             logger.info("已清理废弃字段 user.signed_today")
         except Exception as exc:  # noqa: BLE001
             logger.warning(
-                f"清理 user.signed_today 字段失败（可能 SQLite 版本 < 3.35），"
-                f"保留列不阻断启动: {exc}"
+                f"清理 user.signed_today 字段失败（SQLite 版本={sqlite3.sqlite_version}，"
+                f"需要 ≥ 3.35），保留列不阻断启动: {exc}"
             )
 
 
@@ -638,9 +648,9 @@ def ensure_sign_record_schema() -> None:
     if not DB_PATH.exists():
         return
 
-    conn = sqlite3.connect(str(DB_PATH))
-    try:
-        conn.execute(
+    engine = get_engine()
+    with engine.begin() as conn:
+        conn.execute(sa_text(
             """
             CREATE TABLE IF NOT EXISTS "user_sign_record" (
                 "id" INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -650,10 +660,7 @@ def ensure_sign_record_schema() -> None:
                 "created_at" DATETIME NOT NULL
             )
             """
-        )
-        conn.commit()
-    finally:
-        conn.close()
+        ))
 
 
 def ensure_sign_record_unique_schema() -> None:
@@ -684,119 +691,85 @@ def ensure_sign_record_unique_schema() -> None:
                 pass
 
 
-def ensure_user_ban_schema() -> None:
+# D-1.4：合并 user 表的多个 ensure_*_schema 为单次 PRAGMA + 多列条件 ALTER。
+# 旧的 ensure_user_ban_schema / ensure_user_rob_schema / ensure_user_guess_schema /
+# ensure_user_dice_schema 现在都是 _ensure_user_columns() 的 wrapper，保留旧函数名
+# 维持 import 路径向后兼容；启动时只触发一次 PRAGMA + 一个事务。
+_USER_COLUMN_MIGRATIONS: tuple[tuple[str, str], ...] = (
+    # ban 相关
+    ("is_banned", 'ALTER TABLE "user" ADD COLUMN "is_banned" INTEGER NOT NULL DEFAULT 0'),
+    ("banned_at", 'ALTER TABLE "user" ADD COLUMN "banned_at" DATETIME'),
+    ("ban_reason", 'ALTER TABLE "user" ADD COLUMN "ban_reason" TEXT NOT NULL DEFAULT ""'),
+    # rob 相关
+    ("rob_total_count", 'ALTER TABLE "user" ADD COLUMN "rob_total_count" INTEGER NOT NULL DEFAULT 0'),
+    ("rob_success_count", 'ALTER TABLE "user" ADD COLUMN "rob_success_count" INTEGER NOT NULL DEFAULT 0'),
+    ("rob_total_gain", 'ALTER TABLE "user" ADD COLUMN "rob_total_gain" INTEGER NOT NULL DEFAULT 0'),
+    ("rob_total_loss", 'ALTER TABLE "user" ADD COLUMN "rob_total_loss" INTEGER NOT NULL DEFAULT 0'),
+    ("rob_total_penalty", 'ALTER TABLE "user" ADD COLUMN "rob_total_penalty" INTEGER NOT NULL DEFAULT 0'),
+    ("last_rob_time", 'ALTER TABLE "user" ADD COLUMN "last_rob_time" DATETIME'),
+    ("rob_protected", 'ALTER TABLE "user" ADD COLUMN "rob_protected" INTEGER NOT NULL DEFAULT 0'),
+    # guess 相关
+    ("guess_total_count", 'ALTER TABLE "user" ADD COLUMN "guess_total_count" INTEGER NOT NULL DEFAULT 0'),
+    ("guess_win_count", 'ALTER TABLE "user" ADD COLUMN "guess_win_count" INTEGER NOT NULL DEFAULT 0'),
+    ("guess_total_gain", 'ALTER TABLE "user" ADD COLUMN "guess_total_gain" INTEGER NOT NULL DEFAULT 0'),
+    ("guess_total_loss", 'ALTER TABLE "user" ADD COLUMN "guess_total_loss" INTEGER NOT NULL DEFAULT 0'),
+    # dice 相关
+    ("dice_total_count", 'ALTER TABLE "user" ADD COLUMN "dice_total_count" INTEGER NOT NULL DEFAULT 0'),
+    ("dice_win_count", 'ALTER TABLE "user" ADD COLUMN "dice_win_count" INTEGER NOT NULL DEFAULT 0'),
+    ("dice_total_gain", 'ALTER TABLE "user" ADD COLUMN "dice_total_gain" INTEGER NOT NULL DEFAULT 0'),
+    ("dice_total_loss", 'ALTER TABLE "user" ADD COLUMN "dice_total_loss" INTEGER NOT NULL DEFAULT 0'),
+)
+
+_user_columns_ensured: bool = False
+
+
+def _ensure_user_columns() -> None:
+    """单次 PRAGMA + 多列条件 ALTER，合并 ban / rob / guess / dice 四个 user 列迁移。
+
+    D-1.4：旧实现每个 ensure_user_*_schema 各自开 raw sqlite3 连接 + 各自
+    PRAGMA table_info("user")。同一启动周期重复 4 次。改造后单次 PRAGMA +
+    单事务多列 ALTER，逻辑等价、性能改善。
+
+    幂等：首次调用执行完后置 _user_columns_ensured=True，后续 wrapper 调用 no-op。
+    """
+    global _user_columns_ensured
+    if _user_columns_ensured:
+        return
     if not DB_PATH.exists():
         return
 
-    conn = sqlite3.connect(str(DB_PATH))
-    try:
-        rows = conn.execute('PRAGMA table_info("user")').fetchall()
+    engine = get_engine()
+    with engine.begin() as conn:
+        rows = conn.execute(sa_text('PRAGMA table_info("user")')).fetchall()
         if not rows:
             return
 
         columns = {str(row[1]) for row in rows}
-        changed = False
-        if "is_banned" not in columns:
-            conn.execute(
-                'ALTER TABLE "user" ADD COLUMN "is_banned" INTEGER NOT NULL DEFAULT 0'
-            )
-            changed = True
-        if "banned_at" not in columns:
-            conn.execute(
-                'ALTER TABLE "user" ADD COLUMN "banned_at" DATETIME'
-            )
-            changed = True
-        if "ban_reason" not in columns:
-            conn.execute(
-                'ALTER TABLE "user" ADD COLUMN "ban_reason" TEXT NOT NULL DEFAULT ""'
-            )
-            changed = True
-        if changed:
-            conn.commit()
-    finally:
-        conn.close()
+        for col_name, alter_sql in _USER_COLUMN_MIGRATIONS:
+            if col_name not in columns:
+                conn.execute(sa_text(alter_sql))
+
+    _user_columns_ensured = True
+
+
+def ensure_user_ban_schema() -> None:
+    """Wrapper：保留 import 路径向后兼容，底层走合并迁移。"""
+    _ensure_user_columns()
 
 
 def ensure_user_rob_schema() -> None:
-    if not DB_PATH.exists():
-        return
-
-    conn = sqlite3.connect(str(DB_PATH))
-    try:
-        rows = conn.execute('PRAGMA table_info("user")').fetchall()
-        if not rows:
-            return
-
-        columns = {str(row[1]) for row in rows}
-        changed = False
-        for col in ("rob_total_count", "rob_success_count", "rob_total_gain", "rob_total_loss", "rob_total_penalty"):
-            if col not in columns:
-                conn.execute(
-                    f'ALTER TABLE "user" ADD COLUMN "{col}" INTEGER NOT NULL DEFAULT 0'
-                )
-                changed = True
-        if "last_rob_time" not in columns:
-            conn.execute(
-                'ALTER TABLE "user" ADD COLUMN "last_rob_time" DATETIME'
-            )
-            changed = True
-        if "rob_protected" not in columns:
-            conn.execute(
-                'ALTER TABLE "user" ADD COLUMN "rob_protected" INTEGER NOT NULL DEFAULT 0'
-            )
-            changed = True
-        if changed:
-            conn.commit()
-    finally:
-        conn.close()
+    """Wrapper：保留 import 路径向后兼容，底层走合并迁移。"""
+    _ensure_user_columns()
 
 
 def ensure_user_guess_schema() -> None:
-    if not DB_PATH.exists():
-        return
-
-    conn = sqlite3.connect(str(DB_PATH))
-    try:
-        rows = conn.execute('PRAGMA table_info("user")').fetchall()
-        if not rows:
-            return
-
-        columns = {str(row[1]) for row in rows}
-        changed = False
-        for col in ("guess_total_count", "guess_win_count", "guess_total_gain", "guess_total_loss"):
-            if col not in columns:
-                conn.execute(
-                    f'ALTER TABLE "user" ADD COLUMN "{col}" INTEGER NOT NULL DEFAULT 0'
-                )
-                changed = True
-        if changed:
-            conn.commit()
-    finally:
-        conn.close()
+    """Wrapper：保留 import 路径向后兼容，底层走合并迁移。"""
+    _ensure_user_columns()
 
 
 def ensure_user_dice_schema() -> None:
-    if not DB_PATH.exists():
-        return
-
-    conn = sqlite3.connect(str(DB_PATH))
-    try:
-        rows = conn.execute('PRAGMA table_info("user")').fetchall()
-        if not rows:
-            return
-
-        columns = {str(row[1]) for row in rows}
-        changed = False
-        for col in ("dice_total_count", "dice_win_count", "dice_total_gain", "dice_total_loss"):
-            if col not in columns:
-                conn.execute(
-                    f'ALTER TABLE "user" ADD COLUMN "{col}" INTEGER NOT NULL DEFAULT 0'
-                )
-                changed = True
-        if changed:
-            conn.commit()
-    finally:
-        conn.close()
+    """Wrapper：保留 import 路径向后兼容，底层走合并迁移。"""
+    _ensure_user_columns()
 
 
 def ensure_user_name_unique_schema() -> None:
@@ -895,9 +868,9 @@ def ensure_red_packet_schema() -> None:
     if not DB_PATH.exists():
         return
 
-    conn = sqlite3.connect(str(DB_PATH))
-    try:
-        conn.execute(
+    engine = get_engine()
+    with engine.begin() as conn:
+        conn.execute(sa_text(
             """
             CREATE TABLE IF NOT EXISTS "red_packet" (
                 "id" INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -913,8 +886,8 @@ def ensure_red_packet_schema() -> None:
                 "closed_at" DATETIME
             )
             """
-        )
-        conn.execute(
+        ))
+        conn.execute(sa_text(
             """
             CREATE TABLE IF NOT EXISTS "red_packet_claim" (
                 "id" INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -925,7 +898,4 @@ def ensure_red_packet_schema() -> None:
                 CONSTRAINT "uq_redpacket_claimer" UNIQUE ("red_packet_id", "claimer_user_id")
             )
             """
-        )
-        conn.commit()
-    finally:
-        conn.close()
+        ))

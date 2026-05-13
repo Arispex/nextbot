@@ -470,7 +470,11 @@ def _get_runtime_state(command_key: str) -> RuntimeCommandState:
     try:
         _ensure_runtime_cache_loaded()
     except Exception:
-        pass
+        # U-2.4：runtime cache 加载失败时显式记录，避免 DB 不可用时
+        # disable 操作完全失效却无任何告警的 silent failure。
+        logger.exception(
+            f"运行时命令缓存加载失败：command_key={command_key}（fallback 到 default_enabled）"
+        )
     with _registry_lock:
         runtime = _runtime_cache.get(command_key)
     if runtime is not None:
@@ -808,6 +812,10 @@ def update_command_aliases(
         ).all()
         conflict_names: set[str] = set()
         for r in all_rows:
+            # MH-2 (U-2.2)：alias 也要避开他人的 command_key，否则启动期
+            # register_alias_matchers 会同时绑定 plugin A 的 primary matcher
+            # 和 plugin B 的 alias matcher，导致 /bag 之类命令双重处理。
+            conflict_names.add(r.command_key)
             conflict_names.add(r.display_name)
             try:
                 existing_aliases = json.loads(r.aliases_json or "[]")
@@ -923,6 +931,15 @@ def command_control(
             _registry[normalized_key] = registered
 
         signature = inspect.signature(func)
+        # H-3 part 2 (U-2.12)：import-time 校验 handler 必须含 bot 和 event 形参，
+        # 否则 wrapper 的 ban check / disabled reply 会因 _resolve_bot_event 返回
+        # (None, None) 而被静默跳过，等同于权限层 fail-open。与 permissions.py
+        # 的 require_permission 装饰器形参校验对称。
+        param_names = set(signature.parameters.keys())
+        if "bot" not in param_names or "event" not in param_names:
+            raise RuntimeError(
+                f"@command_control 装饰的 {func.__qualname__} 必须有 bot 和 event 形参"
+            )
         try:
             # include_extras=True preserves Annotated metadata (e.g. NoneBot2's
             # `T_State = Annotated[Dict, _STATE_FLAG]`) so downstream injectors
@@ -960,12 +977,27 @@ def command_control(
 
                 bot, event = _resolve_bot_event(resolved_signature, args, kwargs)
                 if bot is not None and event is not None:
-                    ban_msg = _check_user_banned(event.get_user_id())
+                    try:
+                        ban_msg = _check_user_banned(event.get_user_id())
+                    except Exception:  # noqa: BLE001
+                        # U-2.3：DB 故障（busy_timeout 超时 / OperationalError）时
+                        # fail-soft 放行命令执行，避免高峰期随机 traceback；
+                        # 与 increment_command_execute_total 的 fail-soft 策略对齐。
+                        logger.exception(
+                            f"封禁检查失败（DB 异常）：command_key={normalized_key}"
+                        )
+                        ban_msg = ""
                     if ban_msg:
                         # PC-4.1：使用 safe_at_segment_or_empty，非数字 user_id 退化为空文本段
                         at = safe_at_segment_or_empty(event.get_user_id())
                         await bot.send(event, at + "\n" + ban_msg)
                         return None
+                else:
+                    # H-3 part 2 (U-2.12)：import-time 已强校验 bot / event 形参，
+                    # 运行期理论不可达；保留 warning 留 trace，防止依赖注入回归。
+                    logger.warning(
+                        f"ban 检查跳过（缺 bot/event）：command_key={normalized_key}"
+                    )
 
                 return await func(*args, **kwargs)
             except CommandUsageError:
