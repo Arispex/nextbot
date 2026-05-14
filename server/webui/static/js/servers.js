@@ -181,8 +181,19 @@
   let currentPerPage = Number(perPageSelect.value || 10);
   let currentMeta = { total: 0, page: 1, per_page: currentPerPage, total_pages: 0 };
 
-  const visibleTokenIds = new Set();
+  // H-1：visibleTokenIds 从 Set 升级为 Map<server_id, fullToken>
+  // - 表格默认仅展示 mask token；点眼睛图标按需调用 GET /token 端点临时取明文
+  // - 10s 后自动隐藏，避免 DOM 长期持有明文
+  // - renderTable 时若 Map 内有 server_id 则展示对应明文，否则展示 mask
+  const visibleTokenIds = new Map();
+  const revealTimers = new Map();
+  const REVEAL_TIMEOUT_MS = 10_000;
   const testResultMap = new Map();
+
+  // B-1 / B-2：搜索 + 翻页 debounce / abort 状态
+  let searchDebounceTimer = null;
+  let searchAbortController = null;
+  const SEARCH_DEBOUNCE_MS = 300;
 
   const setStatus = (message, type = "") => {
     const text = String(message || "").trim();
@@ -302,12 +313,56 @@
     return badge;
   };
 
+  // H-1：按需调用 reveal-token 端点临时获取明文，10s 后自动隐藏
+  const clearRevealTimer = (serverId) => {
+    const timerId = revealTimers.get(serverId);
+    if (timerId) {
+      clearTimeout(timerId);
+      revealTimers.delete(serverId);
+    }
+  };
+
+  const hideRevealedToken = (serverId) => {
+    visibleTokenIds.delete(serverId);
+    clearRevealTimer(serverId);
+    renderTable();
+  };
+
+  const toggleRevealToken = async (serverId) => {
+    if (visibleTokenIds.has(serverId)) {
+      hideRevealedToken(serverId);
+      return;
+    }
+    try {
+      const payload = await api.apiRequest(`/webui/api/servers/${serverId}/token`, {
+        method: "GET",
+        headers: { Accept: "application/json" },
+        action: "显示",
+        expectedStatus: 200,
+      });
+      const data = api.unwrapData(payload);
+      const fullToken = String(data?.token || "");
+      if (!fullToken) {
+        setStatus("显示失败，未返回 Token", "error");
+        return;
+      }
+      visibleTokenIds.set(serverId, fullToken);
+      renderTable();
+      const timerId = setTimeout(() => hideRevealedToken(serverId), REVEAL_TIMEOUT_MS);
+      revealTimers.set(serverId, timerId);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "显示失败";
+      setStatus(message, "error");
+    }
+  };
+
   const renderTable = () => {
     tableBodyNode.innerHTML = "";
     loadingNode.classList.add("hidden");
 
     if (!serverStates.length) {
-      emptyNode.textContent = currentMeta.total > 0 ? "当前页暂无数据。" : "暂无服务器配置。";
+      // H-4：空态文案统一去尾句号，并与 HTML 初始态保持一致
+      emptyNode.textContent = currentMeta.total > 0 ? "当前页暂无数据" : "暂无服务器配置";
       emptyNode.classList.remove("hidden");
       tableWrapNode.classList.add("hidden");
       updatePagination();
@@ -350,21 +405,19 @@
       tokenWrap.className = "token-wrap";
       const tokenText = document.createElement("span");
       tokenText.className = "token-text";
-      const tokenVisible = visibleTokenIds.has(server.id);
-      tokenText.textContent = tokenVisible ? server.token : formatMaskedToken(server.token);
-      tokenText.title = tokenVisible ? server.token : "已隐藏";
+      // H-1：默认仅展示 server.token（来自后端的 mask 串如 "****abcd"）；
+      // 仅在 visibleTokenIds Map 内有该 server_id 时展示完整明文。
+      const fullToken = visibleTokenIds.get(server.id);
+      const tokenVisible = typeof fullToken === "string" && fullToken.length > 0;
+      tokenText.textContent = tokenVisible ? fullToken : (server.token || formatMaskedToken(""));
+      tokenText.title = tokenVisible ? fullToken : "点击眼睛图标查看完整 Token";
 
       const tokenToggleButton = document.createElement("button");
       tokenToggleButton.type = "button";
       tokenToggleButton.className = "btn token-toggle-btn";
       setTokenButtonIcon(tokenToggleButton, tokenVisible);
       tokenToggleButton.addEventListener("click", () => {
-        if (visibleTokenIds.has(server.id)) {
-          visibleTokenIds.delete(server.id);
-        } else {
-          visibleTokenIds.add(server.id);
-        }
-        renderTable();
+        void toggleRevealToken(server.id);
       });
 
       tokenWrap.appendChild(tokenText);
@@ -436,7 +489,7 @@
     updatePagination();
   };
 
-  const loadServers = async ({ clearStatus = true } = {}) => {
+  const loadServers = async ({ clearStatus = true, signal } = {}) => {
     if (clearStatus) {
       setStatus("");
     }
@@ -453,12 +506,14 @@
           headers: { Accept: "application/json" },
           action: "加载",
           expectedStatus: 200,
+          signal,  // B-1 / B-2：透传 abort signal
         }
       );
       const servers = api.unwrapData(payload);
       const meta = api.unwrapMeta(payload);
       if (!Array.isArray(servers)) {
-        throw new Error("加载失败，返回数据格式错误");
+        // C-2-E：开发者视角文案 → 用户视角
+        throw new Error("加载失败，响应数据格式异常");
       }
 
       currentMeta = {
@@ -471,9 +526,11 @@
       currentPerPage = currentMeta.per_page;
       serverStates = servers.map(normalizeServer);
       const validIds = new Set(serverStates.map((item) => item.id));
-      for (const key of [...visibleTokenIds]) {
+      for (const key of [...visibleTokenIds.keys()]) {
         if (!validIds.has(key)) {
+          // H-1：清理已不在当前页的 reveal 状态 + 定时器（这里不重渲，下一行 renderTable 统一渲）
           visibleTokenIds.delete(key);
+          clearRevealTimer(key);
         }
       }
       for (const key of [...testResultMap.keys()]) {
@@ -484,15 +541,42 @@
       renderTable();
       return true;
     } catch (error) {
+      // B-1：abort 错误是用户主动操作（搜索 / 翻页变更），不报错
+      // api.js 把底层 AbortError 包成 ApiRequestError，故通过 signal.aborted 判断
+      if (signal && signal.aborted) {
+        return false;
+      }
+      if (error && (error.name === "AbortError" || error.code === "AbortError")) {
+        return false;
+      }
       const message = error instanceof Error ? error.message : "加载失败";
       setStatus(message, "error");
       loadingNode.classList.add("hidden");
       emptyNode.classList.remove("hidden");
-      emptyNode.textContent = message;
+      // C-2-D：不再把错误文案塞 emptyNode；保留默认空态，由 status bar 显示完整原因
+      emptyNode.textContent = "暂无服务器配置";
       tableWrapNode.classList.add("hidden");
       paginationNode.classList.add("hidden");
       return false;
     }
+  };
+
+  // B-1 / B-2：搜索 / 翻页前取消 pending debounce + 上一次 fetch，避免 race
+  const cancelPendingLoad = () => {
+    if (searchDebounceTimer) {
+      clearTimeout(searchDebounceTimer);
+      searchDebounceTimer = null;
+    }
+    if (searchAbortController) {
+      searchAbortController.abort();
+      searchAbortController = null;
+    }
+  };
+
+  const loadServersWithAbort = (options = {}) => {
+    cancelPendingLoad();
+    searchAbortController = new AbortController();
+    return loadServers({ ...options, signal: searchAbortController.signal });
   };
 
   const openModal = (mode, server = null) => {
@@ -511,7 +595,11 @@
       ipInput.value = server.ip;
       gamePortInput.value = server.game_port;
       restapiPortInput.value = server.restapi_port;
-      tokenInput.value = server.token;
+      // H-1：editor 不回填完整 token，input 留空 + placeholder 提示
+      // buildPayloadFromModal 在 edit 模式遇到空串 token 时返回空，后端 update 路由
+      // 检测到 mask / 空串后会跳过 token 赋值（保留原值）
+      tokenInput.value = "";
+      tokenInput.placeholder = "留空表示保留原 Token";
     } else {
       modalTitleNode.textContent = "创建服务器";
       modalSaveButton.textContent = "创建";
@@ -520,6 +608,7 @@
       gamePortInput.value = "";
       restapiPortInput.value = "";
       tokenInput.value = "";
+      tokenInput.placeholder = "请输入 Token";
     }
 
     modalNode.classList.remove("hidden");
@@ -567,7 +656,7 @@
     return String(parsed);
   };
 
-  const buildPayloadFromModal = () => {
+  const buildPayloadFromModal = (isEditMode = false) => {
     const name = String(nameInput.value || "").trim();
     const ip = String(ipInput.value || "").trim();
     const token = String(tokenInput.value || "").trim();
@@ -583,10 +672,11 @@
     if (!ip) {
       throw new Error("地址不能为空");
     }
-    if (!token) {
+    // H-1：edit 模式允许空 token（= 保留原值）；create 模式仍要求非空
+    if (!isEditMode && !token) {
       throw new Error("Token 不能为空");
     }
-    if (token.length < 1 || token.length > 128) {
+    if (token && (token.length < 1 || token.length > 128)) {
       throw new Error("Token 长度必须在 1-128 之间");
     }
 
@@ -595,7 +685,7 @@
       ip,
       game_port: gamePort,
       restapi_port: restapiPort,
-      token,
+      token,  // edit 模式可能为空串；后端识别后跳过 token 赋值
     };
   };
 
@@ -608,7 +698,7 @@
 
     let payload;
     try {
-      payload = buildPayloadFromModal();
+      payload = buildPayloadFromModal(isEdit);
     } catch (error) {
       const message = error instanceof Error ? error.message : "表单校验失败";
       setModalAlert(`${isEdit ? "更新失败" : "创建失败"}，${message}`, "error");
@@ -617,7 +707,8 @@
 
     modalSaving = true;
     modalSaveButton.disabled = true;
-    setModalAlert("正在保存...", "info");
+    // H-3：ASCII ... → 中文 …
+    setModalAlert("正在保存…", "info");
 
     try {
       const url = isEdit ? `/webui/api/servers/${editingServerId}` : "/webui/api/servers";
@@ -636,7 +727,8 @@
 
       closeModal(true);
       currentPage = 1;
-      const reloaded = await loadServers({ clearStatus: false });
+      // B-1：reload 取消 pending search debounce，避免 race
+      const reloaded = await loadServersWithAbort({ clearStatus: false });
       if (reloaded) {
         setStatus(isEdit ? "更新成功" : "创建成功", "success");
       }
@@ -656,8 +748,9 @@
     const targetServer = deletingServer;
     deleteSaving = true;
     deleteModalConfirmButton.disabled = true;
-    setDeleteModalAlert(`正在删除服务器 #${targetServer.id}...`, "warning");
-    setStatus(`正在删除服务器 #${targetServer.id}...`, "warning");
+    // H-3：去对象名 + 全角省略号
+    setDeleteModalAlert("正在删除…", "warning");
+    setStatus("正在删除…", "warning");
 
     try {
       await api.apiRequest(`/webui/api/servers/${targetServer.id}`, {
@@ -667,10 +760,13 @@
         expectedStatus: 204,
       });
 
+      // H-1：清理已删除 server 的 reveal 状态 + 定时器
       visibleTokenIds.delete(targetServer.id);
+      clearRevealTimer(targetServer.id);
       testResultMap.delete(targetServer.id);
       closeDeleteModal(true);
-      const reloaded = await loadServers({ clearStatus: false });
+      // B-1：reload 取消 pending search debounce，避免 race
+      const reloaded = await loadServersWithAbort({ clearStatus: false });
       if (reloaded) {
         setStatus("删除成功", "success");
       }
@@ -714,7 +810,7 @@
   };
 
   const renderPluginConfigForm = (config) => {
-    pluginConfigModalBodyNode.innerHTML = "";
+    pluginConfigModalBodyNode.replaceChildren();
     pluginConfigInputs = new Map();
 
     for (const section of PLUGIN_CONFIG_SCHEMA) {
@@ -753,10 +849,16 @@
           input = document.createElement("input");
           input.className = "input";
           input.type = item.type === "password" ? "password" : "text";
-          if (item.placeholder) {
-            input.placeholder = item.placeholder;
+          // H-1 / F-A-4：password 字段不回填明文，仅提示用户「留空表示保留原值」
+          if (item.type === "password") {
+            input.value = "";
+            input.placeholder = "留空表示保留原值";
+          } else {
+            if (item.placeholder) {
+              input.placeholder = item.placeholder;
+            }
+            input.value = String(value ?? "");
           }
-          input.value = String(value ?? "");
         }
 
         formItem.appendChild(input);
@@ -792,7 +894,8 @@
     if (!pluginConfigInputs.size) {
       const emptyNote = document.createElement("p");
       emptyNote.className = "confirm-modal-text";
-      emptyNote.textContent = "该服务器未返回可编辑的配置字段";
+      // C-2-M：晦涩的"未返回可编辑的配置字段" → 用户视角
+      emptyNote.textContent = "当前没有可编辑的配置";
       pluginConfigModalBodyNode.appendChild(emptyNote);
     }
   };
@@ -806,7 +909,12 @@
     pluginConfigSaving = false;
     pluginConfigModalSaveButton.disabled = true;
     pluginConfigModalTitleNode.textContent = "编辑插件配置";
-    pluginConfigModalBodyNode.innerHTML = '<p class="confirm-modal-text">加载中...</p>';
+    // C-2-K：ASCII ... → 中文 …；同时改 createElement + textContent，与同模块风格一致
+    pluginConfigModalBodyNode.replaceChildren();
+    const loadingPlaceholder = document.createElement("p");
+    loadingPlaceholder.className = "confirm-modal-text";
+    loadingPlaceholder.textContent = "加载中…";
+    pluginConfigModalBodyNode.appendChild(loadingPlaceholder);
     setPluginConfigModalAlert("");
     pluginConfigModalNode.classList.remove("hidden");
 
@@ -822,14 +930,15 @@
       );
       const config = api.unwrapData(payload);
       if (!config || typeof config !== "object") {
-        throw new Error("读取失败，返回数据格式错误");
+        // C-2-E：开发者视角 → 用户视角
+        throw new Error("读取失败，响应数据格式异常");
       }
       pluginConfigOriginal = config;
       renderPluginConfigForm(config);
       pluginConfigModalSaveButton.disabled = false;
     } catch (error) {
       const message = error instanceof Error ? error.message : "读取失败";
-      pluginConfigModalBodyNode.innerHTML = "";
+      pluginConfigModalBodyNode.replaceChildren();
       setPluginConfigModalAlert(message, "error");
     } finally {
       pluginConfigLoading = false;
@@ -841,6 +950,10 @@
       return;
     }
     pluginConfigModalNode.classList.add("hidden");
+    // H-1：清空 password input 残留值，避免明文 token 滞留 DOM
+    pluginConfigModalBodyNode.querySelectorAll('input[type="password"]').forEach((inp) => {
+      inp.value = "";
+    });
     pluginConfigServerId = null;
     pluginConfigServerName = "";
     pluginConfigOriginal = {};
@@ -863,6 +976,11 @@
         if (Boolean(original) !== current) {
           diff[path] = current;
         }
+      } else if (type === "password") {
+        // H-1 / F-A-4：password 字段空串 = 保留原值，不进入 diff
+        if (current && current !== String(original ?? "")) {
+          diff[path] = current;
+        }
       } else {
         const originalText = original === undefined || original === null ? "" : String(original);
         if (originalText !== current) {
@@ -878,19 +996,22 @@
       return;
     }
     if (!pluginConfigInputs.size) {
-      setPluginConfigModalAlert("无可保存的字段", "warning");
+      // C-2-L：业务术语 → 用户视角
+      setPluginConfigModalAlert("没有可保存的修改", "warning");
       return;
     }
 
     const diff = collectPluginConfigDiff();
     if (!Object.keys(diff).length) {
-      setPluginConfigModalAlert("未修改任何字段", "info");
+      // C-2-L：业务术语 → 用户视角
+      setPluginConfigModalAlert("没有可保存的修改", "info");
       return;
     }
 
     pluginConfigSaving = true;
     pluginConfigModalSaveButton.disabled = true;
-    setPluginConfigModalAlert("正在保存...", "info");
+    // H-3：ASCII ... → 中文 …
+    setPluginConfigModalAlert("正在保存…", "info");
 
     try {
       await api.apiRequest(
@@ -950,7 +1071,12 @@
       const current = String(entry.input.value ?? "");
       const original = getByPath(pluginConfigOriginal, path);
       const originalText = original === undefined || original === null ? "" : String(original);
-      if (originalText !== current) {
+      // H-1：password 字段空串 = 保留原值，不进 diff
+      if (entry.type === "password") {
+        if (current && current !== originalText) {
+          diff[path] = current;
+        }
+      } else if (originalText !== current) {
         diff[path] = current;
       }
     }
@@ -958,13 +1084,15 @@
     pluginConfigVerifying = true;
     const originalLabel = button.textContent;
     button.disabled = true;
-    button.textContent = "正在验证";
+    // H-3：与其它进行时文案保持 ellipsis 风格一致
+    button.textContent = "正在验证…";
     pluginConfigModalSaveButton.disabled = true;
     setPluginConfigModalAlert("");
 
     try {
       if (Object.keys(diff).length) {
-        setPluginConfigModalAlert("正在保存地址和 Token...", "info");
+        // H-3：去对象名（"地址和 Token" 是当前对象）+ 全角省略号
+        setPluginConfigModalAlert("正在保存…", "info");
         await api.apiRequest(
           `/webui/api/servers/${pluginConfigServerId}/plugin-config`,
           {
@@ -983,7 +1111,8 @@
         }
       }
 
-      setPluginConfigModalAlert("正在验证连通性...", "info");
+      // H-3：简化 + 全角省略号
+      setPluginConfigModalAlert("正在验证…", "info");
       const payload = await api.apiRequest(
         `/webui/api/servers/${pluginConfigServerId}/plugin-config/verify-nextbot`,
         {
@@ -991,6 +1120,8 @@
           headers: { Accept: "application/json" },
           action: "验证",
           expectedStatus: 200,
+          // B-7：verify-nextbot 包含外部 HTTP 链路，默认 15s 偏紧 → 30s
+          timeoutMs: 30_000,
         },
       );
       const data = api.unwrapData(payload) || {};
@@ -998,15 +1129,19 @@
       const message = String(data.message || "").trim();
       const httpStatus = data.httpStatus;
       const suffix = Number.isInteger(httpStatus) ? `（HTTP ${httpStatus}）` : "";
+      // H-2：不再把后端 enum probeStatus 直接拼到用户文案；改为「动作 + 结果」格式
+      const verbResult = probeStatus === "Ok"
+        ? "验证成功"
+        : probeStatus === "Skipped"
+          ? "验证已跳过"
+          : "验证失败";
       const tone = probeStatus === "Ok"
         ? "success"
         : probeStatus === "Skipped"
           ? "info"
           : "error";
-      setPluginConfigModalAlert(
-        message ? `${message}${suffix}` : `验证完成：${probeStatus || "未知状态"}`,
-        tone,
-      );
+      const detail = message ? `，${message}${suffix}` : suffix;
+      setPluginConfigModalAlert(`${verbResult}${detail}`, tone);
     } catch (error) {
       const message = error instanceof Error ? error.message : "验证失败";
       setPluginConfigModalAlert(message, "error");
@@ -1021,7 +1156,8 @@
   const testServerConnectivity = async (serverId) => {
     testResultMap.set(serverId, { status: "loading", reason: "正在测试" });
     renderTable();
-    setStatus(`正在测试服务器 #${serverId} 连通性...`, "warning");
+    // H-3：去对象名 + 全角省略号
+    setStatus("正在测试…", "warning");
 
     try {
       const payload = await api.apiRequest(`/webui/api/servers/${serverId}/test`, {
@@ -1029,6 +1165,8 @@
         headers: { Accept: "application/json" },
         action: "测试",
         expectedStatus: 200,
+        // B-7：test 端点后端默认 10s（B-4 已调），前端给 30s cap 留余量
+        timeoutMs: 30_000,
       });
       const result = api.unwrapData(payload);
       const reachable = Boolean(result.reachable);
@@ -1052,8 +1190,9 @@
   };
 
   reloadButton?.addEventListener("click", () => {
+    // B-1：reload 取消 pending debounce / fetch，确保拿到最新结果
     currentPage = 1;
-    void loadServers();
+    void loadServersWithAbort();
   });
 
   addServerButton?.addEventListener("click", () => {
@@ -1061,14 +1200,20 @@
   });
 
   searchInput?.addEventListener("input", () => {
-    currentPage = 1;
-    void loadServers();
+    // B-1：搜索 debounce 300ms + AbortController（commands R1 prior art）
+    cancelPendingLoad();
+    searchDebounceTimer = setTimeout(() => {
+      searchDebounceTimer = null;
+      currentPage = 1;
+      void loadServersWithAbort();
+    }, SEARCH_DEBOUNCE_MS);
   });
 
   perPageSelect.addEventListener("change", () => {
+    // B-2：翻页 / per-page 同样取消 pending，防 race
     currentPerPage = Number(perPageSelect.value || 10);
     currentPage = 1;
-    void loadServers();
+    void loadServersWithAbort();
   });
 
   prevPageButton.addEventListener("click", () => {
@@ -1076,7 +1221,7 @@
       return;
     }
     currentPage -= 1;
-    void loadServers({ clearStatus: false });
+    void loadServersWithAbort({ clearStatus: false });
   });
 
   nextPageButton.addEventListener("click", () => {
@@ -1084,11 +1229,13 @@
       return;
     }
     currentPage += 1;
-    void loadServers({ clearStatus: false });
+    void loadServersWithAbort({ clearStatus: false });
   });
 
-  modalCloseButton.addEventListener("click", closeModal);
-  modalCancelButton.addEventListener("click", closeModal);
+  // commands R2 B-7 prior art：不能直接绑定 closeModal，否则 MouseEvent 会作为
+  // force 参数传入（!MouseEvent === false），绕过 modalSaving guard
+  modalCloseButton.addEventListener("click", () => closeModal());
+  modalCancelButton.addEventListener("click", () => closeModal());
   modalSaveButton.addEventListener("click", () => {
     void saveServer();
   });
@@ -1148,5 +1295,6 @@
     }
   });
 
-  void loadServers();
+  // 初始加载也走 abort 通道，确保后续操作能取消未完成请求
+  void loadServersWithAbort();
 })();
