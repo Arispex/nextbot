@@ -1,0 +1,6 @@
+{"file": ".trellis/tasks/05-14-webui-commands-audit/prd.md", "reason": "审计 scope（仅 commands 页面 4 文件）+ 排除项（C-5 service 层）+ acceptance criteria"}
+{"file": ".trellis/tasks/05-14-webui-commands-audit/research/verify-pass2.md", "reason": "主代理终判 + 用户决策全修 + 修复前后字符串对比"}
+{"file": ".trellis/tasks/05-14-webui-commands-audit/research/backend.md", "reason": "后端 finding 详情：A-3 / A-4 / A-5 / A-6 / C-1 / C-6 / D-2/D-3/D-6"}
+{"file": ".trellis/tasks/05-14-webui-commands-audit/research/frontend.md", "reason": "前端 finding 详情：P0 文案 + P1 search debounce + P2 focus/aria/ESC + P3 排版"}
+{"file": ".trellis/tasks/archive/2026-05/05-13-webui-dashboard-audit/research/verify-pass2.md", "reason": "dashboard R1+R2 prior art：focus 管理 / aria-busy / role=alert 规范，commands modal 对齐"}
+{"file": ".trellis/spec/backend/index.md", "reason": "项目 backend spec（日志规范 + 文案规范 + api-design）"}
