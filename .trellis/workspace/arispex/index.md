@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-3.md`
-- **Total Sessions**: 127
-- **Last Active**: 2026-05-14
+- **Total Sessions**: 128
+- **Last Active**: 2026-05-15
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-3.md` | ~1094 | Active |
+| `journal-3.md` | ~1127 | Active |
 | `journal-2.md` | ~1973 | Archived |
 | `journal-1.md` | ~1999 | Archived |
 <!-- @@@/auto:active-documents -->
@@ -31,6 +31,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 128 | 2026-05-15 | WebUI 命令配置页面审计 + 全修 | `10d7936` | `main` |
 | 127 | 2026-05-14 | fix: WebUI auth middleware 区分 API 401 vs HTML 302 | `9df669b` | `main` |
 | 126 | 2026-05-14 | Dashboard R3 复审：彻底闭环（无代码改动） | - | `main` |
 | 125 | 2026-05-14 | WebUI 仪表盘 Round 2 — 跨模块 P2 回归 + dashboard 清理 | `c1a96ca` | `main` |
