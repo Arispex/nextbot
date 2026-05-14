@@ -1,0 +1,6 @@
+{"file": ".trellis/tasks/05-15-webui-servers-audit/prd.md", "reason": "acceptance criteria + 严格 scope"}
+{"file": ".trellis/tasks/05-15-webui-servers-audit/research/verify-pass2.md", "reason": "终判清单 + 全修 + 不要破坏性"}
+{"file": ".trellis/tasks/05-15-webui-servers-audit/research/backend.md", "reason": "后端 finding 原始描述"}
+{"file": ".trellis/tasks/05-15-webui-servers-audit/research/frontend.md", "reason": "前端 finding 原始描述"}
+{"file": ".trellis/tasks/archive/2026-05/05-15-webui-commands-audit-r2/research/verify-pass2.md", "reason": "commands R2 prior art 对齐"}
+{"file": ".trellis/spec/backend/index.md", "reason": "spec 索引"}

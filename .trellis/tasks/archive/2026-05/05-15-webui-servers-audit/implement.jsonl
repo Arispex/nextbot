@@ -1,0 +1,7 @@
+{"file": ".trellis/tasks/05-15-webui-servers-audit/prd.md", "reason": "审计 scope（仅 servers 4 文件）+ 排除项 + 严格 scope-creep 约束"}
+{"file": ".trellis/tasks/05-15-webui-servers-audit/research/verify-pass2.md", "reason": "主代理终判 + 用户决策全修 + 修复前后对比 + 不要破坏性更新约束"}
+{"file": ".trellis/tasks/05-15-webui-servers-audit/research/backend.md", "reason": "后端 finding 详情：A-1/A-2 token 链 + A-4 字段白名单 + B-1 全量 query + C-1 message 等"}
+{"file": ".trellis/tasks/05-15-webui-servers-audit/research/frontend.md", "reason": "前端 finding 详情：F-A-3 token DOM + B-1 search debounce + C-2-G/N/C/D/L/M 文案"}
+{"file": ".trellis/tasks/archive/2026-05/05-15-webui-commands-audit-r2/research/verify-pass2.md", "reason": "commands R2 prior art：debounce + AbortController + modal focus helpers 模式（servers 漏吃，需对齐）"}
+{"file": ".trellis/tasks/archive/2026-05/05-13-webui-dashboard-audit/research/verify-pass2.md", "reason": "dashboard R1+R2 prior art：aria-busy / role=alert / 文案规范"}
+{"file": ".trellis/spec/backend/index.md", "reason": "项目 backend spec（日志规范 + 文案规范 + api-design）"}
