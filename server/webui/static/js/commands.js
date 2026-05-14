@@ -42,6 +42,15 @@
   let currentPerPage = Number(perPageSelect?.value || 10);
   let currentMeta = { total: 0, page: 1, per_page: currentPerPage, total_pages: 0 };
 
+  // P1-Race: search input debounce + AbortController 状态。
+  let searchDebounceTimer = null;
+  let searchAbortController = null;
+
+  // P2-A: modal focus 管理。记录每个 modal 打开前的 activeElement，关闭时恢复。
+  const modalPreviousFocus = new WeakMap();
+  // P2-A: focus trap keydown 监听 handler，按 modal 缓存以便正确 removeEventListener。
+  const modalTrapHandlers = new WeakMap();
+
   const requiredNodesReady = Boolean(
     statusNode &&
       statusMessageNode &&
@@ -106,6 +115,73 @@
   };
 
   const cloneValue = (value) => JSON.parse(JSON.stringify(value));
+
+  // P2-A: 收集 modal 内可聚焦元素，跳过 disabled / tabindex="-1"。
+  const getFocusableInModal = (modalNode) => {
+    if (!modalNode) return [];
+    return Array.from(
+      modalNode.querySelectorAll(
+        'input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      )
+    ).filter((el) => !el.classList.contains("hidden"));
+  };
+
+  // P2-A: 构造 modal Tab 循环 handler，绑定到 keydown。
+  const buildTrapFocusHandler = (modalNode) => (event) => {
+    if (event.key !== "Tab") return;
+    const focusables = getFocusableInModal(modalNode);
+    if (focusables.length === 0) return;
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
+
+  // P2-A: 打开 modal 时记录上一个焦点、自动聚焦首个可交互元素、安装 focus trap。
+  const openModalWithFocus = (modalNode) => {
+    if (!modalNode) return;
+    modalPreviousFocus.set(modalNode, document.activeElement);
+    modalNode.classList.remove("hidden");
+    const handler = buildTrapFocusHandler(modalNode);
+    modalTrapHandlers.set(modalNode, handler);
+    modalNode.addEventListener("keydown", handler);
+    // 使用 setTimeout 让浏览器先完成布局，再聚焦首个交互元素。
+    setTimeout(() => {
+      const focusables = getFocusableInModal(modalNode);
+      // 跳过 close button (✕) 直接聚焦表单首元素，更符合用户预期。
+      const preferred = focusables.find(
+        (el) => !el.classList.contains("modal-close-btn")
+      ) || focusables[0];
+      if (preferred && typeof preferred.focus === "function") {
+        preferred.focus();
+      }
+    }, 0);
+  };
+
+  // P2-A: 关闭 modal 时卸载 trap、把焦点返还给打开前的元素。
+  const closeModalAndRestoreFocus = (modalNode) => {
+    if (!modalNode) return;
+    modalNode.classList.add("hidden");
+    const handler = modalTrapHandlers.get(modalNode);
+    if (handler) {
+      modalNode.removeEventListener("keydown", handler);
+      modalTrapHandlers.delete(modalNode);
+    }
+    const previousFocus = modalPreviousFocus.get(modalNode);
+    modalPreviousFocus.delete(modalNode);
+    if (previousFocus && document.contains(previousFocus) && typeof previousFocus.focus === "function") {
+      try {
+        previousFocus.focus({ preventScroll: true });
+      } catch (_error) {
+        previousFocus.focus();
+      }
+    }
+  };
 
   const setModalSavingState = (saving) => {
     modalSaving = Boolean(saving);
@@ -262,12 +338,23 @@
     return badge;
   };
 
+  // P2-Loading: 同步 aria-busy 状态，跟随 hidden class 切换，对齐 dashboard R1+R2 规范。
+  const setLoadingVisible = (visible) => {
+    if (visible) {
+      loadingNode.classList.remove("hidden");
+      loadingNode.setAttribute("aria-busy", "true");
+    } else {
+      loadingNode.classList.add("hidden");
+      loadingNode.setAttribute("aria-busy", "false");
+    }
+  };
+
   const renderTable = () => {
-    tableBodyNode.innerHTML = "";
-    loadingNode.classList.add("hidden");
+    tableBodyNode.replaceChildren();
+    setLoadingVisible(false);
 
     if (!commandStates.length) {
-      emptyNode.textContent = currentMeta.total > 0 ? "当前页暂无数据。" : "暂无可配置命令。";
+      emptyNode.textContent = currentMeta.total > 0 ? "当前页暂无数据" : "暂无可配置命令";
       emptyNode.classList.remove("hidden");
       tableWrapNode.classList.add("hidden");
       updatePagination();
@@ -330,7 +417,7 @@
         command.enabled = nextEnabled;
         switchText.textContent = nextEnabled ? "启用" : "关闭";
         enabledInput.disabled = true;
-        setStatus("正在保存...", "info");
+        setStatus("正在保存…", "info");
 
         try {
           const { reloaded } = await saveSingleCommand({
@@ -340,7 +427,7 @@
           if (reloaded) {
             setStatus("保存成功", "success");
           } else {
-            setStatus("保存成功，已立即生效；列表刷新失败，请手动刷新页面确认最新状态", "warning");
+            setStatus("保存成功，已立即生效；刷新失败，请手动刷新页面", "warning");
           }
         } catch (error) {
           command.enabled = previousEnabled;
@@ -424,15 +511,14 @@
     const paramNames = Object.keys(schema);
 
     modalTitleNode.textContent = "编辑参数";
-    modalBodyNode.innerHTML = "";
+    modalBodyNode.replaceChildren();
 
     if (!paramNames.length) {
       const empty = document.createElement("div");
       empty.className = "empty";
-      empty.textContent = "当前命令没有可配置参数。";
+      empty.textContent = "当前命令没有可配置参数";
       modalBodyNode.appendChild(empty);
-      setModalAlert("当前命令没有可配置参数。", "warning");
-      modalNode.classList.remove("hidden");
+      openModalWithFocus(modalNode);
       return;
     }
 
@@ -526,13 +612,13 @@
       modalBodyNode.appendChild(item);
     }
 
-    modalNode.classList.remove("hidden");
+    openModalWithFocus(modalNode);
   };
 
   const closeParamModal = (force = false) => {
     if (modalSaving && !force) return;
-    modalNode.classList.add("hidden");
-    modalBodyNode.innerHTML = "";
+    closeModalAndRestoreFocus(modalNode);
+    modalBodyNode.replaceChildren();
     activeModalCommandKey = "";
     setModalAlert("");
   };
@@ -561,7 +647,7 @@
       try {
         schema = JSON.parse(schemaRaw);
       } catch (_error) {
-        setModalAlert(`${paramLabel}: 参数定义无效`, "error");
+        setModalAlert(`${paramLabel}：参数定义无效`, "error");
         return;
       }
 
@@ -571,7 +657,7 @@
       } else if (inputNode.dataset.enumSelect === "1" && Array.isArray(schema.enum)) {
         const enumIndex = Number.parseInt(String(inputNode.value), 10);
         if (!Number.isInteger(enumIndex) || enumIndex < 0 || enumIndex >= schema.enum.length) {
-          setModalAlert(`${paramLabel}: 选项无效`, "error");
+          setModalAlert(`${paramLabel}：选项无效`, "error");
           return;
         }
         rawValue = schema.enum[enumIndex];
@@ -583,7 +669,7 @@
         nextValues[paramName] = normalizeWithSchema(schema, rawValue, true);
       } catch (error) {
         const message = error instanceof Error ? error.message : "参数格式错误";
-        setModalAlert(`${paramLabel}: ${message}`, "error");
+        setModalAlert(`${paramLabel}：${message}`, "error");
         if (typeof inputNode.focus === "function") {
           inputNode.focus();
         }
@@ -592,7 +678,7 @@
     }
 
     setModalSavingState(true);
-    setModalAlert("正在保存...", "info");
+    setModalAlert("正在保存…", "info");
 
     try {
       const { reloaded } = await saveSingleCommand({
@@ -603,7 +689,7 @@
       if (reloaded) {
         setStatus("保存成功", "success");
       } else {
-        setStatus("参数保存成功，已立即生效；列表刷新失败，请手动刷新页面确认最新状态", "warning");
+        setStatus("保存成功，已立即生效；刷新失败，请手动刷新页面", "warning");
       }
       closeParamModal(true);
     } catch (error) {
@@ -614,9 +700,9 @@
     }
   };
 
-  const loadCommands = async ({ clearStatus = true } = {}) => {
+  const loadCommands = async ({ clearStatus = true, signal } = {}) => {
     if (!apiReady) {
-      loadingNode.classList.add("hidden");
+      setLoadingVisible(false);
       setStatus("页面资源版本不一致，请刷新页面或重启机器人", "error");
       return false;
     }
@@ -625,7 +711,7 @@
       setStatus("");
     }
 
-    loadingNode.classList.remove("hidden");
+    setLoadingVisible(true);
     tableWrapNode.classList.add("hidden");
     emptyNode.classList.add("hidden");
     paginationNode.classList.add("hidden");
@@ -640,8 +726,13 @@
           },
           action: "加载",
           expectedStatus: 200,
+          signal,
         }
       );
+      // P1-Race: 若请求在 await 期间被 abort，直接静默返回，不渲染过期结果。
+      if (signal && signal.aborted) {
+        return false;
+      }
       const commands = api.unwrapData(payload);
       const meta = api.unwrapMeta(payload);
       if (!Array.isArray(commands)) {
@@ -664,9 +755,16 @@
       renderTable();
       return true;
     } catch (error) {
+      // P1-Race: AbortError 是预期路径，不展示错误。
+      if (signal && signal.aborted) {
+        return false;
+      }
+      if (error && (error.name === "AbortError" || error.code === "ABORT_ERR")) {
+        return false;
+      }
       const message = error instanceof Error ? error.message : "加载失败";
       setStatus(message, "error");
-      loadingNode.classList.add("hidden");
+      setLoadingVisible(false);
       emptyNode.classList.remove("hidden");
       emptyNode.textContent = message;
       tableWrapNode.classList.add("hidden");
@@ -705,9 +803,19 @@
     void loadCommands();
   });
 
+  // P1-Race: 搜索输入加 300ms debounce + AbortController 取消在飞请求，避免请求风暴 + 结果 race。
   searchInput.addEventListener("input", () => {
-    currentPage = 1;
-    void loadCommands();
+    if (searchDebounceTimer) {
+      clearTimeout(searchDebounceTimer);
+    }
+    searchDebounceTimer = setTimeout(() => {
+      if (searchAbortController) {
+        searchAbortController.abort();
+      }
+      searchAbortController = new AbortController();
+      currentPage = 1;
+      void loadCommands({ signal: searchAbortController.signal });
+    }, 300);
   });
 
   perPageSelect.addEventListener("change", () => {
@@ -780,13 +888,14 @@
     const aliases = Array.isArray(command.aliases) ? command.aliases : [];
     aliasInput.value = aliases.join(", ");
     aliasModalTitleNode.textContent = "编辑别名";
-    aliasModalNode.classList.remove("hidden");
+    openModalWithFocus(aliasModalNode);
   };
 
-  const closeAliasModal = () => {
-    if (aliasModalNode) aliasModalNode.classList.add("hidden");
+  const closeAliasModal = (force = false) => {
+    // P3 一致性：与 param modal 对齐，saving 中阻止关闭。
+    if (aliasSaving && !force) return;
+    if (aliasModalNode) closeModalAndRestoreFocus(aliasModalNode);
     activeAliasCommandKey = "";
-    aliasSaving = false;
   };
 
   const saveAliases = async () => {
@@ -797,7 +906,7 @@
 
     aliasSaving = true;
     aliasSaveButton.disabled = true;
-    setAliasAlert("正在保存...", "info");
+    setAliasAlert("正在保存…", "info");
 
     try {
       const response = await api.apiRequest(
@@ -812,7 +921,9 @@
       );
       const result = api.unwrapData(response);
       if (!result) throw new Error("保存失败");
-      closeAliasModal();
+      // 标记 saving 已结束以放行 closeAliasModal 的 saving-guard。
+      aliasSaving = false;
+      closeAliasModal(true);
       setStatus("保存成功，需要重启后生效", "success");
       await loadCommands({ clearStatus: false });
     } catch (error) {
@@ -854,12 +965,26 @@
     const restartCloseBtn = document.getElementById("restart-confirm-close-btn");
     const restartMask = restartModal?.querySelector("[data-restart-confirm-close]");
 
-    const closeRestartModal = () => restartModal?.classList.add("hidden");
-    const openRestartModal = () => restartModal?.classList.remove("hidden");
+    // P2-A: 复用 openModalWithFocus / closeModalAndRestoreFocus 保持 focus 行为一致。
+    const closeRestartModal = () => {
+      if (!restartModal) return;
+      closeModalAndRestoreFocus(restartModal);
+    };
+    const openRestartModal = () => {
+      if (!restartModal) return;
+      openModalWithFocus(restartModal);
+    };
 
     restartCancelBtn?.addEventListener("click", closeRestartModal);
     restartCloseBtn?.addEventListener("click", closeRestartModal);
     restartMask?.addEventListener("click", closeRestartModal);
+
+    // P2-ESC: restart-confirm-modal 补 ESC 关闭，与 param / alias modal 一致。
+    window.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape") return;
+      if (!restartModal || restartModal.classList.contains("hidden")) return;
+      closeRestartModal();
+    });
 
     restartButton.addEventListener("click", () => {
       if (!restartModal) return;
@@ -873,7 +998,7 @@
       try {
         // R2-T-6：restart 端点会触发进程 execv，HTTP 响应可能在 execv 前发出但 TCP 关闭时序不定，
         // 给前端 60s timeout 余量，避免在罕见慢回包场景下被默认 15s cap 误判超时。
-        await api.apiRequest("/webui/api/restart", { method: "POST", timeoutMs: 60000 });
+        await api.apiRequest("/webui/api/restart", { method: "POST", action: "重启", timeoutMs: 60000 });
         setStatus("重启中，页面即将自动刷新…", "success");
         setTimeout(() => location.reload(), 3000);
       } catch (error) {
