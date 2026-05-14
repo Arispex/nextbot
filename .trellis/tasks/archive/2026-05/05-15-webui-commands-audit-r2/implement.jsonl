@@ -1,0 +1,7 @@
+{"file": ".trellis/tasks/05-15-webui-commands-audit-r2/prd.md", "reason": "R2 scope + R1 修复清单 + 排除项 + 严格 commands 页面限定"}
+{"file": ".trellis/tasks/05-15-webui-commands-audit-r2/research/verify-pass2.md", "reason": "主代理终判：B-7 R1 regression + 4 P1 + 3 Medium + P2/P3 全修 + 用户禁破坏性更新"}
+{"file": ".trellis/tasks/05-15-webui-commands-audit-r2/research/backend.md", "reason": "后端 finding 详情：M-B2/M-B3/M-B4 + L-B1/L-B2"}
+{"file": ".trellis/tasks/05-15-webui-commands-audit-r2/research/frontend.md", "reason": "前端 finding 详情：B-7 关键 regression + B-1/B-3/B-4 P1 + B-2/B-5/B-6/B-8/B-9 P2 + B-10/B-11/B-12/B-13 P3"}
+{"file": ".trellis/tasks/archive/2026-05/05-14-webui-commands-audit/research/verify-pass2.md", "reason": "R1 prior art：focus helpers / debounce / setLoadingVisible / closeAliasModal 设计"}
+{"file": ".trellis/tasks/archive/2026-05/05-13-webui-login-audit/research/verify-pass2.md", "reason": "login-audit M-A4 风格：_client_ip helper（commands 后端 M-B3 复用模式）"}
+{"file": ".trellis/spec/backend/index.md", "reason": "spec 索引"}
