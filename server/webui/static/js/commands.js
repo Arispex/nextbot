@@ -50,9 +50,15 @@
   const modalPreviousFocus = new WeakMap();
   // P2-A: focus trap keydown 监听 handler，按 modal 缓存以便正确 removeEventListener。
   const modalTrapHandlers = new WeakMap();
+  // B-10: param input → schema 映射，替代 dataset.paramSchema JSON 序列化往返。
+  const paramInputSchemas = new WeakMap();
 
   const requiredNodesReady = Boolean(
-    statusNode &&
+    // B-8: 把 reloadButton / searchInput 纳入校验，与其他必要节点保持一致，
+    // 避免后续 addEventListener 因模板异常缺失而抛 TypeError 致页面白屏。
+    reloadButton &&
+      searchInput &&
+      statusNode &&
       statusMessageNode &&
       loadingNode &&
       emptyNode &&
@@ -117,11 +123,13 @@
   const cloneValue = (value) => JSON.parse(JSON.stringify(value));
 
   // P2-A: 收集 modal 内可聚焦元素，跳过 disabled / tabindex="-1"。
+  // B-6: selector 扩展到 a[href] / area[href] / contenteditable / details>summary，
+  // 防御未来 modal 新增此类元素时 Tab trap 漏检。
   const getFocusableInModal = (modalNode) => {
     if (!modalNode) return [];
     return Array.from(
       modalNode.querySelectorAll(
-        'input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        'a[href]:not([disabled]), area[href]:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]), [contenteditable]:not([contenteditable="false"]), [tabindex]:not([tabindex="-1"]):not([disabled]), details:not([disabled]) > summary:not([disabled])'
       )
     ).filter((el) => !el.classList.contains("hidden"));
   };
@@ -142,14 +150,52 @@
     }
   };
 
+  // B-4: modal stack —— 同一时刻按打开顺序追踪 modal，ESC 仅作用于栈顶。
+  const modalStack = [];
+  // B-4: 节点 → close 函数注册表，统一 ESC dispatch 时按栈顶查找 close。
+  const modalCloseRegistry = new WeakMap();
+  const pushModalToStack = (modalNode) => {
+    if (!modalNode) return;
+    const idx = modalStack.lastIndexOf(modalNode);
+    if (idx >= 0) modalStack.splice(idx, 1);
+    modalStack.push(modalNode);
+  };
+  const popModalFromStack = (modalNode) => {
+    if (!modalNode) return;
+    const idx = modalStack.lastIndexOf(modalNode);
+    if (idx >= 0) modalStack.splice(idx, 1);
+  };
+  const registerModalCloser = (modalNode, closer) => {
+    if (!modalNode || typeof closer !== "function") return;
+    modalCloseRegistry.set(modalNode, closer);
+  };
+
+  // B-12: 记录打开 modal 前 body 的 inline overflow，关闭最后一个 modal 时恢复。
+  // 通过 inline style 实现，避免改动全局 CSS class（scope 限定）。
+  let bodyOverflowBeforeModal = null;
+  const lockBodyScroll = () => {
+    if (modalStack.length !== 1) return;
+    bodyOverflowBeforeModal = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+  };
+  const unlockBodyScroll = () => {
+    if (modalStack.length > 0) return;
+    document.body.style.overflow = bodyOverflowBeforeModal ?? "";
+    bodyOverflowBeforeModal = null;
+  };
+
   // P2-A: 打开 modal 时记录上一个焦点、自动聚焦首个可交互元素、安装 focus trap。
+  // B-5: 已打开则跳过，避免覆盖 previousFocus。
   const openModalWithFocus = (modalNode) => {
     if (!modalNode) return;
+    if (!modalNode.classList.contains("hidden")) return;
     modalPreviousFocus.set(modalNode, document.activeElement);
     modalNode.classList.remove("hidden");
     const handler = buildTrapFocusHandler(modalNode);
     modalTrapHandlers.set(modalNode, handler);
     modalNode.addEventListener("keydown", handler);
+    pushModalToStack(modalNode);
+    lockBodyScroll();
     // 使用 setTimeout 让浏览器先完成布局，再聚焦首个交互元素。
     setTimeout(() => {
       const focusables = getFocusableInModal(modalNode);
@@ -164,6 +210,8 @@
   };
 
   // P2-A: 关闭 modal 时卸载 trap、把焦点返还给打开前的元素。
+  // B-3: previousFocus 节点被销毁时 fallback 到 reloadButton / main landmark，
+  // 避免焦点静默丢失到 body。
   const closeModalAndRestoreFocus = (modalNode) => {
     if (!modalNode) return;
     modalNode.classList.add("hidden");
@@ -174,11 +222,33 @@
     }
     const previousFocus = modalPreviousFocus.get(modalNode);
     modalPreviousFocus.delete(modalNode);
+    popModalFromStack(modalNode);
+    unlockBodyScroll();
     if (previousFocus && document.contains(previousFocus) && typeof previousFocus.focus === "function") {
       try {
         previousFocus.focus({ preventScroll: true });
       } catch (_error) {
         previousFocus.focus();
+      }
+      return;
+    }
+    // B-3: previousFocus 已从 DOM 移除（如表格 reload 销毁源按钮）— fallback。
+    // 优先用 reloadButton（原生 button 可聚焦，不需要 tabindex）；
+    // 若退到 <main> / [role=main]（非原生可聚焦），才补 tabindex=-1 让 focus() 生效。
+    const fallback =
+      reloadButton ||
+      document.querySelector("main, [role=main]");
+    if (fallback && typeof fallback.focus === "function") {
+      const nativelyFocusable = ["A", "BUTTON", "INPUT", "SELECT", "TEXTAREA"].includes(
+        fallback.tagName
+      );
+      if (!nativelyFocusable && !fallback.hasAttribute("tabindex")) {
+        fallback.setAttribute("tabindex", "-1");
+      }
+      try {
+        fallback.focus({ preventScroll: true });
+      } catch (_error) {
+        fallback.focus();
       }
     }
   };
@@ -604,7 +674,8 @@
       inputNode.dataset.role = "param-input";
       inputNode.dataset.paramName = paramName;
       inputNode.dataset.paramLabel = definition.label || paramName;
-      inputNode.dataset.paramSchema = JSON.stringify(definition);
+      // B-10: 用 WeakMap 持有 schema，避免大 JSON 写入 DOM dataset。
+      paramInputSchemas.set(inputNode, definition);
 
       if (definition.type !== "bool") {
         item.appendChild(inputNode);
@@ -637,18 +708,11 @@
 
     for (const inputNode of inputNodes) {
       const paramName = inputNode.dataset.paramName;
-      const schemaRaw = inputNode.dataset.paramSchema;
       const paramLabel = inputNode.dataset.paramLabel || paramName || "参数";
-      if (!paramName || !schemaRaw) {
+      // B-10: 从 WeakMap 读取 schema，避免 JSON 序列化/反序列化往返。
+      const schema = paramInputSchemas.get(inputNode);
+      if (!paramName || !schema) {
         continue;
-      }
-
-      let schema;
-      try {
-        schema = JSON.parse(schemaRaw);
-      } catch (_error) {
-        setModalAlert(`${paramLabel}：参数定义无效`, "error");
-        return;
       }
 
       let rawValue;
@@ -704,6 +768,13 @@
     if (!apiReady) {
       setLoadingVisible(false);
       setStatus("页面资源版本不一致，请刷新页面或重启机器人", "error");
+      // B-9: apiReady=false 时禁用所有交互控件，避免反复触发 loadCommands 刷状态。
+      if (reloadButton) reloadButton.disabled = true;
+      if (searchInput) searchInput.disabled = true;
+      if (perPageSelect) perPageSelect.disabled = true;
+      if (prevPageButton) prevPageButton.disabled = true;
+      if (nextPageButton) nextPageButton.disabled = true;
+      if (restartButton) restartButton.disabled = true;
       return false;
     }
 
@@ -798,7 +869,21 @@
     return { reloaded };
   };
 
+  // B-1: 取消 pending search debounce + abort 在飞 search 请求。
+  // 避免 reload / 分页 click handler 与搜索 debounce 触发并发 loadCommands 引发结果 race。
+  const cancelPendingSearch = () => {
+    if (searchDebounceTimer) {
+      clearTimeout(searchDebounceTimer);
+      searchDebounceTimer = null;
+    }
+    if (searchAbortController) {
+      searchAbortController.abort();
+      searchAbortController = null;
+    }
+  };
+
   reloadButton.addEventListener("click", () => {
+    cancelPendingSearch();
     currentPage = 1;
     void loadCommands();
   });
@@ -819,6 +904,7 @@
   });
 
   perPageSelect.addEventListener("change", () => {
+    cancelPendingSearch();
     currentPerPage = Number(perPageSelect.value || 10);
     currentPage = 1;
     void loadCommands();
@@ -828,6 +914,7 @@
     if (currentPage <= 1) {
       return;
     }
+    cancelPendingSearch();
     currentPage -= 1;
     void loadCommands({ clearStatus: false });
   });
@@ -836,8 +923,26 @@
     if (currentMeta.total_pages > 0 && currentPage >= currentMeta.total_pages) {
       return;
     }
+    cancelPendingSearch();
     currentPage += 1;
     void loadCommands({ clearStatus: false });
+  });
+
+  // B-2: 页面卸载时 abort 在飞请求 + 清理 debounce timer，避免 fetch promise 形式上 leak。
+  window.addEventListener("beforeunload", () => {
+    cancelPendingSearch();
+  });
+
+  // B-4: 统一 ESC dispatcher —— 仅对栈顶 modal 起作用，避免 3 个 listener 互相干扰。
+  window.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    if (modalStack.length === 0) return;
+    const top = modalStack[modalStack.length - 1];
+    if (!top || top.classList.contains("hidden")) return;
+    const closer = modalCloseRegistry.get(top);
+    if (typeof closer === "function") {
+      closer();
+    }
   });
 
   modalSaveButton.addEventListener("click", () => {
@@ -859,11 +964,8 @@
     }
   });
 
-  window.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && !modalNode.classList.contains("hidden")) {
-      closeParamModal();
-    }
-  });
+  // B-4: param modal 注册到统一 ESC dispatcher。
+  registerModalCloser(modalNode, () => closeParamModal());
 
   // ── Alias Modal ──
 
@@ -902,11 +1004,14 @@
     if (aliasSaving || !activeAliasCommandKey) return;
 
     const raw = String(aliasInput.value || "").trim();
-    const aliases = raw ? raw.split(",").map(s => s.trim()).filter(Boolean) : [];
+    // B-11: 支持半角 / 全角逗号分隔 + 自动去重，避免依赖后端报错。
+    const rawAliases = raw ? raw.split(/[,，]/).map(s => s.trim()).filter(Boolean) : [];
+    const aliases = Array.from(new Set(rawAliases));
+    const deduped = aliases.length !== rawAliases.length;
 
     aliasSaving = true;
     aliasSaveButton.disabled = true;
-    setAliasAlert("正在保存…", "info");
+    setAliasAlert(deduped ? "已自动去重，正在保存…" : "正在保存…", "info");
 
     try {
       const response = await api.apiRequest(
@@ -939,8 +1044,9 @@
   };
 
   if (aliasSaveButton) aliasSaveButton.addEventListener("click", saveAliases);
-  if (aliasCancelButton) aliasCancelButton.addEventListener("click", closeAliasModal);
-  if (aliasCloseButton) aliasCloseButton.addEventListener("click", closeAliasModal);
+  // B-7: arrow function 包裹，避免 MouseEvent 当作 force 参数绕过 saving guard。
+  if (aliasCancelButton) aliasCancelButton.addEventListener("click", () => closeAliasModal());
+  if (aliasCloseButton) aliasCloseButton.addEventListener("click", () => closeAliasModal());
   if (aliasModalNode) {
     aliasModalNode.addEventListener("click", (event) => {
       const target = event.target;
@@ -948,13 +1054,9 @@
         closeAliasModal();
       }
     });
+    // B-4: alias modal 注册到统一 ESC dispatcher。
+    registerModalCloser(aliasModalNode, () => closeAliasModal());
   }
-
-  window.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && aliasModalNode && !aliasModalNode.classList.contains("hidden")) {
-      closeAliasModal();
-    }
-  });
 
   // ── Restart Button (warm-canvas confirm modal, no native confirm) ──
 
@@ -979,12 +1081,10 @@
     restartCloseBtn?.addEventListener("click", closeRestartModal);
     restartMask?.addEventListener("click", closeRestartModal);
 
-    // P2-ESC: restart-confirm-modal 补 ESC 关闭，与 param / alias modal 一致。
-    window.addEventListener("keydown", (event) => {
-      if (event.key !== "Escape") return;
-      if (!restartModal || restartModal.classList.contains("hidden")) return;
-      closeRestartModal();
-    });
+    // B-4: restart modal 注册到统一 ESC dispatcher（替代独立 window keydown）。
+    if (restartModal) {
+      registerModalCloser(restartModal, () => closeRestartModal());
+    }
 
     restartButton.addEventListener("click", () => {
       if (!restartModal) return;

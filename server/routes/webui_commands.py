@@ -21,6 +21,7 @@ from server.routes import (
     read_json_object,
     read_pagination_query,
 )
+from server.routes.webui import _client_ip
 
 router = APIRouter()
 
@@ -30,6 +31,8 @@ _COMMAND_KEY_PATTERN = re.compile(r"^[A-Za-z0-9_.\-/]{1,64}$")
 _PARAM_VALUES_MAX_KEYS = 64
 _PARAM_VALUES_KEY_MAX_LEN = 64
 _PARAM_VALUES_STR_MAX_LEN = 4096
+# M-B4: param_values key 字符集白名单（与 plugin schema 实际命名约定对齐：[A-Za-z_][A-Za-z0-9_]*）。
+_PARAM_KEY_PATTERN = re.compile(r"^[A-Za-z0-9_]+$")
 # A-5: aliases 数组长度 + 单元素长度上限。
 _ALIASES_MAX_ITEMS = 32
 _ALIAS_MAX_LEN = 32
@@ -57,6 +60,14 @@ def _validate_param_values(raw: Any) -> JSONResponse | None:
                 code="validation_error",
                 message=f"param_values key 格式错误，长度上限 {key_max}",
             )
+        # M-B4: 限制 param_key 字符集，拒绝控制字符 / 空白 / 标点，避免污染 422 details
+        # 与下游日志输出。与 plugin schema 实际命名约定对齐：[A-Za-z_][A-Za-z0-9_]*。
+        if not _PARAM_KEY_PATTERN.fullmatch(param_key):
+            return api_error(
+                status_code=422,
+                code="validation_error",
+                message="param_values key 字符集错误",
+            )
         str_max = _PARAM_VALUES_STR_MAX_LEN
         if isinstance(param_value, str) and len(param_value) > str_max:
             return api_error(
@@ -82,7 +93,9 @@ def _validate_aliases_list(raw: list[Any]) -> JSONResponse | None:
                 code="validation_error",
                 message="别名必须是字符串",
             )
-        if len(alias_item) > _ALIAS_MAX_LEN:
+        # L-B2: 先 strip 再算长度，避免前端 trim 后合法的 alias 因末尾空格被路由层误拒。
+        # 不在此过滤空串：service 层会自动 continue 跳过。
+        if len(alias_item.strip()) > _ALIAS_MAX_LEN:
             return api_error(
                 status_code=422,
                 code="validation_error",
@@ -147,7 +160,13 @@ async def webui_commands_api_list(request: Request) -> JSONResponse:
                 ).lower()
             ]
     except Exception as exc:  # noqa: BLE001
-        logger.exception(f"加载命令配置失败：reason={str(exc)[:500]}")
+        # M-B3: 日志补 client_ip / user_agent，与 login / dashboard 风格对齐。
+        client_ip = _client_ip(request)
+        user_agent = request.headers.get("user-agent", "")[:200]
+        logger.exception(
+            f"加载命令配置失败：reason={str(exc)[:500]} "
+            f"client_ip={client_ip} user_agent={user_agent!r}"
+        )
         return api_error(
             status_code=500,
             code="internal_error",
@@ -183,7 +202,15 @@ async def webui_commands_api_update(command_key: str, request: Request) -> JSONR
 
     update_payload: dict[str, Any] = {}
     if "enabled" in payload:
-        update_payload["enabled"] = payload.get("enabled")
+        raw_enabled = payload.get("enabled")
+        # M-B2: 拒绝 {"enabled": null}，避免 service 层视作 sentinel 静默跳过更新而 route 返回 200。
+        if not isinstance(raw_enabled, bool):
+            return api_error(
+                status_code=422,
+                code="validation_error",
+                message="enabled 必须是布尔值",
+            )
+        update_payload["enabled"] = raw_enabled
     if "param_values" in payload:
         raw_param_values = payload.get("param_values")
         param_values_error = _validate_param_values(raw_param_values)
@@ -198,12 +225,17 @@ async def webui_commands_api_update(command_key: str, request: Request) -> JSONR
             message="至少需要提供 enabled 或 param_values",
         )
 
+    # M-B3: 日志补 client_ip / user_agent，与 login / dashboard 风格对齐。
+    client_ip = _client_ip(request)
+    user_agent = request.headers.get("user-agent", "")[:200]
+
     try:
         updated_command = update_command_config(command_key, **update_payload)
     except CommandConfigValidationError as exc:
         status_code, error_code, message, details = _map_validation_error(exc)
         logger.warning(
-            f"保存命令配置失败：command_key={command_key}，reason={str(exc)[:500]}"
+            f"保存命令配置失败：command_key={command_key}，reason={str(exc)[:500]} "
+            f"client_ip={client_ip} user_agent={user_agent!r}"
         )
         return api_error(
             status_code=status_code,
@@ -213,7 +245,8 @@ async def webui_commands_api_update(command_key: str, request: Request) -> JSONR
         )
     except Exception as exc:  # noqa: BLE001
         logger.exception(
-            f"保存命令配置异常：command_key={command_key}，reason={str(exc)[:500]}"
+            f"保存命令配置异常：command_key={command_key}，reason={str(exc)[:500]} "
+            f"client_ip={client_ip} user_agent={user_agent!r}"
         )
         return api_error(
             status_code=500,
@@ -221,7 +254,9 @@ async def webui_commands_api_update(command_key: str, request: Request) -> JSONR
             message="内部错误",
         )
 
-    logger.info(f"保存命令配置成功：command_key={command_key}")
+    logger.info(
+        f"保存命令配置成功：command_key={command_key} client_ip={client_ip}"
+    )
     return api_success(data=updated_command)
 
 
@@ -253,12 +288,17 @@ async def webui_commands_api_update_aliases(command_key: str, request: Request) 
     if aliases_error is not None:
         return aliases_error
 
+    # M-B3: 日志补 client_ip / user_agent，与 login / dashboard 风格对齐。
+    client_ip = _client_ip(request)
+    user_agent = request.headers.get("user-agent", "")[:200]
+
     try:
         updated_command = update_command_aliases(command_key, raw_aliases)
     except CommandConfigValidationError as exc:
         status_code, error_code, message, details = _map_validation_error(exc)
         logger.warning(
-            f"保存命令别名失败：command_key={command_key}，reason={str(exc)[:500]}"
+            f"保存命令别名失败：command_key={command_key}，reason={str(exc)[:500]} "
+            f"client_ip={client_ip} user_agent={user_agent!r}"
         )
         return api_error(
             status_code=status_code,
@@ -269,7 +309,8 @@ async def webui_commands_api_update_aliases(command_key: str, request: Request) 
     except Exception as exc:  # noqa: BLE001
         # C-6: 与 update_config endpoint 对称，补未知异常兜底。
         logger.exception(
-            f"保存命令别名异常：command_key={command_key}，reason={str(exc)[:500]}"
+            f"保存命令别名异常：command_key={command_key}，reason={str(exc)[:500]} "
+            f"client_ip={client_ip} user_agent={user_agent!r}"
         )
         return api_error(
             status_code=500,
@@ -277,5 +318,7 @@ async def webui_commands_api_update_aliases(command_key: str, request: Request) 
             message="内部错误",
         )
 
-    logger.info(f"保存命令别名成功：command_key={command_key}")
+    logger.info(
+        f"保存命令别名成功：command_key={command_key} client_ip={client_ip}"
+    )
     return api_success(data=updated_command)
