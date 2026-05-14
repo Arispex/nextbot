@@ -1125,3 +1125,36 @@ Round 7 启用 SQLite WAL 后，运行时产生 app.db-shm / app.db-wal 副边�
 ### Next Steps
 
 - None - task complete
+
+
+## Session 129: WebUI 命令配置页面 R2 复审 + 全修（含 R1 regression B-7）
+
+**Date**: 2026-05-15
+**Task**: WebUI 命令配置页面 R2 复审 + 全修（含 R1 regression B-7）
+**Branch**: `main`
+
+### Summary
+
+R1 (10d7936) commands audit 落地后 R2 复审发现 1 处 R1 regression（B-7 closeAliasModal 直接绑 click，MouseEvent 当 force 参数绕过 R1 saving guard，arrow function 包裹修复）+ 12 项 P1/P2/P3 + 3 项后端 Medium 全修。trellis-check 17/17 PASS + 1 self-fix（B-3 tabindex 在 native button 上的回归）。严格 scope 仅 2 文件 +186 -43。禁破坏性更新约束全过：API 路径 / 响应 shape / 函数签名 / DOM ID / CSS class 全部不变。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f512c8c` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
