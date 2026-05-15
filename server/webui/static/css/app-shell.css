@@ -212,7 +212,7 @@ img { max-width: 100%; height: auto; }
   display: block;
   height: 26px;
   width: auto;
-  color: var(--text);
+  color: var(--primary);
 }
 
 /* ── Sidebar menu ──────────────────────────────────────── */
@@ -309,9 +309,7 @@ img { max-width: 100%; height: auto; }
 }
 
 .app-header-inner {
-  max-width: 1180px;
   width: 100%;
-  margin: 0 auto;
   display: flex;
   align-items: center;
   gap: var(--space-sm);
