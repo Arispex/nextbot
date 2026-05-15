@@ -1388,3 +1388,36 @@ shop 的 get_shop / create_shop_item / update_shop_item 与 lottery 同形：外
 ### Next Steps
 
 - None - task complete
+
+
+## Session 137: 修复设置页重启 poll：401 视为已恢复 + '正在重启' 状态提示
+
+**Date**: 2026-05-15
+**Task**: 修复设置页重启 poll：401 视为已恢复 + '正在重启' 状态提示
+**Branch**: `main`
+
+### Summary
+
+设置页 probeRestartReady 之前只把 200 当恢复信号，导致改 token 后新进程返回 401（auth 中间件挡未登录 API 请求）时 poll 整个窗口看不到 200 → 误报'重启超时'。把 401 也视为'新进程已上线'信号，reload 后由浏览器 HTML 路由触发 302 跳登录。另外在成功 toast 后加 info 阶段提示'正在重启，等待服务恢复…'。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d0e4a80` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-3.md`
-- **Total Sessions**: 136
+- **Total Sessions**: 137
 - **Last Active**: 2026-05-15
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-3.md` | ~1390 | Active |
+| `journal-3.md` | ~1423 | Active |
 | `journal-2.md` | ~1973 | Archived |
 | `journal-1.md` | ~1999 | Archived |
 <!-- @@@/auto:active-documents -->
@@ -31,6 +31,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 137 | 2026-05-15 | 修复设置页重启 poll：401 视为已恢复 + '正在重启' 状态提示 | `d0e4a80` | `main` |
 | 136 | 2026-05-15 | 修复商店 _load_server_label_map SQLite 自死锁（同 lottery 同形） | `cccd569` | `main` |
 | 135 | 2026-05-15 | 修复抽奖创建/更新奖品 SQLite BEGIN IMMEDIATE 自死锁 | `7c24541` | `main` |
 | 134 | 2026-05-15 | 项目剩余未审计代码全量审计 + 修复（5 bucket / 82 项） | `d364692` | `main` |
