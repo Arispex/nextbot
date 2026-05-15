@@ -1222,3 +1222,37 @@ R1 (10d7936) commands audit 落地后 R2 复审发现 1 处 R1 regression（B-7 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 132: WebUI 全量审计 + 修复：剩余 6 页面 + 3 公共模块 = 162 项硬化落地
+
+**Date**: 2026-05-15
+**Task**: WebUI 全量审计 + 修复：剩余 6 页面 + 3 公共模块 = 162 项硬化落地
+**Branch**: `main`
+
+### Summary
+
+对 server/webui 中尚未单独轮审的 6 page（settings / warehouse / users / shop / lottery / groups）+ 3 公共模块（app_shell / shared_routes / shared_js）执行全量 security / perf / UX / copy 审计。派 9 个 trellis-research sub-agent 产出 208 项 finding（2 CRIT / 31 HIGH / 95 MED / 80 LOW），再派 9 个 trellis-implement sub-agent 应用 162 项最小非破坏硬化，49 项 spec 内 skip，~20 项跨模块 backlog。关键命中：settings OneBot token chain（mask + reveal + 10s 隐藏）、~45 写路径补 client_ip+user_agent、search debounce+abort+beforeunload、modal ESC stack+focus trap+scroll lock、app_shell <nav>+aria-current+skip-link+mobile inert+prefers-reduced-motion、lottery Σweight≤100+命令黑名单+NaN/Inf+replace_all 强确认、shop/lottery import size cap、login_requests/player_events rate limit+输入校验、文案规范统一。29 文件 +3873/-775（6995d3c），后续 hotfix 把 X-Requested-With 提升为 api.js 默认头修复 commands 页重启回归（8bec34e）。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `6995d3c` | (see git log) |
+| `8bec34e` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
