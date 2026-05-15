@@ -1256,3 +1256,36 @@ R1 (10d7936) commands audit 落地后 R2 复审发现 1 处 R1 regression（B-7 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 133: 还原 app_shell logo coral 色 + header 全宽两侧贴边
+
+**Date**: 2026-05-15
+**Task**: 还原 app_shell logo coral 色 + header 全宽两侧贴边
+**Branch**: `main`
+
+### Summary
+
+按用户偏好回退 commit 6995d3c 中的 audit Low-2 / Medium-8 两处样式：.brand-logo-svg 颜色 var(--text) → var(--primary) 还原 coral；.app-header-inner 删 max-width 1180px + margin: 0 auto，wrapper 透明化让 header 在超宽屏全宽撑开（.header-actions 已有 margin-left:auto，自动贴右）。.app-content 1180px 居中不动。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `e93dd16` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

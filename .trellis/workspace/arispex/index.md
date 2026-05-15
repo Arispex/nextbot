@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-3.md`
-- **Total Sessions**: 132
+- **Total Sessions**: 133
 - **Last Active**: 2026-05-15
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-3.md` | ~1258 | Active |
+| `journal-3.md` | ~1291 | Active |
 | `journal-2.md` | ~1973 | Archived |
 | `journal-1.md` | ~1999 | Archived |
 <!-- @@@/auto:active-documents -->
@@ -31,6 +31,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 133 | 2026-05-15 | 还原 app_shell logo coral 色 + header 全宽两侧贴边 | `e93dd16` | `main` |
 | 132 | 2026-05-15 | WebUI 全量审计 + 修复：剩余 6 页面 + 3 公共模块 = 162 项硬化落地 | `6995d3c`, `8bec34e` | `main` |
 | 131 | 2026-05-15 | WebUI servers R2 audit (R1 修复复审 + 全量再扫) | - | `main` |
 | 130 | 2026-05-15 | WebUI 服务器管理页面审计 + 全修（token 链改造） | `1355521` | `main` |
