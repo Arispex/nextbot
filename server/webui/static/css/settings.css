@@ -199,6 +199,12 @@
   background-color: var(--surface-soft);
 }
 
+/* L-5：键盘聚焦反馈，避免 Tab 用户找不到当前焦点。 */
+.token-input-toggle:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+}
+
 .token-input-toggle svg {
   width: 14px;
   height: 14px;

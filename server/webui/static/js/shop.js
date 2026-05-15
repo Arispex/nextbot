@@ -15,9 +15,15 @@
     servers: [],
     editingShopId: null,
     editingItemId: null,
-    pendingDeleteShop: null, // { id, name }
+    pendingDeleteShop: null, // { id, name, itemCount }
     pendingDeleteItem: null, // { id, name }
     pendingImport: null,     // { fileName, payload, shopCount, itemCount, exportedAt }
+    // H-3：写入飞行 guard，禁止双击重复请求（特别覆盖 import replace_all 这条破坏性路径）。
+    submittingShop: false,
+    submittingItem: false,
+    deletingShop: false,
+    deletingItem: false,
+    importing: false,
   };
 
   const els = {};
@@ -45,16 +51,38 @@
 
   function showModal(modal) {
     if (!modal) return;
+    // M-16：记住打开 modal 前的焦点元素，关闭时恢复，保障键盘 / 屏幕阅读器流。
+    modal._previousFocus = document.activeElement;
     modal.classList.remove("hidden");
   }
 
   function hideModal(modal) {
     if (!modal) return;
     modal.classList.add("hidden");
+    // M-16：恢复打开前的焦点，避免焦点跳到 <body>。
+    const prev = modal._previousFocus;
+    modal._previousFocus = null;
+    if (prev && typeof prev.focus === "function") {
+      try { prev.focus(); } catch (_e) { /* ignore */ }
+    }
   }
 
-  function hideAllModals() {
-    document.querySelectorAll(".modal").forEach((m) => m.classList.add("hidden"));
+  function focusFirstField(modal) {
+    if (!modal) return;
+    const focusable = modal.querySelector(
+      "input:not([type='hidden']):not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled])"
+    );
+    if (focusable && typeof focusable.focus === "function") {
+      try { focusable.focus(); } catch (_e) { /* ignore */ }
+    }
+  }
+
+  function isAnySubmissionInFlight() {
+    return state.submittingShop
+      || state.submittingItem
+      || state.deletingShop
+      || state.deletingItem
+      || state.importing;
   }
 
   async function callApi(url, opts = {}) {
@@ -65,38 +93,53 @@
 
   async function loadMeta() {
     try {
-      const tierRes = await callApi("/webui/api/shops/meta/tiers", { action: "加载进度选项" });
+      const tierRes = await callApi("/webui/api/shops/meta/tiers", { action: "加载" });
       state.tiers = api.unwrapData(tierRes) || [];
     } catch (err) { state.tiers = []; }
     try {
-      const srvRes = await callApi("/webui/api/shops/meta/servers", { action: "加载服务器列表" });
+      const srvRes = await callApi("/webui/api/shops/meta/servers", { action: "加载" });
       state.servers = api.unwrapData(srvRes) || [];
     } catch (err) { state.servers = []; }
   }
 
   async function loadShops() {
-    try {
-      const res = await callApi("/webui/api/shops", { action: "加载商店列表" });
-      state.shops = api.unwrapData(res) || [];
-      renderShopList();
-      if (state.selectedShopId !== null) {
-        const exists = state.shops.find((s) => s.id === state.selectedShopId);
-        if (!exists) {
-          state.selectedShopId = null;
-          state.selectedShopDetail = null;
-          renderShopDetail();
-        } else {
-          await loadShopDetail(state.selectedShopId);
-        }
+    // M-13：已选 shop 时与 list 并行拉取详情，省一次串行 RTT。
+    const targetShopId = state.selectedShopId;
+    const listPromise = callApi("/webui/api/shops", { action: "加载" });
+    const detailPromise = targetShopId !== null
+      ? callApi("/webui/api/shops/" + targetShopId, { action: "加载" })
+      : Promise.resolve(null);
+    let listRes, detailRes, listErr, detailErr;
+    try { listRes = await listPromise; } catch (e) { listErr = e; }
+    try { detailRes = await detailPromise; } catch (e) { detailErr = e; }
+    if (listErr) {
+      showAlert(els.alert, listErr.message || "加载失败", "error");
+      return;
+    }
+    state.shops = api.unwrapData(listRes) || [];
+    renderShopList();
+    if (targetShopId !== null) {
+      const exists = state.shops.find((s) => s.id === targetShopId);
+      if (!exists) {
+        state.selectedShopId = null;
+        state.selectedShopDetail = null;
+        renderShopDetail();
+      } else if (detailErr) {
+        // Detail load failed (selected shop may have been deleted concurrently);
+        // surface the error and clear detail panel.
+        state.selectedShopDetail = null;
+        renderShopDetail();
+        showAlert(els.alert, detailErr.message || "加载失败", "error");
+      } else {
+        state.selectedShopDetail = detailRes ? api.unwrapData(detailRes) : null;
+        renderShopDetail();
       }
-    } catch (err) {
-      showAlert(els.alert, err.message || "加载失败", "error");
     }
   }
 
   async function loadShopDetail(shopId) {
     try {
-      const res = await callApi("/webui/api/shops/" + shopId, { action: "加载商店详情" });
+      const res = await callApi("/webui/api/shops/" + shopId, { action: "加载" });
       state.selectedShopDetail = api.unwrapData(res);
       renderShopDetail();
     } catch (err) {
@@ -344,7 +387,9 @@
     els.shopFieldSortOrder.value = shop ? shop.sort_order : 0;
     els.shopFieldEnabled.checked = shop ? !!shop.enabled : true;
     showModal(els.shopModal);
-    setTimeout(() => els.shopFieldName.focus(), 30);
+    setTimeout(() => {
+      try { els.shopFieldName.focus(); } catch (_e) { /* ignore */ }
+    }, 30);
   }
 
   function closeShopModal() {
@@ -354,6 +399,8 @@
 
   async function submitShopModal(ev) {
     ev.preventDefault();
+    // H-3：飞行 guard，避免双击产生重复 create / update。
+    if (state.submittingShop) return;
     hideAlert(els.shopModalAlert);
     const payload = {
       name: els.shopFieldName.value.trim(),
@@ -361,26 +408,31 @@
       sort_order: Number(els.shopFieldSortOrder.value || 0),
       enabled: els.shopFieldEnabled.checked,
     };
+    state.submittingShop = true;
+    if (els.shopModalSave) els.shopModalSave.disabled = true;
     try {
       if (state.editingShopId === null) {
         await callApi("/webui/api/shops", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
-          action: "新建商店",
+          action: "新建",
         });
       } else {
         await callApi("/webui/api/shops/" + state.editingShopId, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
-          action: "保存商店",
+          action: "保存",
         });
       }
       closeShopModal();
       await loadShops();
     } catch (err) {
       showAlert(els.shopModalAlert, err.message || "保存失败", "error");
+    } finally {
+      state.submittingShop = false;
+      if (els.shopModalSave) els.shopModalSave.disabled = false;
     }
   }
 
@@ -395,8 +447,11 @@
       target = state.shops.find((s) => s.id === state.editingShopId) || null;
     }
     if (!target) return;
-    state.pendingDeleteShop = { id: target.id, name: target.name || "" };
+    // M-15：在确认 modal 内展示级联删除的商品数量，避免 admin 误删大店。
+    const itemCount = Number(target.item_count || 0);
+    state.pendingDeleteShop = { id: target.id, name: target.name || "", itemCount };
     els.shopDeleteName.textContent = state.pendingDeleteShop.name || ("ID " + state.pendingDeleteShop.id);
+    if (els.shopDeleteItemCount) els.shopDeleteItemCount.textContent = String(itemCount);
     hideAlert(els.shopDeleteAlert);
     showModal(els.shopDeleteModal);
   }
@@ -408,9 +463,13 @@
 
   async function confirmDeleteShop() {
     if (!state.pendingDeleteShop) return;
+    // H-3：飞行 guard，避免双击产生重复 DELETE。
+    if (state.deletingShop) return;
     const id = state.pendingDeleteShop.id;
+    state.deletingShop = true;
+    if (els.shopDeleteConfirm) els.shopDeleteConfirm.disabled = true;
     try {
-      await callApi("/webui/api/shops/" + id, { method: "DELETE", action: "删除商店" });
+      await callApi("/webui/api/shops/" + id, { method: "DELETE", action: "删除" });
       const wasSelected = state.selectedShopId === id;
       closeShopDeleteModal();
       closeShopModal();
@@ -422,6 +481,9 @@
       renderShopDetail();
     } catch (err) {
       showAlert(els.shopDeleteAlert, err.message || "删除失败", "error");
+    } finally {
+      state.deletingShop = false;
+      if (els.shopDeleteConfirm) els.shopDeleteConfirm.disabled = false;
     }
   }
 
@@ -462,6 +524,26 @@
     }
   }
 
+  // L-1：用户切换 kind 时，把对端字段重置回初始值，避免「保存的字段是哪一组」的视觉困惑。
+  // 注意：openItemModal 用 applyKindVisibility 仅切显示，不应触发该重置。
+  function handleKindUserChange() {
+    const kind = els.itemFieldKind.value;
+    if (kind === "item") {
+      els.itemFieldTargetServer.value = "";
+      els.itemFieldCommandTemplate.value = "";
+      els.itemFieldShowCommand.checked = false;
+      els.itemFieldRequireOnline.checked = false;
+    } else {
+      els.itemFieldItemId.value = 1;
+      els.itemFieldPrefixId.value = 0;
+      els.itemFieldQuantity.value = 1;
+      els.itemFieldMinTier.value = "none";
+      els.itemFieldActualValue.value = "";
+      els.itemFieldIsMystery.checked = false;
+    }
+    applyKindVisibility();
+  }
+
   function openItemModal(item) {
     if (state.selectedShopId === null) return;
     state.editingItemId = item ? item.id : null;
@@ -487,7 +569,9 @@
     els.itemFieldRequireOnline.checked = item ? !!item.require_online : false;
     applyKindVisibility();
     showModal(els.itemModal);
-    setTimeout(() => els.itemFieldName.focus(), 30);
+    setTimeout(() => {
+      try { els.itemFieldName.focus(); } catch (_e) { /* ignore */ }
+    }, 30);
   }
 
   function closeItemModal() {
@@ -497,6 +581,8 @@
 
   async function submitItemModal(ev) {
     ev.preventDefault();
+    // H-3：飞行 guard，避免双击产生重复 create / update。
+    if (state.submittingItem) return;
     hideAlert(els.itemModalAlert);
     if (state.selectedShopId === null) return;
     const kind = els.itemFieldKind.value;
@@ -523,13 +609,15 @@
       payload.show_command = els.itemFieldShowCommand.checked;
       payload.require_online = els.itemFieldRequireOnline.checked;
     }
+    state.submittingItem = true;
+    if (els.itemModalSave) els.itemModalSave.disabled = true;
     try {
       if (state.editingItemId === null) {
         await callApi("/webui/api/shops/" + state.selectedShopId + "/items", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
-          action: "新建商品",
+          action: "新建",
         });
       } else {
         await callApi(
@@ -538,7 +626,7 @@
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),
-            action: "保存商品",
+            action: "保存",
           },
         );
       }
@@ -547,6 +635,9 @@
       await loadShops();
     } catch (err) {
       showAlert(els.itemModalAlert, err.message || "保存失败", "error");
+    } finally {
+      state.submittingItem = false;
+      if (els.itemModalSave) els.itemModalSave.disabled = false;
     }
   }
 
@@ -577,11 +668,15 @@
 
   async function confirmDeleteItem() {
     if (!state.pendingDeleteItem || state.selectedShopId === null) return;
+    // H-3：飞行 guard，避免双击产生重复 DELETE。
+    if (state.deletingItem) return;
     const id = state.pendingDeleteItem.id;
+    state.deletingItem = true;
+    if (els.itemDeleteConfirm) els.itemDeleteConfirm.disabled = true;
     try {
       await callApi(
         "/webui/api/shops/" + state.selectedShopId + "/items/" + id,
-        { method: "DELETE", action: "删除商品" },
+        { method: "DELETE", action: "删除" },
       );
       closeItemDeleteModal();
       closeItemModal();
@@ -589,6 +684,9 @@
       await loadShops();
     } catch (err) {
       showAlert(els.itemDeleteAlert, err.message || "删除失败", "error");
+    } finally {
+      state.deletingItem = false;
+      if (els.itemDeleteConfirm) els.itemDeleteConfirm.disabled = false;
     }
   }
 
@@ -694,6 +792,8 @@
     // Reset radio to merge default
     const defaultRadio = document.querySelector('input[name="shop-import-mode"][value="merge"]');
     if (defaultRadio) defaultRadio.checked = true;
+    // H-2：每次打开 modal 时清空 REPLACE 确认输入。
+    if (els.shopImportReplaceConfirm) els.shopImportReplaceConfirm.value = "";
     refreshImportReplaceWarn();
     showModal(els.shopImportModal);
   }
@@ -702,15 +802,52 @@
     const isReplace = document.querySelector('input[name="shop-import-mode"]:checked')?.value === "replace_all";
     if (isReplace) {
       els.shopImportReplaceWarn.classList.remove("hidden");
+      // H-2：replace_all 必须额外输入 "REPLACE" 才能启用「导入」按钮。
+      if (els.shopImportReplaceConfirmRow) els.shopImportReplaceConfirmRow.classList.remove("hidden");
     } else {
       els.shopImportReplaceWarn.classList.add("hidden");
+      if (els.shopImportReplaceConfirmRow) els.shopImportReplaceConfirmRow.classList.add("hidden");
+      // 切回 merge 时清空 REPLACE 输入，避免下次切到 replace_all 误启用。
+      if (els.shopImportReplaceConfirm) els.shopImportReplaceConfirm.value = "";
+    }
+    refreshImportConfirmEnabled();
+  }
+
+  function refreshImportConfirmEnabled() {
+    if (!els.shopImportConfirm) return;
+    if (state.importing) {
+      els.shopImportConfirm.disabled = true;
+      return;
+    }
+    const isReplace = document.querySelector('input[name="shop-import-mode"]:checked')?.value === "replace_all";
+    if (isReplace) {
+      const typed = els.shopImportReplaceConfirm ? els.shopImportReplaceConfirm.value : "";
+      els.shopImportConfirm.disabled = typed.trim() !== "REPLACE";
+    } else {
+      els.shopImportConfirm.disabled = false;
     }
   }
 
   async function confirmImport() {
     if (!state.pendingImport) return;
+    // H-3：飞行 guard，特别保护 replace_all 这条破坏性路径不被双击。
+    if (state.importing) return;
     const mode = document.querySelector('input[name="shop-import-mode"]:checked')?.value || "merge";
+    // H-2：replace_all 强制输入 "REPLACE" 才能继续，防止误点。
+    if (mode === "replace_all") {
+      const typed = els.shopImportReplaceConfirm ? els.shopImportReplaceConfirm.value.trim() : "";
+      if (typed !== "REPLACE") {
+        showAlert(
+          els.shopImportAlert,
+          api.buildActionFailureMessage("导入", "请输入 REPLACE 以确认全量替换"),
+          "error",
+        );
+        return;
+      }
+    }
     hideAlert(els.shopImportAlert);
+    state.importing = true;
+    refreshImportConfirmEnabled();
     try {
       await callApi(
         "/webui/api/shops/import?mode=" + encodeURIComponent(mode),
@@ -727,6 +864,9 @@
       await loadShops();
     } catch (err) {
       showAlert(els.shopImportAlert, err.message || "导入失败", "error");
+    } finally {
+      state.importing = false;
+      refreshImportConfirmEnabled();
     }
   }
 
@@ -755,6 +895,7 @@
     els.shopModalTitle = $("shop-modal-title");
     els.shopModalAlert = $("shop-modal-alert");
     els.shopModalForm = $("shop-modal-form");
+    els.shopModalSave = $("shop-modal-save");
     els.shopFieldName = $("shop-field-name");
     els.shopFieldDescription = $("shop-field-description");
     els.shopFieldSortOrder = $("shop-field-sort-order");
@@ -763,12 +904,14 @@
     els.shopDeleteModal = $("shop-delete-modal");
     els.shopDeleteAlert = $("shop-delete-alert");
     els.shopDeleteName = $("shop-delete-name");
+    els.shopDeleteItemCount = $("shop-delete-item-count");
     els.shopDeleteConfirm = $("shop-delete-confirm");
 
     els.itemModal = $("item-modal");
     els.itemModalTitle = $("item-modal-title");
     els.itemModalAlert = $("item-modal-alert");
     els.itemModalForm = $("item-modal-form");
+    els.itemModalSave = $("item-modal-save");
     els.itemFieldName = $("item-field-name");
     els.itemFieldDescription = $("item-field-description");
     els.itemFieldKind = $("item-field-kind");
@@ -800,6 +943,8 @@
     els.shopImportAlert = $("shop-import-alert");
     els.shopImportSummary = $("shop-import-summary");
     els.shopImportReplaceWarn = $("shop-import-replace-warn");
+    els.shopImportReplaceConfirmRow = $("shop-import-replace-confirm-row");
+    els.shopImportReplaceConfirm = $("shop-import-replace-confirm");
     els.shopImportConfirm = $("shop-import-confirm");
   }
 
@@ -812,7 +957,8 @@
     els.itemCreateBtn.addEventListener("click", () => openItemModal(null));
     els.itemModalForm.addEventListener("submit", submitItemModal);
     els.itemDeleteConfirm.addEventListener("click", confirmDeleteItem);
-    els.itemFieldKind.addEventListener("change", applyKindVisibility);
+    // L-1：用户切换 kind 触发对端字段重置 + 显隐切换。
+    els.itemFieldKind.addEventListener("change", handleKindUserChange);
 
     els.shopExportBtn.addEventListener("click", handleExport);
     els.shopImportBtn.addEventListener("click", () => els.shopImportFile.click());
@@ -821,21 +967,29 @@
     document.querySelectorAll('input[name="shop-import-mode"]').forEach((r) => {
       r.addEventListener("change", refreshImportReplaceWarn);
     });
+    // H-2：REPLACE 确认输入变化时刷新「导入」按钮的 disabled 状态。
+    if (els.shopImportReplaceConfirm) {
+      els.shopImportReplaceConfirm.addEventListener("input", refreshImportConfirmEnabled);
+    }
 
-    // Generic close handlers (data-modal-close="<id>")
+    // Generic close handlers (data-modal-close="<id>").
+    // M-17：飞行中（submit / delete / import）禁止通过 mask / 关闭按钮关闭 modal，
+    // 避免用户误以为已取消但后端事务仍在执行。
     document.querySelectorAll("[data-modal-close]").forEach((el) => {
       el.addEventListener("click", () => {
+        if (isAnySubmissionInFlight()) return;
         const targetId = el.getAttribute("data-modal-close");
         const target = document.getElementById(targetId);
-        if (target) target.classList.add("hidden");
+        if (target) hideModal(target);
       });
     });
 
-    // Esc closes any visible modal
+    // Esc closes any visible modal.
+    // M-17：与上面一致，飞行中拦截 ESC。
     document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") {
-        document.querySelectorAll(".modal:not(.hidden)").forEach((m) => m.classList.add("hidden"));
-      }
+      if (e.key !== "Escape") return;
+      if (isAnySubmissionInFlight()) return;
+      document.querySelectorAll(".modal:not(.hidden)").forEach((m) => hideModal(m));
     });
   }
 

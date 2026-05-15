@@ -12,6 +12,15 @@
       document.documentElement.classList.remove("dark");
     }
   } catch (error) {
-    document.documentElement.classList.remove("dark");
+    // L-8：localStorage 异常（隐私模式 / quota / ITP）时仍尝试跟随系统 prefers-color-scheme，
+    // 避免一律降级 light 导致 dark 系统用户看到日间主题闪烁。
+    try {
+      var prefersDark =
+        window.matchMedia &&
+        window.matchMedia("(prefers-color-scheme: dark)").matches;
+      document.documentElement.classList.toggle("dark", !!prefersDark);
+    } catch (_inner) {
+      document.documentElement.classList.remove("dark");
+    }
   }
 })();

@@ -83,10 +83,17 @@
     return result;
   };
 
-  const unwrapData = (result) => {
+  const unwrapData = (result, { action = "" } = {}) => {
     const payload = unwrapPayload(result);
     if (!payload || typeof payload !== "object" || !("data" in payload)) {
-      throw new Error("返回数据格式错误");
+      // M-1: 走 ApiRequestError 契约，保留 action / reason / code 字段供 caller 走统一文案
+      const reason = "返回数据格式无效";
+      const trimmedAction = String(action || "").trim();
+      const message = trimmedAction ? buildActionFailureMessage(trimmedAction, reason) : reason;
+      throw new ApiRequestError(message, {
+        code: "invalid_response",
+        reason,
+      });
     }
     return payload.data;
   };
@@ -176,6 +183,21 @@
     return error.name === "AbortError" && /timeout/i.test(String(error.message || ""));
   };
 
+  // M-4：统一默认 Accept / Content-Type，避免每个 caller 手写，并保持 caller override 优先。
+  const buildDefaultHeaders = (method, body, headers) => {
+    const merged = { Accept: "application/json" };
+    const isGet = String(method || "GET").toUpperCase() === "GET";
+    const hasBody = body != null;
+    const isFormData = typeof FormData !== "undefined" && body instanceof FormData;
+    const isBlob = typeof Blob !== "undefined" && body instanceof Blob;
+    const isUrlEncoded =
+      typeof URLSearchParams !== "undefined" && body instanceof URLSearchParams;
+    if (!isGet && hasBody && !isFormData && !isBlob && !isUrlEncoded) {
+      merged["Content-Type"] = "application/json";
+    }
+    return { ...merged, ...(headers || {}) };
+  };
+
   const apiRequest = async (
     url,
     {
@@ -193,9 +215,11 @@
     try {
       response = await fetch(url, {
         method,
-        headers,
+        headers: buildDefaultHeaders(method, body, headers),
         body,
         signal: buildTimeoutSignal(signal, timeoutMs),
+        // L-2：显式声明同源凭据，防御未来跨域代理 / iframe 场景误用 default。
+        credentials: "same-origin",
       });
     } catch (error) {
       if (isTimeoutError(error)) {
@@ -224,15 +248,13 @@
         code === "unauthorized" &&
         !window.location.pathname.startsWith("/webui/login")
       ) {
-        const currentPath = window.location.pathname + window.location.search;
+        // M-5：仅保留 pathname，丢弃 search / hash，避免敏感 query 经 next 参数被 access log 记录。
+        const currentPath = window.location.pathname;
         const loginUrl = "/webui/login?next=" + encodeURIComponent(currentPath);
-        window.location.assign(loginUrl);
-        // 仍抛错让 caller finally / catch 链能执行（实际页面已开始卸载）
-        throw new ApiRequestError("登录已过期，正在跳转登录页", {
-          status: 401,
-          code: "unauthorized",
-          reason: "登录已过期",
-        });
+        // M-6：用 replace 不留 history，且更早触发 unload；返回永不 resolve 的 Promise 让调用链
+        // 在页面卸载前永久挂起，避免短暂闪现"登录已过期"toast 后再被 replace 的 UX 抖动。
+        window.location.replace(loginUrl);
+        return new Promise(() => {});
       }
 
       throw new ApiRequestError(buildActionFailureMessage(action, finalReason), {

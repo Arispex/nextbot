@@ -306,10 +306,9 @@ html, body { overflow-x: hidden; }
   line-height: 1.55;
 }
 
-/* ── Inline badges (status / kind / weight / flag) ──── */
+/* ── Inline badges (status / kind / flag) ──── */
 .status-badge,
 .kind-badge,
-.weight-chip,
 .flag-chip {
   display: inline-flex;
   align-items: center;
@@ -342,28 +341,6 @@ html, body { overflow-x: hidden; }
 .kind-badge.kind-command {
   color: var(--accent-amber);
   border-color: var(--accent-amber);
-}
-
-.kind-badge.kind-coin-pos {
-  color: var(--accent-teal);
-  border-color: var(--accent-teal);
-}
-
-.kind-badge.kind-coin-neg {
-  color: var(--primary);
-  border-color: var(--primary);
-}
-
-.weight-chip {
-  font-family: var(--font-code);
-  font-feature-settings: "tnum";
-  color: var(--text);
-}
-
-.weight-chip.is-default {
-  color: var(--text-muted-soft);
-  font-family: var(--font-body);
-  border-style: dashed;
 }
 
 .flag-chip.flag-on {

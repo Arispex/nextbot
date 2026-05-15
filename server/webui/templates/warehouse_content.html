@@ -10,7 +10,10 @@
           </svg>
         </span>
         <input id="wh-search-input" class="input search-input" type="text" autocomplete="off"
-               placeholder="搜索用户 QQ 号 / 用户名称…" />
+               placeholder="搜索用户 QQ 号 / 用户名称…"
+               aria-label="搜索用户 QQ 号或用户名称"
+               aria-autocomplete="list" aria-controls="wh-search-dropdown" role="combobox"
+               aria-expanded="false" />
         <div id="wh-search-dropdown" class="search-dropdown hidden"></div>
       </div>
     </div>
@@ -69,19 +72,23 @@
         </label>
         <label class="form-item">
           <span class="form-label">物品 ID<span class="form-required">*</span></span>
-          <input id="wh-field-item-id" class="input" type="number" min="1" required />
+          <input id="wh-field-item-id" class="input" type="number" min="1" max="999999"
+                 step="1" inputmode="numeric" pattern="\d+" required />
         </label>
         <label class="form-item">
           <span class="form-label">前缀 ID（0 = 无前缀）</span>
-          <input id="wh-field-prefix-id" class="input" type="number" min="0" value="0" />
+          <input id="wh-field-prefix-id" class="input" type="number" min="0" max="999999"
+                 step="1" inputmode="numeric" pattern="\d+" value="0" />
         </label>
         <label class="form-item">
           <span class="form-label">数量<span class="form-required">*</span></span>
-          <input id="wh-field-quantity" class="input" type="number" min="1" value="1" required />
+          <input id="wh-field-quantity" class="input" type="number" min="1" max="9999"
+                 step="1" inputmode="numeric" pattern="\d+" value="1" required />
         </label>
         <label class="form-item">
           <span class="form-label">单价（金币 / 件，0 = 不可回收）</span>
-          <input id="wh-field-value" class="input" type="number" min="0" value="0" />
+          <input id="wh-field-value" class="input" type="number" min="0" max="1000000000"
+                 step="1" inputmode="numeric" pattern="\d+" value="0" />
         </label>
         <label class="form-item form-item-full">
           <span class="form-label">最低进度<span class="form-required">*</span></span>

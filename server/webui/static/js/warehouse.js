@@ -7,6 +7,16 @@
     return;
   }
 
+  // H-4：数值字段上限，与后端 _ITEM_ID_MAX / _QUANTITY_MAX / _VALUE_MAX 对齐。
+  const NUMERIC_LIMITS = {
+    itemId: { min: 1, max: 999999, label: "物品 ID" },
+    prefixId: { min: 0, max: 999999, label: "前缀 ID" },
+    quantity: { min: 1, max: 9999, label: "数量" },
+    value: { min: 0, max: 1000000000, label: "单价" },
+  };
+  // H-4：严格整数正则（拒绝小数 / 科学计数法 / 多余空白）。
+  const INT_RE = /^-?\d+$/;
+
   const state = {
     user: null,           // { user_id, user_name }
     capacity: 100,
@@ -14,12 +24,22 @@
     slots: new Map(),     // slot_index -> { item_id, prefix_id, quantity, min_tier, min_tier_label, value }
     tiers: [],            // [{ key, label }]
     editingSlot: null,    // current slot_index in modal
+    modalReturnTarget: null,  // M-5：modal 打开时记录的触发元素，关闭时 restore focus
+    deleteReturnTarget: null,
+    dropdownActiveIndex: -1,  // M-4：dropdown 键盘导航高亮项
+    dropdownUsers: [],        // M-4：dropdown 当前展示用户列表
+    isSubmitting: false,      // M-3 / M-6：保存 / 删除提交中标记
+    focusTimerId: null,       // M-5：modal focus setTimeout 句柄，关闭时清理
   };
 
   const TIER_RANK = new Map();   // tier key -> rank index for tier-chip styling
 
   const itemNameMap = new Map();
   const prefixNameMap = new Map();
+
+  // H-3：模块级 AbortController，切换用户 / 重载时取消上一次未完成请求。
+  let loadAbortController = null;
+  let searchAbortController = null;
 
   const els = {};
 
@@ -35,6 +55,14 @@
     msg.textContent = text;
     node.classList.remove("hidden", "success", "error");
     node.classList.add(kind === "error" ? "error" : "success");
+    // L-4：错误用 role="alert" + aria-live="assertive" 立即播报；成功用 role="status" + polite。
+    if (kind === "error") {
+      node.setAttribute("role", "alert");
+      node.setAttribute("aria-live", "assertive");
+    } else {
+      node.setAttribute("role", "status");
+      node.setAttribute("aria-live", "polite");
+    }
   }
 
   function hideAlert(node) {
@@ -69,6 +97,9 @@
           const name = String(e && e.name || "").trim();
           if (id > 0 && name) itemNameMap.set(id, name);
         });
+      } else {
+        // M-9：HTTP 非 2xx 时也输出 console warning，避免静默退化到 "ID:N" 显示。
+        console.warn("加载物品字典失败，HTTP " + itemRes.status);
       }
       if (prefixRes.ok) {
         const list = await prefixRes.json();
@@ -77,8 +108,13 @@
           const name = String(e && e.name || "").trim();
           if (id > 0 && name) prefixNameMap.set(id, name);
         });
+      } else {
+        console.warn("加载前缀字典失败，HTTP " + prefixRes.status);
       }
-    } catch (e) { /* fall back to numeric ids */ }
+    } catch (e) {
+      // M-9：网络异常 / JSON 解析失败时输出 console warning。
+      console.warn("加载字典异常", e);
+    }
   }
 
   async function loadTiers() {
@@ -103,7 +139,7 @@
         }
       });
     } catch (err) {
-      showAlert(els.alert, err && err.message ? err.message : "加载进度列表失败", "error");
+      showAlert(els.alert, err && err.message ? err.message : "加载失败", "error");
     }
   }
 
@@ -125,12 +161,30 @@
     });
   }
 
+  // M-10：把 unwrapData 失败归类为 "加载失败，返回数据格式错误"，并保留 raw payload 给 console 调试。
+  function safeUnwrapData(payload, contextLabel) {
+    try {
+      return api.unwrapData(payload);
+    } catch (err) {
+      console.warn(contextLabel + " 返回数据格式错误", payload);
+      throw new Error("返回数据格式错误");
+    }
+  }
+
   async function loadWarehouse(userId) {
     hideAlert(els.alert);
     if (!userId) {
-      showAlert(els.alert, "加载仓库失败，请输入用户 QQ 或用户名", "error");
+      showAlert(els.alert, "加载失败，请输入用户 QQ 或用户名", "error");
       return;
     }
+
+    // H-3：abort 上一次未完成的 load 请求，避免快速切换用户时旧响应覆盖新响应。
+    if (loadAbortController) {
+      try { loadAbortController.abort(); } catch (_e) { /* ignore */ }
+    }
+    loadAbortController = new AbortController();
+    const signal = loadAbortController.signal;
+
     try {
       const payload = await api.apiRequest(
         "/webui/api/warehouse?user_id=" + encodeURIComponent(userId),
@@ -139,9 +193,10 @@
           headers: { "Accept": "application/json" },
           action: "加载",
           expectedStatus: 200,
+          signal,
         }
       );
-      const data = api.unwrapData(payload);
+      const data = safeUnwrapData(payload, "加载仓库");
       state.user = { user_id: data.user_id, user_name: data.user_name };
       state.capacity = Number(data.capacity || 100);
       state.used = Number(data.used || 0);
@@ -152,7 +207,9 @@
       renderSummary();
       renderGrid();
     } catch (err) {
-      showAlert(els.alert, err && err.message ? err.message : "加载仓库失败", "error");
+      // H-3：abort 错误是用户主动操作（切换用户 / reload），不报错也不重置 UI。
+      if (signal.aborted) return;
+      showAlert(els.alert, err && err.message ? err.message : "加载失败", "error");
       hideAll();
     }
   }
@@ -187,7 +244,9 @@
     const occupied = !!slot;
     const cell = document.createElement("div");
     cell.className = "wh-slot" + (occupied ? " is-occupied" : "");
-    cell.addEventListener("click", function () { openModal(slotIndex, slot); });
+    // M-4 / M-5：标记 slot_index，便于 H-3 partial update 通过 data 属性定位。
+    cell.dataset.slotIndex = String(slotIndex);
+    cell.addEventListener("click", function () { openModal(slotIndex, slot, cell); });
 
     const idEl = document.createElement("div");
     idEl.className = "wh-slot-id";
@@ -198,8 +257,10 @@
     iconWrap.className = "wh-slot-icon";
     if (occupied) {
       const img = document.createElement("img");
-      img.src = "/assets/items/Item_" + slot.item_id + ".png";
-      img.alt = String(slot.item_id);
+      // M-8：防御性强转 integer，即便未来后端契约放宽也不会拼出穿越路径。
+      const safeItemId = Math.max(0, Number(slot.item_id) | 0);
+      img.src = "/assets/items/Item_" + safeItemId + ".png";
+      img.alt = String(safeItemId);
       img.addEventListener("error", function () { img.style.display = "none"; });
       iconWrap.appendChild(img);
     } else {
@@ -247,17 +308,28 @@
     if (Number(slot.value || 0) > 0) {
       const valueEl = document.createElement("div");
       valueEl.className = "wh-slot-value";
-      valueEl.textContent = "💰 " + slot.value;
+      // L-5：补单位与 form label "单价（金币 / 件）" 对齐。
+      valueEl.textContent = "💰 " + slot.value + "/件";
       cell.appendChild(valueEl);
     }
 
     return cell;
   }
 
+  // H-3：partial update — 单格 PUT / DELETE 成功后只重建该格 cell，不重拉整个仓库。
+  function replaceSlotCell(slotIndex) {
+    if (!els.grid) return;
+    const oldCell = els.grid.querySelector('[data-slot-index="' + slotIndex + '"]');
+    if (!oldCell) return;
+    const newCell = renderSlot(slotIndex, state.slots.get(slotIndex));
+    els.grid.replaceChild(newCell, oldCell);
+  }
+
   // ---------- Modal ----------
 
-  function openModal(slotIndex, slot) {
+  function openModal(slotIndex, slot, triggerEl) {
     state.editingSlot = slotIndex;
+    state.modalReturnTarget = triggerEl || document.activeElement;
     hideAlert(els.modalAlert);
     els.modalTitle.textContent = slot ? "编辑物品" : "添加物品";
     els.fieldSlot.value = "#" + slotIndex;
@@ -272,69 +344,180 @@
       els.modalDelete.classList.add("hidden");
     }
     showModal(els.modal);
-    setTimeout(function () { els.fieldItemId.focus(); }, 30);
+    // M-5：用 rAF 替代 setTimeout(30) 并保留句柄；modal 已关闭时不再 focus。
+    if (state.focusTimerId !== null) {
+      cancelAnimationFrame(state.focusTimerId);
+      state.focusTimerId = null;
+    }
+    state.focusTimerId = requestAnimationFrame(function () {
+      state.focusTimerId = null;
+      if (!els.modal.classList.contains("hidden") && els.fieldItemId) {
+        els.fieldItemId.focus();
+      }
+    });
   }
 
   function closeModal() {
     state.editingSlot = null;
+    if (state.focusTimerId !== null) {
+      cancelAnimationFrame(state.focusTimerId);
+      state.focusTimerId = null;
+    }
     hideModal(els.modal);
     hideAlert(els.modalAlert);
+    // M-5：恢复焦点到打开 modal 的触发元素。
+    const restoreTarget = state.modalReturnTarget;
+    state.modalReturnTarget = null;
+    if (restoreTarget && typeof restoreTarget.focus === "function" && document.contains(restoreTarget)) {
+      try { restoreTarget.focus(); } catch (_e) { /* ignore */ }
+    }
+  }
+
+  // M-3：toggle 保存 / 删除按钮 + form 输入的禁用状态。
+  function setSavePending(pending) {
+    state.isSubmitting = !!pending;
+    if (els.modalSave) els.modalSave.disabled = !!pending;
+    if (els.modalDelete) els.modalDelete.disabled = !!pending;
+    if (els.modalForm) {
+      Array.prototype.forEach.call(els.modalForm.querySelectorAll("input, select"), function (n) {
+        if (n.readOnly) return;
+        n.disabled = !!pending;
+      });
+    }
+    // M-6：提交中禁用 mask 点击 + 顶部 close 按钮。
+    document.querySelectorAll('[data-modal-close="wh-modal"]').forEach(function (n) {
+      if (pending) {
+        n.setAttribute("data-disabled", "true");
+      } else {
+        n.removeAttribute("data-disabled");
+      }
+    });
+  }
+
+  function setDeletePending(pending) {
+    state.isSubmitting = !!pending;
+    if (els.deleteConfirm) els.deleteConfirm.disabled = !!pending;
+    document.querySelectorAll('[data-modal-close="wh-delete-modal"]').forEach(function (n) {
+      if (pending) {
+        n.setAttribute("data-disabled", "true");
+      } else {
+        n.removeAttribute("data-disabled");
+      }
+    });
+  }
+
+  // H-4：严格整数解析；返回 { ok, value, message }。
+  function parseStrictInt(raw, key) {
+    const limit = NUMERIC_LIMITS[key];
+    const trimmed = String(raw == null ? "" : raw).trim();
+    if (trimmed === "") {
+      return { ok: false, message: limit.label + "不能为空" };
+    }
+    if (!INT_RE.test(trimmed)) {
+      return { ok: false, message: limit.label + "必须为整数" };
+    }
+    const n = Number(trimmed);
+    if (!Number.isInteger(n)) {
+      return { ok: false, message: limit.label + "必须为整数" };
+    }
+    if (n < limit.min) {
+      return { ok: false, message: limit.label + "不能小于 " + limit.min };
+    }
+    if (n > limit.max) {
+      return { ok: false, message: limit.label + "不能大于 " + limit.max };
+    }
+    return { ok: true, value: n };
   }
 
   async function saveModal(ev) {
     ev.preventDefault();
     if (!state.user || !state.editingSlot) return;
+    if (state.isSubmitting) return;   // M-3：阻止重复提交
     hideAlert(els.modalAlert);
 
-    const itemId = parseInt(els.fieldItemId.value, 10);
-    const prefixId = parseInt(els.fieldPrefixId.value, 10);
-    const quantity = parseInt(els.fieldQuantity.value, 10);
-    const value = parseInt(els.fieldValue.value, 10);
+    const itemRes = parseStrictInt(els.fieldItemId.value, "itemId");
+    if (!itemRes.ok) return showAlert(els.modalAlert, "保存失败，" + itemRes.message, "error");
+    const prefixRes = parseStrictInt(els.fieldPrefixId.value, "prefixId");
+    if (!prefixRes.ok) return showAlert(els.modalAlert, "保存失败，" + prefixRes.message, "error");
+    const quantityRes = parseStrictInt(els.fieldQuantity.value, "quantity");
+    if (!quantityRes.ok) return showAlert(els.modalAlert, "保存失败，" + quantityRes.message, "error");
+    const valueRes = parseStrictInt(els.fieldValue.value, "value");
+    if (!valueRes.ok) return showAlert(els.modalAlert, "保存失败，" + valueRes.message, "error");
     const minTier = els.fieldMinTier.value;
-
-    if (isNaN(itemId) || itemId < 1) return showAlert(els.modalAlert, "保存失败，物品 ID 必须为正整数", "error");
-    if (isNaN(prefixId) || prefixId < 0) return showAlert(els.modalAlert, "保存失败，前缀 ID 必须为非负整数", "error");
-    if (isNaN(quantity) || quantity < 1) return showAlert(els.modalAlert, "保存失败，数量必须为正整数", "error");
-    if (isNaN(value) || value < 0) return showAlert(els.modalAlert, "保存失败，单价必须为非负整数", "error");
     if (!minTier) return showAlert(els.modalAlert, "保存失败，请选择最低进度", "error");
 
+    setSavePending(true);
     try {
-      await api.apiRequest(
+      const payload = await api.apiRequest(
         "/webui/api/warehouse/" + encodeURIComponent(state.user.user_id) + "/" + state.editingSlot,
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            item_id: itemId, prefix_id: prefixId, quantity: quantity,
-            value: value, min_tier: minTier,
+            item_id: itemRes.value,
+            prefix_id: prefixRes.value,
+            quantity: quantityRes.value,
+            value: valueRes.value,
+            min_tier: minTier,
           }),
           action: "保存",
           expectedStatus: 200,
         }
       );
-      const slotShown = state.editingSlot;
+      const data = safeUnwrapData(payload, "保存仓库");
+      const slotIndex = state.editingSlot;
+      // H-3：本地 state + 单格 DOM 更新，避免全量重绘 100 格。
+      const wasOccupied = state.slots.has(slotIndex);
+      state.slots.set(slotIndex, {
+        slot_index: slotIndex,
+        item_id: data.item_id,
+        prefix_id: data.prefix_id,
+        quantity: data.quantity,
+        value: data.value,
+        min_tier: data.min_tier,
+        min_tier_label: data.min_tier_label,
+      });
+      if (!wasOccupied) state.used += 1;
+      replaceSlotCell(slotIndex);
+      renderSummary();
       closeModal();
-      await loadWarehouse(state.user.user_id);
-      showAlert(els.alert, "保存成功，#" + slotShown, "success");
+      // M-2 / M-11：toast 主句不含对象名 / 位置标识。
+      showAlert(els.alert, "保存成功", "success");
     } catch (err) {
       showAlert(els.modalAlert, err && err.message ? err.message : "保存失败", "error");
+    } finally {
+      setSavePending(false);
     }
   }
 
   function openDeleteModal() {
     if (!state.user || !state.editingSlot) return;
+    state.deleteReturnTarget = document.activeElement;
     hideAlert(els.deleteAlert);
     els.deleteSlot.textContent = "#" + state.editingSlot;
     showModal(els.deleteModal);
+    // M-5：把焦点移到 confirm 按钮，方便 Enter 确认 / Esc 取消。
+    requestAnimationFrame(function () {
+      if (!els.deleteModal.classList.contains("hidden") && els.deleteConfirm) {
+        els.deleteConfirm.focus();
+      }
+    });
   }
 
   function closeDeleteModal() {
     hideModal(els.deleteModal);
+    const restoreTarget = state.deleteReturnTarget;
+    state.deleteReturnTarget = null;
+    if (restoreTarget && typeof restoreTarget.focus === "function" && document.contains(restoreTarget)) {
+      try { restoreTarget.focus(); } catch (_e) { /* ignore */ }
+    }
   }
 
   async function confirmDelete() {
     if (!state.user || !state.editingSlot) return;
+    if (state.isSubmitting) return;
     hideAlert(els.deleteAlert);
+    setDeletePending(true);
     try {
       await api.apiRequest(
         "/webui/api/warehouse/" + encodeURIComponent(state.user.user_id) + "/" + state.editingSlot,
@@ -345,13 +528,21 @@
           expectedStatus: 200,
         }
       );
-      const slotShown = state.editingSlot;
+      const slotIndex = state.editingSlot;
+      // H-3：本地 state + 单格 DOM 更新。
+      const wasOccupied = state.slots.has(slotIndex);
+      state.slots.delete(slotIndex);
+      if (wasOccupied && state.used > 0) state.used -= 1;
       closeDeleteModal();
       closeModal();
-      await loadWarehouse(state.user.user_id);
-      showAlert(els.alert, "删除成功，#" + slotShown, "success");
+      replaceSlotCell(slotIndex);
+      renderSummary();
+      // M-2：toast 主句不含对象名 / 位置标识。
+      showAlert(els.alert, "删除成功", "success");
     } catch (err) {
       showAlert(els.deleteAlert, err && err.message ? err.message : "删除失败", "error");
+    } finally {
+      setDeletePending(false);
     }
   }
 
@@ -360,12 +551,25 @@
   let searchTimer = null;
   let lastSearchKeyword = "";
 
-  function showDropdown() { els.searchDropdown.classList.remove("hidden"); }
-  function hideDropdown() { els.searchDropdown.classList.add("hidden"); }
+  function showDropdown() {
+    els.searchDropdown.classList.remove("hidden");
+    if (els.searchInput) els.searchInput.setAttribute("aria-expanded", "true");
+  }
+  function hideDropdown() {
+    els.searchDropdown.classList.add("hidden");
+    state.dropdownActiveIndex = -1;
+    state.dropdownUsers = [];
+    if (els.searchInput) {
+      els.searchInput.setAttribute("aria-expanded", "false");
+      els.searchInput.removeAttribute("aria-activedescendant");
+    }
+  }
 
   function renderDropdownMessage(text) {
     if (!els.searchDropdown) return;
     clearChildren(els.searchDropdown);
+    state.dropdownUsers = [];
+    state.dropdownActiveIndex = -1;
     const msg = document.createElement("div");
     msg.className = "search-dropdown-empty";
     msg.textContent = text;
@@ -380,13 +584,20 @@
       renderDropdownMessage("无匹配用户");
       return;
     }
-    users.forEach(function (u) {
+    state.dropdownUsers = users.slice();
+    state.dropdownActiveIndex = -1;
+    users.forEach(function (u, idx) {
       const item = document.createElement("div");
       item.className = "search-dropdown-item";
+      // M-4：a11y — listbox option
+      item.setAttribute("role", "option");
+      item.id = "wh-search-option-" + idx;
+      item.setAttribute("aria-selected", "false");
       item.addEventListener("click", function () {
-        els.searchInput.value = String(u.name || "");
-        hideDropdown();
-        loadWarehouse(String(u.user_id));
+        selectDropdownUser(u);
+      });
+      item.addEventListener("mouseenter", function () {
+        setDropdownActive(idx);
       });
 
       const nameSpan = document.createElement("span");
@@ -401,26 +612,60 @@
 
       els.searchDropdown.appendChild(item);
     });
+    els.searchDropdown.setAttribute("role", "listbox");
     showDropdown();
+  }
+
+  function selectDropdownUser(u) {
+    if (!u) return;
+    els.searchInput.value = String(u.name || "");
+    hideDropdown();
+    loadWarehouse(String(u.user_id));
+  }
+
+  function setDropdownActive(idx) {
+    if (!els.searchDropdown) return;
+    const items = els.searchDropdown.querySelectorAll(".search-dropdown-item");
+    items.forEach(function (n, i) {
+      if (i === idx) {
+        n.classList.add("is-active");
+        n.setAttribute("aria-selected", "true");
+        if (els.searchInput) els.searchInput.setAttribute("aria-activedescendant", n.id);
+      } else {
+        n.classList.remove("is-active");
+        n.setAttribute("aria-selected", "false");
+      }
+    });
+    state.dropdownActiveIndex = idx;
   }
 
   async function searchUsers(keyword) {
     if (lastSearchKeyword === keyword) return;
     lastSearchKeyword = keyword;
+
+    // H-3：abort 上一次未完成的搜索，避免 fast-typing 时旧响应覆盖新响应。
+    if (searchAbortController) {
+      try { searchAbortController.abort(); } catch (_e) { /* ignore */ }
+    }
+    searchAbortController = new AbortController();
+    const signal = searchAbortController.signal;
+
     try {
       const url = "/webui/api/users?per_page=20" + (keyword ? "&q=" + encodeURIComponent(keyword) : "");
       const payload = await api.apiRequest(url, {
         method: "GET",
         headers: { "Accept": "application/json" },
-        action: "搜索用户",
+        action: "搜索",
         expectedStatus: 200,
+        signal,
       });
-      const users = api.unwrapData(payload) || [];
+      const users = safeUnwrapData(payload, "搜索用户") || [];
       const current = (els.searchInput.value || "").trim().toLowerCase();
       if (current === keyword) {
         renderDropdownResults(Array.isArray(users) ? users.slice(0, 20) : []);
       }
     } catch (err) {
+      if (signal.aborted) return;
       renderDropdownMessage(err && err.message ? err.message : "搜索失败");
     }
   }
@@ -446,6 +691,7 @@
     els.modalAlert = $("wh-modal-alert");
     els.modalForm = $("wh-modal-form");
     els.modalDelete = $("wh-modal-delete");
+    els.modalSave = $("wh-modal-save");
     els.fieldSlot = $("wh-field-slot");
     els.fieldItemId = $("wh-field-item-id");
     els.fieldPrefixId = $("wh-field-prefix-id");
@@ -469,8 +715,26 @@
       lastSearchKeyword = "__force__";
       searchUsers(keyword);
     });
+    // M-4：dropdown 键盘导航（↑/↓/Enter/Esc）。
     els.searchInput.addEventListener("keydown", function (ev) {
-      if (ev.key === "Escape") hideDropdown();
+      if (ev.key === "Escape") {
+        hideDropdown();
+        return;
+      }
+      const count = state.dropdownUsers.length;
+      if (count === 0) return;
+      if (ev.key === "ArrowDown") {
+        ev.preventDefault();
+        setDropdownActive((state.dropdownActiveIndex + 1) % count);
+      } else if (ev.key === "ArrowUp") {
+        ev.preventDefault();
+        setDropdownActive((state.dropdownActiveIndex - 1 + count) % count);
+      } else if (ev.key === "Enter") {
+        if (state.dropdownActiveIndex >= 0 && state.dropdownActiveIndex < count) {
+          ev.preventDefault();
+          selectDropdownUser(state.dropdownUsers[state.dropdownActiveIndex]);
+        }
+      }
     });
     document.addEventListener("click", function (ev) {
       if (els.searchWrap && !els.searchWrap.contains(ev.target)) hideDropdown();
@@ -488,17 +752,29 @@
 
     document.querySelectorAll("[data-modal-close]").forEach(function (el) {
       el.addEventListener("click", function () {
+        // M-6：提交中 mask / close 按钮被标记为 disabled，忽略点击避免丢失错误提示。
+        if (el.getAttribute("data-disabled") === "true") return;
         const targetId = el.getAttribute("data-modal-close");
-        const target = document.getElementById(targetId);
-        if (target) target.classList.add("hidden");
+        if (targetId === "wh-modal") {
+          closeModal();
+        } else if (targetId === "wh-delete-modal") {
+          closeDeleteModal();
+        } else {
+          const target = document.getElementById(targetId);
+          if (target) target.classList.add("hidden");
+        }
       });
     });
 
+    // M-5 / M-7：集中 ESC dispatcher，只关最上层 modal，且走 closeModal / closeDeleteModal 以保证 state 清理 + focus 恢复。
     document.addEventListener("keydown", function (ev) {
-      if (ev.key === "Escape") {
-        document.querySelectorAll(".modal:not(.hidden)").forEach(function (m) {
-          m.classList.add("hidden");
-        });
+      if (ev.key !== "Escape") return;
+      if (state.isSubmitting) return;   // M-6：提交中拒绝 ESC 关闭
+      // 优先级：delete > edit
+      if (els.deleteModal && !els.deleteModal.classList.contains("hidden")) {
+        closeDeleteModal();
+      } else if (els.modal && !els.modal.classList.contains("hidden")) {
+        closeModal();
       }
     });
   }

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import APIRouter, Request
@@ -29,6 +31,33 @@ _MAX_COINS_AMOUNT = 10_000_000_000
 # 与 nextbot.plugins.shop.MAX_ITEM_QUANTITY 保持一致；
 # 限制单件商品的发放数量，防止 admin 误配大数耗尽仓库 / TShock。
 _MAX_ITEM_QUANTITY = 9999
+# M-2：sort_order 上下界，防止整数溢出 / SQLite Integer overflow。
+_SORT_ORDER_MIN = -1_000_000
+_SORT_ORDER_MAX = 1_000_000
+# M-3：actual_value 与 price 的最大允许倍率，防 admin 误配后玩家通过仓库回收刷经济。
+_ACTUAL_VALUE_MAX_RATIO = 100
+# M-7：import 单次上界，防大 JSON 拖垮内存 / 长事务。
+_IMPORT_MAX_SHOPS = 200
+_IMPORT_MAX_ITEMS = 5000
+# M-10：备份过期阈值，超过则在导入响应里标记 warn_old_backup。
+_IMPORT_OLD_BACKUP_DAYS = 30
+# M-1：禁掉命令模板里所有控制字符（含换行 / 回车 / NUL），防止 admin 误导入多行注入。
+_CMD_FORBIDDEN_PATTERN = re.compile(r"[\x00-\x08\x0a-\x1f]")
+
+
+def _client_ip(request: Request) -> str:
+    """H-1：取调用方 IP（与 webui_servers / webui_commands 同实现）。"""
+    forwarded = request.headers.get("x-forwarded-for", "").strip()
+    if forwarded:
+        return forwarded.split(",")[0].strip() or "unknown"
+    if request.client is not None:
+        return request.client.host or "unknown"
+    return "unknown"
+
+
+def _user_agent(request: Request) -> str:
+    """H-1：截断 User-Agent 防超长（与 webui_servers 同实现）。"""
+    return request.headers.get("user-agent", "")[:200]
 
 
 def _validation_error_response(details: list[dict[str, str]]) -> JSONResponse:
@@ -107,9 +136,18 @@ def _validate_shop_payload(
 
     if "sort_order" in data:
         try:
-            out["sort_order"] = int(data["sort_order"])
+            sort_value = int(data["sort_order"])
         except (TypeError, ValueError):
             details.append({"field": "sort_order", "message": "排序值必须为整数"})
+        else:
+            if sort_value < _SORT_ORDER_MIN or sort_value > _SORT_ORDER_MAX:
+                # M-2：sort_order 上下界，防 admin 误输入巨大数 → SQLite 溢出 → 500。
+                details.append({
+                    "field": "sort_order",
+                    "message": f"排序值必须在 [{_SORT_ORDER_MIN}, {_SORT_ORDER_MAX}] 之间",
+                })
+            else:
+                out["sort_order"] = sort_value
 
     if "enabled" in data:
         out["enabled"] = bool(data["enabled"])
@@ -158,6 +196,13 @@ def _validate_shop_item_payload(
     except (TypeError, ValueError):
         sort_order = 0
         details.append({"field": "sort_order", "message": "排序值必须为整数"})
+    else:
+        if sort_order < _SORT_ORDER_MIN or sort_order > _SORT_ORDER_MAX:
+            # M-2：sort_order 上下界，防 admin 误输入巨大数 → SQLite 溢出 → 500。
+            details.append({
+                "field": "sort_order",
+                "message": f"排序值必须在 [{_SORT_ORDER_MIN}, {_SORT_ORDER_MAX}] 之间",
+            })
 
     enabled = bool(data.get("enabled", True))
 
@@ -221,6 +266,17 @@ def _validate_shop_item_payload(
                     "field": "actual_value",
                     "message": f"实际单价过大（最多 {_MAX_COINS_AMOUNT}）",
                 })
+            elif (
+                actual_value is not None
+                and price > 0
+                and actual_value > price * _ACTUAL_VALUE_MAX_RATIO
+            ):
+                # M-3：actual_value 与 price 的关系约束，防 admin 漏打一个零 →
+                # 玩家通过仓库回收刷经济（一次性把账户拉高）。
+                details.append({
+                    "field": "actual_value",
+                    "message": f"实际单价不应超过单价的 {_ACTUAL_VALUE_MAX_RATIO} 倍",
+                })
 
         is_mystery = bool(data.get("is_mystery", False))
 
@@ -242,6 +298,12 @@ def _validate_shop_item_payload(
             details.append({"field": "command_template", "message": "命令模板不能为空"})
         elif len(command_template) > _CMD_MAX_LEN:
             details.append({"field": "command_template", "message": f"命令长度不能超过 {_CMD_MAX_LEN}"})
+        elif _CMD_FORBIDDEN_PATTERN.search(command_template):
+            # M-1：禁掉控制字符（含换行 / 回车 / NUL），防 admin 多行命令注入。
+            details.append({
+                "field": "command_template",
+                "message": "命令模板不能包含换行 / 回车 / 控制字符",
+            })
         else:
             command_template = stripped_cmd
 
@@ -340,6 +402,9 @@ async def create_shop(request: Request) -> JSONResponse:
             details=[{"field": "name", "message": "名称不能为空"}],
         )
 
+    client_ip = _client_ip(request)
+    user_agent = _user_agent(request)
+
     session = get_session()
     try:
         existing = session.query(Shop).filter(Shop.name == validated["name"]).first()
@@ -357,7 +422,10 @@ async def create_shop(request: Request) -> JSONResponse:
         session.add(shop)
         session.commit()
         session.refresh(shop)
-        logger.info(f"WebUI 商店 create：shop_id={shop.id} name={shop.name}")
+        logger.info(
+            f"WebUI 商店 create：shop_id={shop.id} name={shop.name} "
+            f"client_ip={client_ip} user_agent={user_agent!r}"
+        )
         return api_success(
             status_code=201,
             data=_serialize_shop(shop, item_count=0),
@@ -395,6 +463,8 @@ def _export_shop_item_dict(item: ShopItem) -> dict[str, Any]:
 
 @router.get("/webui/api/shops/export")
 async def export_shops(request: Request) -> JSONResponse:
+    client_ip = _client_ip(request)
+    user_agent = _user_agent(request)
     session = get_session()
     try:
         shops = (
@@ -431,7 +501,8 @@ async def export_shops(request: Request) -> JSONResponse:
 
         logger.info(
             f"WebUI 商店 export：shop_count={len(exported)} "
-            f"item_count={sum(len(s['items']) for s in exported)}"
+            f"item_count={sum(len(s['items']) for s in exported)} "
+            f"client_ip={client_ip} user_agent={user_agent!r}"
         )
         return api_success(data={
             "version": _EXPORT_VERSION,
@@ -449,6 +520,9 @@ async def import_shops(request: Request) -> JSONResponse:
     if error is not None:
         return error
     assert payload is not None
+
+    client_ip = _client_ip(request)
+    user_agent = _user_agent(request)
 
     mode = (request.query_params.get("mode") or "merge").strip() or "merge"
     if mode not in _IMPORT_MODES:
@@ -479,6 +553,50 @@ async def import_shops(request: Request) -> JSONResponse:
     if structural:
         return _validation_error_response(structural)
 
+    # ---- M-7: enforce import size caps to prevent OOM / long-running tx. ----
+    assert isinstance(raw_shops, list)
+    if len(raw_shops) > _IMPORT_MAX_SHOPS:
+        return api_error(
+            status_code=413,
+            code="payload_too_large",
+            message=f"单次导入商店数过多（最多 {_IMPORT_MAX_SHOPS}）",
+            details=[{"field": "shops", "message": f"shops 数量超过 {_IMPORT_MAX_SHOPS}"}],
+        )
+    total_items_in_payload = 0
+    for raw_shop in raw_shops:
+        if isinstance(raw_shop, dict):
+            raw_items_for_count = raw_shop.get("items")
+            if isinstance(raw_items_for_count, list):
+                total_items_in_payload += len(raw_items_for_count)
+    if total_items_in_payload > _IMPORT_MAX_ITEMS:
+        return api_error(
+            status_code=413,
+            code="payload_too_large",
+            message=f"单次导入商品总数过多（最多 {_IMPORT_MAX_ITEMS}）",
+            details=[{
+                "field": "items",
+                "message": f"items 总数超过 {_IMPORT_MAX_ITEMS}",
+            }],
+        )
+
+    # ---- M-10: detect stale backup (exported_at older than threshold). ----
+    warn_old_backup = False
+    raw_exported_at = payload.get("exported_at")
+    if isinstance(raw_exported_at, str) and raw_exported_at:
+        try:
+            exported_dt = datetime.fromisoformat(raw_exported_at)
+        except ValueError:
+            exported_dt = None
+        if exported_dt is not None:
+            now_dt = beijing_now()
+            # Normalize timezone awareness for comparison.
+            if exported_dt.tzinfo is None:
+                exported_dt = exported_dt.replace(tzinfo=now_dt.tzinfo or timezone.utc)
+            if now_dt.tzinfo is None:
+                now_dt = now_dt.replace(tzinfo=exported_dt.tzinfo or timezone.utc)
+            if now_dt - exported_dt > timedelta(days=_IMPORT_OLD_BACKUP_DAYS):
+                warn_old_backup = True
+
     server_ids = _load_server_id_set()
 
     # ---- Validate every shop + item, aggregate errors with path prefixes ----
@@ -486,7 +604,6 @@ async def import_shops(request: Request) -> JSONResponse:
     validated_shops: list[tuple[dict[str, Any], list[dict[str, Any]]]] = []
     seen_names: set[str] = set()
 
-    assert isinstance(raw_shops, list)
     for shop_idx, raw_shop in enumerate(raw_shops):
         shop_path = f"shops[{shop_idx}]"
         if not isinstance(raw_shop, dict):
@@ -551,9 +668,23 @@ async def import_shops(request: Request) -> JSONResponse:
         items_total = 0
 
         if mode == "replace_all":
+            # H-2：replace_all 在删除前留下 forensic 日志（含原 shop / item 数量
+            # 与新载入的 shop / item 数量），admin 误操作后可用于追溯。
+            existing_shop_count = session.query(Shop).count()
+            existing_item_count = session.query(ShopItem).count()
+            new_shop_count = len(validated_shops)
+            new_item_count = sum(len(items) for _, items in validated_shops)
+            logger.warning(
+                f"WebUI 商店 import replace_all 即将执行："
+                f"old_shops={existing_shop_count} old_items={existing_item_count} "
+                f"new_shops={new_shop_count} new_items={new_item_count} "
+                f"client_ip={client_ip} user_agent={user_agent!r}"
+            )
             session.query(ShopItem).delete(synchronize_session=False)
             session.query(Shop).delete(synchronize_session=False)
             session.flush()
+            # H-2：清空后让 session 重置缓存，再做插入，避免 stale 状态干扰下游 query。
+            session.expire_all()
 
         # Map existing shops by name for fast upsert lookup (only relevant in merge mode).
         existing_by_name: dict[str, Shop] = (
@@ -573,9 +704,20 @@ async def import_shops(request: Request) -> JSONResponse:
                 if "enabled" in shop_data:
                     existing.enabled = bool(shop_data["enabled"])
                 # Replace all items belonging to this shop.
+                # M-5：merge 模式整组替换前留下被替换 item 数量的审计日志。
+                prev_item_count = (
+                    session.query(ShopItem)
+                    .filter(ShopItem.shop_id == existing.id)
+                    .count()
+                )
                 session.query(ShopItem).filter(
                     ShopItem.shop_id == existing.id,
                 ).delete(synchronize_session=False)
+                logger.info(
+                    f"WebUI 商店 import merge：shop_id={int(existing.id)} "
+                    f"name={name} old_items={prev_item_count} "
+                    f"new_items={len(items_data)}"
+                )
                 shop_id = int(existing.id)
                 updated += 1
             else:
@@ -615,14 +757,19 @@ async def import_shops(request: Request) -> JSONResponse:
         session.commit()
         logger.info(
             f"WebUI 商店 import：mode={mode} created={created} updated={updated} "
-            f"items_total={items_total}"
+            f"items_total={items_total} "
+            f"client_ip={client_ip} user_agent={user_agent!r}"
         )
-        return api_success(data={
+        response_data: dict[str, Any] = {
             "mode": mode,
             "created": created,
             "updated": updated,
             "items_total": items_total,
-        })
+        }
+        if warn_old_backup:
+            # M-10：备份距今超过阈值，提示前端可能是陈旧备份（非阻塞）。
+            response_data["warn_old_backup"] = True
+        return api_success(data=response_data)
     except Exception:
         session.rollback()
         raise
@@ -631,8 +778,7 @@ async def import_shops(request: Request) -> JSONResponse:
 
 
 @router.get("/webui/api/shops/{shop_id}")
-async def get_shop(shop_id: int) -> JSONResponse:
-    label_map = _load_server_label_map()
+async def get_shop(shop_id: int, request: Request) -> JSONResponse:
     session = get_session()
     try:
         shop = session.query(Shop).filter(Shop.id == shop_id).first()
@@ -644,6 +790,9 @@ async def get_shop(shop_id: int) -> JSONResponse:
             .order_by(ShopItem.sort_order.asc(), ShopItem.id.asc())
             .all()
         )
+        # M-12：仅当存在 kind=command 且指定了 target_server_id 的 item 时才查 server label map。
+        needs_label_map = any(it.target_server_id is not None for it in items)
+        label_map: dict[int, str] = _load_server_label_map() if needs_label_map else {}
         data = _serialize_shop(shop, item_count=len(items))
         data["items"] = [
             _serialize_shop_item(
@@ -669,6 +818,9 @@ async def update_shop(shop_id: int, request: Request) -> JSONResponse:
         return _validation_error_response(details)
     assert validated is not None
 
+    client_ip = _client_ip(request)
+    user_agent = _user_agent(request)
+
     session = get_session()
     try:
         shop = session.query(Shop).filter(Shop.id == shop_id).first()
@@ -692,25 +844,43 @@ async def update_shop(shop_id: int, request: Request) -> JSONResponse:
         item_count = (
             session.query(ShopItem).filter(ShopItem.shop_id == shop_id).count()
         )
-        logger.info(f"WebUI 商店 update：shop_id={shop.id} name={shop.name}")
+        logger.info(
+            f"WebUI 商店 update：shop_id={shop.id} name={shop.name} "
+            f"client_ip={client_ip} user_agent={user_agent!r}"
+        )
         return api_success(data=_serialize_shop(shop, item_count=item_count))
     finally:
         session.close()
 
 
 @router.delete("/webui/api/shops/{shop_id}")
-async def delete_shop(shop_id: int) -> JSONResponse:
+async def delete_shop(shop_id: int, request: Request) -> JSONResponse:
+    client_ip = _client_ip(request)
+    user_agent = _user_agent(request)
     session = get_session()
     try:
         shop = session.query(Shop).filter(Shop.id == shop_id).first()
         if shop is None:
             return api_error(status_code=404, code="not_found", message="商店不存在")
+        shop_name = str(shop.name)
+        # M-6：删除前抓取一份级联删除的 item 摘要，便于误删后追溯。
+        items = (
+            session.query(ShopItem)
+            .filter(ShopItem.shop_id == shop_id)
+            .all()
+        )
+        item_count = len(items)
+        items_sample = ",".join(f"{int(it.id)}:{str(it.name)}" for it in items[:10])
         session.query(ShopItem).filter(ShopItem.shop_id == shop_id).delete(
             synchronize_session=False
         )
         session.delete(shop)
         session.commit()
-        logger.info(f"WebUI 商店 delete：shop_id={shop_id}")
+        logger.info(
+            f"WebUI 商店 delete：shop_id={shop_id} name={shop_name} "
+            f"item_count={item_count} items_sample={items_sample!r} "
+            f"client_ip={client_ip} user_agent={user_agent!r}"
+        )
         return api_success(data={"id": shop_id})
     finally:
         session.close()
@@ -728,6 +898,9 @@ async def create_shop_item(shop_id: int, request: Request) -> JSONResponse:
     if details:
         return _validation_error_response(details)
     assert validated is not None
+
+    client_ip = _client_ip(request)
+    user_agent = _user_agent(request)
 
     session = get_session()
     try:
@@ -763,7 +936,8 @@ async def create_shop_item(shop_id: int, request: Request) -> JSONResponse:
         )
         logger.info(
             f"WebUI 商店商品 create：shop_id={shop_id} item_id={item.id} "
-            f"name={item.name} kind={item.kind} price={item.price}"
+            f"name={item.name} kind={item.kind} price={item.price} "
+            f"client_ip={client_ip} user_agent={user_agent!r}"
         )
         return api_success(
             status_code=201,
@@ -786,6 +960,9 @@ async def update_shop_item(shop_id: int, item_id: int, request: Request) -> JSON
     if details:
         return _validation_error_response(details)
     assert validated is not None
+
+    client_ip = _client_ip(request)
+    user_agent = _user_agent(request)
 
     session = get_session()
     try:
@@ -820,7 +997,8 @@ async def update_shop_item(shop_id: int, item_id: int, request: Request) -> JSON
         )
         logger.info(
             f"WebUI 商店商品 update：shop_id={shop_id} item_id={item.id} "
-            f"name={item.name} kind={item.kind} price={item.price}"
+            f"name={item.name} kind={item.kind} price={item.price} "
+            f"client_ip={client_ip} user_agent={user_agent!r}"
         )
         return api_success(data=_serialize_shop_item(item, target_server_label=target_label))
     finally:
@@ -828,7 +1006,9 @@ async def update_shop_item(shop_id: int, item_id: int, request: Request) -> JSON
 
 
 @router.delete("/webui/api/shops/{shop_id}/items/{item_id}")
-async def delete_shop_item(shop_id: int, item_id: int) -> JSONResponse:
+async def delete_shop_item(shop_id: int, item_id: int, request: Request) -> JSONResponse:
+    client_ip = _client_ip(request)
+    user_agent = _user_agent(request)
     session = get_session()
     try:
         item = (
@@ -838,9 +1018,13 @@ async def delete_shop_item(shop_id: int, item_id: int) -> JSONResponse:
         )
         if item is None:
             return api_error(status_code=404, code="not_found", message="商品不存在")
+        item_name = str(item.name)
         session.delete(item)
         session.commit()
-        logger.info(f"WebUI 商店商品 delete：shop_id={shop_id} item_id={item_id}")
+        logger.info(
+            f"WebUI 商店商品 delete：shop_id={shop_id} item_id={item_id} "
+            f"name={item_name} client_ip={client_ip} user_agent={user_agent!r}"
+        )
         return api_success(data={"id": item_id})
     finally:
         session.close()

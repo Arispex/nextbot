@@ -55,6 +55,13 @@
   --radius-md: 8px;
   --radius-lg: 12px;
   --radius-pill: 9999px;
+
+  /* z-index tokens — webui shell scope. business css must not write z-index literals. */
+  --z-header: 20;
+  --z-overlay: 39;
+  --z-sider: 40;
+  --z-dialog: 60;
+  --z-toast: 80;
 }
 
 html.dark {
@@ -113,7 +120,23 @@ input, select, textarea { font-family: inherit; }
 
 img { max-width: 100%; height: auto; }
 
-[hidden] { display: none !important; }
+[hidden] { display: none; }
+
+.skip-link {
+  position: absolute;
+  left: -9999px;
+}
+
+.skip-link:focus {
+  left: var(--space-md);
+  top: var(--space-md);
+  z-index: var(--z-toast);
+  background: var(--surface);
+  color: var(--text);
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-elevated);
+}
 
 /* ── App layout ────────────────────────────────────────── */
 .app-layout {
@@ -151,7 +174,7 @@ img { max-width: 100%; height: auto; }
   visibility: hidden;
   pointer-events: none;
   transition: opacity 0.2s ease, visibility 0.2s ease;
-  z-index: 39;
+  z-index: var(--z-overlay);
 }
 
 .sidebar-overlay.is-visible {
@@ -189,7 +212,7 @@ img { max-width: 100%; height: auto; }
   display: block;
   height: 26px;
   width: auto;
-  color: var(--color-ink);
+  color: var(--text);
 }
 
 /* ── Sidebar menu ──────────────────────────────────────── */
@@ -211,7 +234,7 @@ img { max-width: 100%; height: auto; }
   height: 38px;
   border-radius: var(--radius-md);
   text-decoration: none;
-  color: var(--text-muted);
+  color: var(--text);
   padding: 0 var(--space-sm);
   display: flex;
   align-items: center;
@@ -282,7 +305,16 @@ img { max-width: 100%; height: auto; }
   gap: var(--space-sm);
   position: sticky;
   top: 0;
-  z-index: 20;
+  z-index: var(--z-header);
+}
+
+.app-header-inner {
+  max-width: 1180px;
+  width: 100%;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
 }
 
 .header-left {
@@ -341,6 +373,13 @@ img { max-width: 100%; height: auto; }
   border-color: var(--primary);
   color: var(--primary);
   background-color: var(--surface-soft);
+}
+
+.btn[disabled],
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  pointer-events: none;
 }
 
 .btn-primary {
@@ -502,21 +541,22 @@ select {
     bottom: 0;
     width: 248px;
     max-width: 84vw;
-    z-index: 40;
+    z-index: var(--z-sider);
     box-shadow: var(--shadow-elevated);
     transform: translateX(-100%);
     transition: transform 0.22s ease;
+    visibility: hidden;
   }
 
   .app-sider.is-mobile-open {
     transform: translateX(0);
+    visibility: visible;
   }
 
   .app-sider.is-collapsed {
     width: 248px;
     max-width: 84vw;
     opacity: 1;
-    visibility: visible;
     pointer-events: auto;
     border-right-color: var(--line);
     box-shadow: var(--shadow-elevated);
@@ -526,4 +566,12 @@ select {
 
   .app-header { padding: 0 var(--space-md); }
   .app-content { padding: var(--space-md); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-sider, .sidebar-overlay, .brand-logo-link,
+  .menu-link, .btn, .input,
+  .search-input, .token-input, input, select, textarea {
+    transition: none !important;
+  }
 }

@@ -60,6 +60,9 @@ html, body { overflow-x: hidden; }
   line-height: 1.5;
 }
 
+/* L-4：多服务器同步结果使用 \n 拼接为多行，pre-line 让换行可视 */
+.alert .alert-message { white-space: pre-line; }
+
 .empty {
   border: 1px dashed var(--line);
   border-radius: var(--radius-lg);

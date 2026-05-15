@@ -114,11 +114,11 @@
         </label>
         <label class="form-item">
           <span class="form-label">抽奖单价（金币 / 次）<span class="form-required">*</span></span>
-          <input id="pool-field-cost" class="input" type="number" min="0" required value="0" />
+          <input id="pool-field-cost" class="input" type="number" min="0" max="1000000000" required value="0" />
         </label>
         <label class="form-item">
           <span class="form-label">排序（小靠前）</span>
-          <input id="pool-field-sort-order" class="input" type="number" value="0" />
+          <input id="pool-field-sort-order" class="input" type="number" min="-1000000" max="1000000" value="0" />
         </label>
         <label class="form-checkbox-row form-item form-item-bool form-item-full">
           <input id="pool-field-enabled" type="checkbox" checked />
@@ -169,7 +169,7 @@
         </label>
         <label class="form-item">
           <span class="form-label">排序（小靠前）</span>
-          <input id="prize-field-sort-order" class="input" type="number" value="0" />
+          <input id="prize-field-sort-order" class="input" type="number" min="-1000000" max="1000000" value="0" />
         </label>
         <label class="form-checkbox-row form-item form-item-bool">
           <input id="prize-field-enabled" type="checkbox" checked />
@@ -182,15 +182,15 @@
         <div class="form-grid">
           <label class="form-item">
             <span class="form-label">物品 ID<span class="form-required">*</span></span>
-            <input id="prize-field-item-id" class="input" type="number" min="1" value="1" />
+            <input id="prize-field-item-id" class="input" type="number" min="1" max="2147483647" value="1" />
           </label>
           <label class="form-item">
             <span class="form-label">前缀 ID</span>
-            <input id="prize-field-prefix-id" class="input" type="number" min="0" value="0" />
+            <input id="prize-field-prefix-id" class="input" type="number" min="0" max="2147483647" value="0" />
           </label>
           <label class="form-item">
             <span class="form-label">单份数量</span>
-            <input id="prize-field-quantity" class="input" type="number" min="1" value="1" />
+            <input id="prize-field-quantity" class="input" type="number" min="1" max="9999" value="1" />
           </label>
           <label class="form-item">
             <span class="form-label">进度要求</span>
@@ -198,7 +198,7 @@
           </label>
           <label class="form-item">
             <span class="form-label">实际单价（选填，用于回收）</span>
-            <input id="prize-field-actual-value" class="input" type="number" min="0" placeholder="留空 = 不可回收" />
+            <input id="prize-field-actual-value" class="input" type="number" min="0" max="1000000000" placeholder="留空 = 不可回收" />
           </label>
         </div>
         <div class="field-section-hint">中奖后自动写入玩家仓库的第一个空格（同一奖品多次中奖会合并到同一格）。</div>
@@ -221,6 +221,9 @@
           <textarea id="prize-field-command-template" class="textarea textarea-mono" rows="3" maxlength="500" placeholder="/buff {player} 1 1800"></textarea>
         </label>
         <div class="field-section-hint">占位符 <code>{player}</code> 会替换为玩家游戏名；中奖会按抽中次数依次重复执行。</div>
+        <div class="field-section-hint" style="color:var(--accent-amber);">
+          禁止录入高权命令前缀：<code>op</code> / <code>deop</code> / <code>ban</code> / <code>kick</code> / <code>stop</code> / <code>shutdown</code> / <code>restart</code> / <code>whitelist</code> / <code>pardon</code> / <code>save-all</code>。
+        </div>
         <label class="form-checkbox-row">
           <input id="prize-field-show-command" type="checkbox" />
           <span>在「查看奖池」中向玩家展示命令模板（默认隐藏）</span>
@@ -235,7 +238,7 @@
         <div class="field-section-title">金币配置</div>
         <label class="form-item">
           <span class="form-label">金币数量<span class="form-required">*</span></span>
-          <input id="prize-field-coin-amount" class="input" type="number" placeholder="正数 = 奖励，负数 = 扣除" />
+          <input id="prize-field-coin-amount" class="input" type="number" min="-100000000" max="100000000" placeholder="正数 = 奖励，负数 = 扣除（范围 ±10^8）" />
         </label>
         <div class="field-section-hint">中奖后直接修改玩家余额（不入仓库、不发指令）。可填负数表示扣除。</div>
       </div>
@@ -317,6 +320,10 @@
         <div id="lottery-import-replace-warn" class="field-section-hint hidden" style="color:var(--danger);">
           ⚠️ 全量替换会清空现有所有奖池、所有奖品，此操作不可撤销。建议先「导出」备份。
         </div>
+        <label id="lottery-import-confirm-field" class="form-item form-item-full hidden">
+          <span class="form-label">二次确认</span>
+          <input id="lottery-import-confirm-input" class="input" type="text" placeholder="请精确键入「全量替换」以启用导入" autocomplete="off" />
+        </label>
       </div>
     </div>
     <div class="modal-foot">

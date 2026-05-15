@@ -116,8 +116,132 @@
   let currentPage = 1;
   let currentPerPage = Number(perPageSelect.value || 10);
   let currentMeta = { total: 0, page: 1, per_page: currentPerPage, total_pages: 0 };
+  let reloadInFlight = false;
 
   const syncResultMap = new Map();
+
+  // M-5 / M-6 / M-7：搜索 debounce + AbortController + beforeunload 清理
+  let searchDebounceTimer = null;
+  let searchAbortController = null;
+  const SEARCH_DEBOUNCE_MS = 300;
+
+  // M-10 / M-11 / M-12：modal stack + focus trap + body scroll lock（参考 commands.js）
+  const modalStack = [];
+  const modalCloseRegistry = new WeakMap();
+  const modalPreviousFocus = new WeakMap();
+  const modalTrapHandlers = new WeakMap();
+  let bodyOverflowBeforeModal = null;
+
+  const getFocusableInModal = (modalNode) => {
+    if (!modalNode) return [];
+    return Array.from(
+      modalNode.querySelectorAll(
+        'a[href]:not([disabled]), area[href]:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]), [contenteditable]:not([contenteditable="false"]), [tabindex]:not([tabindex="-1"]):not([disabled]), details:not([disabled]) > summary:not([disabled])'
+      )
+    ).filter((el) => !el.classList.contains("hidden"));
+  };
+
+  const buildTrapFocusHandler = (modalNode) => (event) => {
+    if (event.key !== "Tab") return;
+    const focusables = getFocusableInModal(modalNode);
+    if (focusables.length === 0) return;
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
+
+  const pushModalToStack = (modalNode) => {
+    if (!modalNode) return;
+    const idx = modalStack.lastIndexOf(modalNode);
+    if (idx >= 0) modalStack.splice(idx, 1);
+    modalStack.push(modalNode);
+  };
+
+  const popModalFromStack = (modalNode) => {
+    if (!modalNode) return;
+    const idx = modalStack.lastIndexOf(modalNode);
+    if (idx >= 0) modalStack.splice(idx, 1);
+  };
+
+  const registerModalCloser = (modalNode, closer) => {
+    if (!modalNode || typeof closer !== "function") return;
+    modalCloseRegistry.set(modalNode, closer);
+  };
+
+  const lockBodyScroll = () => {
+    if (modalStack.length !== 1) return;
+    bodyOverflowBeforeModal = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+  };
+
+  const unlockBodyScroll = () => {
+    if (modalStack.length > 0) return;
+    document.body.style.overflow = bodyOverflowBeforeModal ?? "";
+    bodyOverflowBeforeModal = null;
+  };
+
+  const openModalWithFocus = (modalNode) => {
+    if (!modalNode) return;
+    if (!modalNode.classList.contains("hidden")) return;
+    modalPreviousFocus.set(modalNode, document.activeElement);
+    modalNode.classList.remove("hidden");
+    const handler = buildTrapFocusHandler(modalNode);
+    modalTrapHandlers.set(modalNode, handler);
+    modalNode.addEventListener("keydown", handler);
+    pushModalToStack(modalNode);
+    lockBodyScroll();
+    setTimeout(() => {
+      const focusables = getFocusableInModal(modalNode);
+      const preferred = focusables.find(
+        (el) => !el.classList.contains("modal-close-btn")
+      ) || focusables[0];
+      if (preferred && typeof preferred.focus === "function") {
+        preferred.focus();
+      }
+    }, 0);
+  };
+
+  const closeModalAndRestoreFocus = (modalNode) => {
+    if (!modalNode) return;
+    modalNode.classList.add("hidden");
+    const handler = modalTrapHandlers.get(modalNode);
+    if (handler) {
+      modalNode.removeEventListener("keydown", handler);
+      modalTrapHandlers.delete(modalNode);
+    }
+    const previousFocus = modalPreviousFocus.get(modalNode);
+    modalPreviousFocus.delete(modalNode);
+    popModalFromStack(modalNode);
+    unlockBodyScroll();
+    if (previousFocus && document.contains(previousFocus) && typeof previousFocus.focus === "function") {
+      try {
+        previousFocus.focus({ preventScroll: true });
+      } catch (_error) {
+        previousFocus.focus();
+      }
+      return;
+    }
+    const fallback = reloadButton || document.querySelector("main, [role=main]");
+    if (fallback && typeof fallback.focus === "function") {
+      const nativelyFocusable = ["A", "BUTTON", "INPUT", "SELECT", "TEXTAREA"].includes(
+        fallback.tagName
+      );
+      if (!nativelyFocusable && !fallback.hasAttribute("tabindex")) {
+        fallback.setAttribute("tabindex", "-1");
+      }
+      try {
+        fallback.focus({ preventScroll: true });
+      } catch (_error) {
+        fallback.focus();
+      }
+    }
+  };
 
   const setStatus = (message, type = "") => {
     const text = String(message || "").trim();
@@ -400,11 +524,14 @@
       const syncButton = document.createElement("button");
       syncButton.type = "button";
       syncButton.className = "btn action-btn action-btn-sync";
-      syncButton.textContent = "同步";
+      // M-13：sync 按钮 disable / textContent 与 syncResultMap 状态局部对齐
+      syncButton.dataset.role = "sync";
       const syncState = syncResultMap.get(user.id);
       if (syncState?.status === "loading") {
         syncButton.disabled = true;
         syncButton.textContent = "同步中…";
+      } else {
+        syncButton.textContent = "同步";
       }
       syncButton.addEventListener("click", () => {
         void syncWhitelist(user);
@@ -466,7 +593,33 @@
     updatePagination();
   };
 
-  const loadUsers = async ({ clearStatus = true } = {}) => {
+  // M-8 / M-13：局部更新某 user 行的 sync 按钮，避免 sync 状态切换触发全表重渲染
+  const updateSyncButtonForUser = (userId) => {
+    const row = tableBodyNode.querySelector(`tr[data-user-id="${CSS.escape(String(userId))}"]`);
+    if (!row) return;
+    const button = row.querySelector('button[data-role="sync"]');
+    if (!button) return;
+    const state = syncResultMap.get(userId);
+    if (state?.status === "loading") {
+      button.disabled = true;
+      button.textContent = "同步中…";
+    } else {
+      button.disabled = false;
+      button.textContent = "同步";
+    }
+  };
+
+  // M-9：用返回 user 局部更新 userStates 中对应一行，避免 ban/unban 后全表重拉
+  const updateUserStateById = (updatedUser) => {
+    if (!updatedUser || typeof updatedUser !== "object") return false;
+    const normalized = normalizeUser(updatedUser);
+    const idx = userStates.findIndex((item) => item.id === normalized.id);
+    if (idx < 0) return false;
+    userStates[idx] = normalized;
+    return true;
+  };
+
+  const loadUsers = async ({ clearStatus = true, signal = null } = {}) => {
     if (clearStatus) {
       setStatus("");
     }
@@ -483,6 +636,7 @@
           headers: { Accept: "application/json" },
           action: "加载",
           expectedStatus: 200,
+          signal,
         }
       );
 
@@ -512,6 +666,13 @@
       renderTable();
       return true;
     } catch (error) {
+      // M-5 / M-6：abort 是用户主动操作，不报错
+      if (signal && signal.aborted) {
+        return false;
+      }
+      if (error && (error.name === "AbortError" || error.code === "AbortError")) {
+        return false;
+      }
       const message = error instanceof Error ? error.message : "加载失败";
       setStatus(message, "error");
       loadingNode.classList.add("hidden");
@@ -523,11 +684,38 @@
     }
   };
 
+  // M-5 / M-6 / L-7：取消 pending search debounce + abort 在飞 search 请求
+  const cancelPendingSearch = () => {
+    if (searchDebounceTimer) {
+      clearTimeout(searchDebounceTimer);
+      searchDebounceTimer = null;
+    }
+    if (searchAbortController) {
+      searchAbortController.abort();
+      searchAbortController = null;
+    }
+  };
+
+  // M-5：搜索 debounce + AbortController 取消在飞请求
+  const triggerSearchDebounced = () => {
+    if (searchDebounceTimer) {
+      clearTimeout(searchDebounceTimer);
+    }
+    searchDebounceTimer = setTimeout(() => {
+      if (searchAbortController) {
+        searchAbortController.abort();
+      }
+      searchAbortController = new AbortController();
+      currentPage = 1;
+      void loadUsers({ signal: searchAbortController.signal });
+    }, SEARCH_DEBOUNCE_MS);
+  };
+
   const closeModal = () => {
     if (modalSaving) {
       return;
     }
-    modalNode.classList.add("hidden");
+    closeModalAndRestoreFocus(modalNode);
   };
 
   const openBanModal = (user) => {
@@ -537,15 +725,15 @@
     setBanModalAlert("");
     banReasonInput.value = "";
     banModalTextNode.textContent = `确定封禁用户「${user.name || "未命名用户"}」吗？`;
-    banModalNode.classList.remove("hidden");
-    banReasonInput.focus();
+    // M-10 / M-11 / M-12：modal stack + focus trap + body scroll lock
+    openModalWithFocus(banModalNode);
   };
 
   const closeBanModal = (force = false) => {
     if (banSaving && !force) {
       return;
     }
-    banModalNode.classList.add("hidden");
+    closeModalAndRestoreFocus(banModalNode);
     if (force || !banSaving) {
       banningUser = null;
     }
@@ -564,7 +752,8 @@
     var targetUser = banningUser;
     banSaving = true;
     banModalConfirmButton.disabled = true;
-    setBanModalAlert("正在封禁...", "warning");
+    // M-14：进行时文案统一去对象名 + unicode 省略号
+    setBanModalAlert("封禁中…", "warning");
 
     try {
       await toggleBan(targetUser, true, reason);
@@ -583,14 +772,15 @@
     deleteModalConfirmButton.disabled = false;
     setDeleteModalAlert("");
     deleteModalTextNode.textContent = `确定删除用户「${user.name || "未命名用户"}」吗？此操作不可恢复。`;
-    deleteModalNode.classList.remove("hidden");
+    // M-10 / M-11 / M-12：modal stack + focus trap + body scroll lock
+    openModalWithFocus(deleteModalNode);
   };
 
   const closeDeleteModal = (force = false) => {
     if (deleteSaving && !force) {
       return;
     }
-    deleteModalNode.classList.add("hidden");
+    closeModalAndRestoreFocus(deleteModalNode);
     if (force || !deleteSaving) {
       deletingUser = null;
     }
@@ -629,8 +819,8 @@
     }
 
     updatePermissionPreview();
-    modalNode.classList.remove("hidden");
-    fieldUserId.focus();
+    // M-10 / M-11 / M-12：modal stack + focus trap + body scroll lock；首焦点由 openModalWithFocus 处理
+    openModalWithFocus(modalNode);
   };
 
   const buildPayloadFromModal = () => {
@@ -715,7 +905,8 @@
 
     modalSaving = true;
     modalSaveButton.disabled = true;
-    setModalAlert("正在保存...", "info");
+    // M-14：进行时文案统一去对象名 + unicode 省略号
+    setModalAlert("保存中…", "info");
 
     try {
       const url = isEdit ? `/webui/api/users/${editingUserDbId}` : "/webui/api/users";
@@ -732,7 +923,7 @@
         expectedStatus: isEdit ? 200 : 201,
       });
 
-      modalNode.classList.add("hidden");
+      closeModalAndRestoreFocus(modalNode);
       const reloaded = await loadUsers({ clearStatus: false });
       if (reloaded) {
         setStatus(isEdit ? "更新成功" : "创建成功", "success");
@@ -753,9 +944,10 @@
     const targetUser = deletingUser;
     deleteSaving = true;
     deleteModalConfirmButton.disabled = true;
-    setDeleteModalAlert(`正在删除用户 #${targetUser.id}...`, "warning");
+    // M-14：进行时文案统一去对象名 + unicode 省略号
+    setDeleteModalAlert("删除中…", "warning");
 
-    setStatus(`正在删除用户 #${targetUser.id}...`, "warning");
+    setStatus("删除中…", "warning");
     try {
       await api.apiRequest(`/webui/api/users/${targetUser.id}`, {
         method: "DELETE",
@@ -781,7 +973,8 @@
 
   const toggleBan = async (user, ban, reason) => {
     var actionText = ban ? "封禁" : "解封";
-    setStatus(actionText + "中...", "warning");
+    // M-14：进行时文案统一 unicode 省略号
+    setStatus(actionText + "中…", "warning");
 
     try {
       var options = {
@@ -799,7 +992,8 @@
       var result = api.unwrapData(payload);
 
       var serverResults = Array.isArray(result.server_results) ? result.server_results : [];
-      var lines = [actionText + "成功，用户 " + user.name];
+      // L-8：toast 文案去对象名（CLAUDE.md 规范）
+      var lines = [actionText + "成功"];
       if (serverResults.length) {
         lines.push("服务器黑名单：");
         for (var i = 0; i < serverResults.length; i++) {
@@ -810,12 +1004,24 @@
             var extra = item.reason ? "（" + item.reason + "）" : "";
             lines.push(serverId + "." + serverName + "：成功" + extra);
           } else {
-            lines.push(serverId + "." + serverName + "：失败，" + (item.reason || "未知错误"));
+            // L-9：原样透传后端 reason，detail 空时不拼"未知错误"
+            var failReason = String(item.reason || "");
+            if (failReason) {
+              lines.push(serverId + "." + serverName + "：失败，" + failReason);
+            } else {
+              lines.push(serverId + "." + serverName + "：失败");
+            }
           }
         }
       }
       setStatus(lines.join("\n"), "success");
-      await loadUsers({ clearStatus: false });
+
+      // M-9：用返回 user 局部更新对应行，避免触发 loadUsers 全表重拉
+      if (result && result.user && updateUserStateById(result.user)) {
+        renderTable();
+      } else {
+        await loadUsers({ clearStatus: false });
+      }
     } catch (error) {
       var message = error instanceof Error ? error.message : actionText + "失败";
       setStatus(message, "error");
@@ -823,13 +1029,16 @@
   };
 
   const syncWhitelist = async (user) => {
+    // L-1：同步开始前重置该 user 的 entry，避免上一轮 failed 状态污染本轮显示
     syncResultMap.set(user.id, {
       status: "loading",
       successCount: 0,
       failedCount: 0,
     });
-    renderTable();
-    setStatus(`正在同步用户 ${user.name} 的白名单...`, "warning");
+    // M-8：局部更新 sync 按钮，避免全表重渲染
+    updateSyncButtonForUser(user.id);
+    // M-14：进行时文案去对象名 + unicode 省略号
+    setStatus("同步中…", "warning");
 
     try {
       const payload = await api.apiRequest(`/webui/api/users/${user.id}/sync-whitelist`, {
@@ -858,19 +1067,31 @@
             lines.push(`${serverId}.${serverName}：同步成功`);
           } else {
             failedCount += 1;
-            const reason = String(item?.reason || "未知错误");
-            lines.push(`${serverId}.${serverName}：同步失败，${reason}`);
+            // L-9：原样透传后端 reason，detail 空时不拼"未知错误"
+            const reason = String(item?.reason || "");
+            if (reason) {
+              lines.push(`${serverId}.${serverName}：同步失败，${reason}`);
+            } else {
+              lines.push(`${serverId}.${serverName}：同步失败`);
+            }
           }
         }
       }
 
-      syncResultMap.set(user.id, {
-        status: failedCount > 0 || !syncResults.length ? "failed" : "success",
-        successCount,
-        failedCount,
-      });
-      setStatus(lines.join("\n"), failedCount > 0 || !syncResults.length ? "error" : "success");
-      renderTable();
+      const hasFailure = failedCount > 0 || !syncResults.length;
+      if (hasFailure) {
+        syncResultMap.set(user.id, {
+          status: "failed",
+          successCount,
+          failedCount,
+        });
+      } else {
+        // L-1：完全成功后清理 entry，避免常驻 Map 占用内存
+        syncResultMap.delete(user.id);
+      }
+      setStatus(lines.join("\n"), hasFailure ? "error" : "success");
+      // M-8：仅局部更新 sync 按钮
+      updateSyncButtonForUser(user.id);
     } catch (error) {
       const message = error instanceof Error ? error.message : "同步失败";
       syncResultMap.set(user.id, {
@@ -879,13 +1100,23 @@
         failedCount: 0,
       });
       setStatus(message, "error");
-      renderTable();
+      updateSyncButtonForUser(user.id);
     }
   };
 
-  reloadButton.addEventListener("click", () => {
-    currentPage = 1;
-    void loadUsers();
+  reloadButton.addEventListener("click", async () => {
+    // L-7：reload 按钮 loading 状态 + 取消 pending search，避免点击连发 / debounce 风暴
+    if (reloadInFlight) return;
+    cancelPendingSearch();
+    reloadInFlight = true;
+    reloadButton.disabled = true;
+    try {
+      currentPage = 1;
+      await loadUsers();
+    } finally {
+      reloadInFlight = false;
+      reloadButton.disabled = false;
+    }
   });
 
   addUserButton.addEventListener("click", async () => {
@@ -898,12 +1129,13 @@
     }
   });
 
+  // M-5：搜索 input 走 300ms debounce + AbortController
   searchInput.addEventListener("input", () => {
-    currentPage = 1;
-    void loadUsers();
+    triggerSearchDebounced();
   });
 
   perPageSelect.addEventListener("change", () => {
+    cancelPendingSearch();
     currentPerPage = Number(perPageSelect.value || 10);
     currentPage = 1;
     void loadUsers();
@@ -913,6 +1145,7 @@
     if (currentPage <= 1) {
       return;
     }
+    cancelPendingSearch();
     currentPage -= 1;
     void loadUsers({ clearStatus: false });
   });
@@ -921,6 +1154,7 @@
     if (currentMeta.total_pages > 0 && currentPage >= currentMeta.total_pages) {
       return;
     }
+    cancelPendingSearch();
     currentPage += 1;
     void loadUsers({ clearStatus: false });
   });
@@ -982,6 +1216,27 @@
     if (target.dataset.banModalClose === "1") {
       closeBanModal();
     }
+  });
+
+  // M-10：3 个 modal 注册到统一 ESC dispatcher，仅栈顶 modal 响应
+  registerModalCloser(modalNode, () => closeModal());
+  registerModalCloser(deleteModalNode, () => closeDeleteModal());
+  registerModalCloser(banModalNode, () => closeBanModal());
+
+  window.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    if (modalStack.length === 0) return;
+    const top = modalStack[modalStack.length - 1];
+    if (!top || top.classList.contains("hidden")) return;
+    const closer = modalCloseRegistry.get(top);
+    if (typeof closer === "function") {
+      closer();
+    }
+  });
+
+  // M-7：beforeunload 时 abort 在飞请求 + 清理 debounce timer
+  window.addEventListener("beforeunload", () => {
+    cancelPendingSearch();
   });
 
   void loadUsers();

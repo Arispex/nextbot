@@ -67,7 +67,8 @@ html, body { overflow-x: hidden; }
 
 .search-dropdown-item:last-child { border-bottom: none; }
 
-.search-dropdown-item:hover {
+.search-dropdown-item:hover,
+.search-dropdown-item.is-active {
   background-color: var(--bg-layout);
 }
 
@@ -327,10 +328,17 @@ html, body { overflow-x: hidden; }
 }
 
 /* ── Modal ───────────────────────────────────────────── */
+/* z-index scale: search-dropdown(30) < modal(120) — 保持 modal 高于 dropdown，
+ * 与 servers / commands 模块对齐。修改时同步检查相邻模块。 */
 .modal {
   position: fixed;
   inset: 0;
   z-index: 120;
+}
+
+/* M-6：提交中 mask / close 按钮变更光标提示，点击由 JS 拦截。 */
+.modal [data-modal-close][data-disabled="true"] {
+  cursor: not-allowed;
 }
 
 .modal-mask {

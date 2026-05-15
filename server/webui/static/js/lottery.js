@@ -15,12 +15,30 @@
     servers: [],
     editingPoolId: null,
     editingPrizeId: null,
+    editingPrizeOriginalKind: null,
     pendingDeletePool: null,
     pendingDeletePrize: null,
     pendingImport: null,
+    pendingKindSwitch: null,
   };
 
   const els = {};
+
+  // M-8 / L-6：AbortController 状态，避免快速切换 pool 时请求乱序、离开页面 fetch 悬挂。
+  let poolsAbortController = null;
+  let detailAbortController = null;
+
+  // L-7：previousFocus 用于 modal 关闭后恢复键盘焦点。
+  let previousFocus = null;
+
+  // H-2：危险命令前缀黑名单（与后端 _COMMAND_DENYLIST_PREFIXES 同步）。
+  const COMMAND_DENYLIST_PREFIXES = [
+    "op ", "deop ", "ban ", "ban-ip ", "pardon", "kick ", "stop", "shutdown",
+    "restart", "whitelist ", "save-all", "save-off", "save-on",
+  ];
+
+  // H-1：replace_all 高危操作要求用户精确键入此短语。
+  const REPLACE_ALL_CONFIRM_PHRASE = "全量替换";
 
   function $(id) { return document.getElementById(id); }
 
@@ -43,10 +61,42 @@
     if (msg) msg.textContent = "";
   }
 
-  function showModal(modal) { if (modal) modal.classList.remove("hidden"); }
-  function hideModal(modal) { if (modal) modal.classList.add("hidden"); }
+  function showModal(modal) {
+    if (!modal) return;
+    // L-7：保存当前焦点，关闭 modal 时恢复（仅在 modal 未已打开时保存）。
+    if (modal.classList.contains("hidden")) {
+      previousFocus = document.activeElement;
+    }
+    modal.classList.remove("hidden");
+  }
+  function hideModal(modal) {
+    if (!modal) return;
+    const wasOpen = !modal.classList.contains("hidden");
+    modal.classList.add("hidden");
+    // L-7：仅当本次确实关闭了一个可见的 modal 时才恢复焦点。
+    // 嵌套 modal 已经被 hideOpenModals 全部 hide，本回调只恢复一次。
+    if (wasOpen && previousFocus && typeof previousFocus.focus === "function" &&
+        !document.querySelector(".modal:not(.hidden)")) {
+      try { previousFocus.focus(); } catch (_e) { /* ignore */ }
+      previousFocus = null;
+    }
+  }
 
   async function callApi(url, opts = {}) { return api.apiRequest(url, opts); }
+
+  // H-2：检查命令模板是否命中危险前缀。返回命中的前缀（去掉尾部空格），否则 null。
+  function detectDenylistedPrefix(cmd) {
+    if (typeof cmd !== "string") return null;
+    const lower = cmd.trim().toLowerCase().replace(/^\/+/, "");
+    if (!lower) return null;
+    for (const prefix of COMMAND_DENYLIST_PREFIXES) {
+      const trimmed = prefix.replace(/\s+$/, "");
+      if (lower === trimmed || lower.startsWith(prefix)) {
+        return trimmed;
+      }
+    }
+    return null;
+  }
 
   function formatProbabilityPct(n) {
     const v = Number(n) || 0;
@@ -70,7 +120,9 @@
       map.set(p.id, prob);
     });
     const missPct = unset.length > 0 ? 0 : remaining;
-    return { map, missPct };
+    // L-1：当存在 unset prize 但剩余概率为 0 时，提示用户调低其他奖品。
+    const unsetUnderflow = unset.length > 0 && remaining <= 0;
+    return { map, missPct, unsetUnderflow, setSum };
   }
 
   // ---------- Data load ----------
@@ -87,8 +139,18 @@
   }
 
   async function loadPools() {
+    // M-8：abort 上一次 in-flight 请求，避免快速点击刷新时 race。
+    if (poolsAbortController) {
+      try { poolsAbortController.abort(); } catch (_e) { /* ignore */ }
+    }
+    poolsAbortController = new AbortController();
+    const signal = poolsAbortController.signal;
     try {
-      const res = await callApi("/webui/api/lottery", { action: "加载奖池列表" });
+      const res = await callApi("/webui/api/lottery", {
+        action: "加载奖池列表",
+        signal,
+      });
+      if (signal.aborted) return;
       state.pools = api.unwrapData(res) || [];
       renderPoolList();
       if (state.selectedPoolId !== null) {
@@ -102,16 +164,41 @@
         }
       }
     } catch (err) {
+      if (signal.aborted || (err && err.name === "AbortError")) return;
+      // M-7：加载失败时清空选中态，避免后续 race 拿到旧 pool 引用。
+      state.selectedPoolId = null;
+      state.selectedPoolDetail = null;
+      renderPoolDetail();
       showAlert(els.alert, err.message || "加载失败", "error");
     }
   }
 
   async function loadPoolDetail(poolId) {
+    // M-8：abort 上一次 detail 请求，确保 A → B → A 顺序点击时不会渲染旧 pool。
+    if (detailAbortController) {
+      try { detailAbortController.abort(); } catch (_e) { /* ignore */ }
+    }
+    detailAbortController = new AbortController();
+    const signal = detailAbortController.signal;
     try {
-      const res = await callApi("/webui/api/lottery/" + poolId, { action: "加载奖池详情" });
+      const res = await callApi("/webui/api/lottery/" + poolId, {
+        action: "加载奖池详情",
+        signal,
+      });
+      if (signal.aborted) return;
+      // M-7：用户在 await 期间切到其它 pool 时，本次结果作废。
+      if (state.selectedPoolId !== poolId) return;
       state.selectedPoolDetail = api.unwrapData(res);
       renderPoolDetail();
     } catch (err) {
+      if (signal.aborted || (err && err.name === "AbortError")) return;
+      // M-7：detail 加载失败（典型场景：奖池被别的管理员删了 → 404），
+      // 重置选中态让 UI 回到空态，而不是停留在旧数据上。
+      if (state.selectedPoolId === poolId) {
+        state.selectedPoolId = null;
+        state.selectedPoolDetail = null;
+        renderPoolDetail();
+      }
       showAlert(els.alert, err.message || "加载失败", "error");
     }
   }
@@ -217,11 +304,13 @@
       els.prizeEmpty.classList.add("hidden");
       els.prizeTableWrap.classList.remove("hidden");
       const probs = resolveProbabilities(prizes);
-      prizes.forEach((p, idx) => els.prizeTbody.appendChild(renderPrizeRow(p, idx + 1, probs.map.get(p.id) || 0)));
+      prizes.forEach((p, idx) => els.prizeTbody.appendChild(
+        renderPrizeRow(p, idx + 1, probs.map.get(p.id) || 0, probs.unsetUnderflow)
+      ));
     }
   }
 
-  function renderPrizeRow(prize, displayIndex, probabilityPct) {
+  function renderPrizeRow(prize, displayIndex, probabilityPct, unsetUnderflow) {
     const tr = document.createElement("tr");
 
     const tdIdx = document.createElement("td");
@@ -264,7 +353,14 @@
     const probChip = document.createElement("span");
     const isDefault = prize.weight === null || prize.weight === undefined;
     probChip.className = "weight-chip" + (isDefault ? " is-default" : "");
-    probChip.textContent = formatProbabilityPct(probabilityPct) + "%" + (isDefault ? "（默认）" : "");
+    // L-1：unset 且剩余概率为 0 时，提示用户调低其他奖品而不是误以为禁用。
+    let suffix;
+    if (isDefault) {
+      suffix = unsetUnderflow ? "（剩余 0，请下调其他奖品）" : "（默认）";
+    } else {
+      suffix = "";
+    }
+    probChip.textContent = formatProbabilityPct(probabilityPct) + "%" + suffix;
     tdProb.appendChild(probChip);
     tr.appendChild(tdProb);
 
@@ -470,11 +566,86 @@
     els.prizeKindItemFields.classList.toggle("hidden", kind !== "item");
     els.prizeKindCommandFields.classList.toggle("hidden", kind !== "command");
     els.prizeKindCoinFields.classList.toggle("hidden", kind !== "coin");
+    // H-2：刷新命令前缀警告状态。
+    if (kind === "command") {
+      refreshCommandWarning();
+    } else {
+      hideCommandWarning();
+    }
+  }
+
+  // M-10：切到非当前 kind 时清空另两组字段，避免上一 kind 脏数据写入 DB。
+  // 仅在 handleKindChange（用户主动切换）时调用，不在 openPrizeModal 初次填充时调用。
+  function resetFieldsForOtherKinds(currentKind) {
+    if (currentKind !== "item") {
+      els.prizeFieldItemId.value = 1;
+      els.prizeFieldPrefixId.value = 0;
+      els.prizeFieldQuantity.value = 1;
+      els.prizeFieldMinTier.value = "none";
+      els.prizeFieldActualValue.value = "";
+      els.prizeFieldIsMystery.checked = false;
+    }
+    if (currentKind !== "command") {
+      els.prizeFieldTargetServer.value = "";
+      els.prizeFieldCommandTemplate.value = "";
+      els.prizeFieldShowCommand.checked = false;
+      els.prizeFieldRequireOnline.checked = false;
+    }
+    if (currentKind !== "coin") {
+      els.prizeFieldCoinAmount.value = "";
+    }
+  }
+
+  // H-2：命令前缀警告 helper（inline 显示在 modal alert 区）。
+  function refreshCommandWarning() {
+    const cmd = els.prizeFieldCommandTemplate ? els.prizeFieldCommandTemplate.value : "";
+    const hit = detectDenylistedPrefix(cmd);
+    if (hit) {
+      showAlert(els.prizeModalAlert, `命令前缀 ${hit} 不允许作为抽奖奖品，提交将被后端拒绝`, "error");
+    } else {
+      hideAlert(els.prizeModalAlert);
+    }
+  }
+
+  function hideCommandWarning() {
+    hideAlert(els.prizeModalAlert);
+  }
+
+  // H-6：kind 切换确认。
+  function handleKindChange(ev) {
+    const newKind = els.prizeFieldKind.value;
+    // 仅在编辑已有 prize 且 kind 发生变化时确认。
+    if (state.editingPrizeId !== null && state.editingPrizeOriginalKind &&
+        state.editingPrizeOriginalKind !== newKind) {
+      const prevLabel = kindLabel(state.editingPrizeOriginalKind);
+      const ok = window.confirm(
+        `切换类型会清空「${prevLabel}」配置，确定继续？`
+      );
+      if (!ok) {
+        // 回退选择。
+        els.prizeFieldKind.value = state.editingPrizeOriginalKind;
+        return;
+      }
+      // 用户确认后，把 originalKind 设为新值，避免反复弹窗。
+      state.editingPrizeOriginalKind = newKind;
+    }
+    // M-10：用户切 kind 时清空另两组字段。
+    resetFieldsForOtherKinds(newKind);
+    applyKindVisibility();
+  }
+
+  function kindLabel(kind) {
+    if (kind === "item") return "物品";
+    if (kind === "command") return "指令";
+    if (kind === "coin") return "金币";
+    return kind;
   }
 
   function openPrizeModal(prize) {
     if (state.selectedPoolId === null) return;
     state.editingPrizeId = prize ? prize.id : null;
+    // H-6：保存编辑前的 kind，用于 kind 切换二次确认。
+    state.editingPrizeOriginalKind = prize ? (prize.kind || null) : null;
     hideAlert(els.prizeModalAlert);
     els.prizeModalTitle.textContent = prize ? "编辑奖品" : "新建奖品";
     els.prizeFieldName.value = prize ? prize.name : "";
@@ -502,6 +673,7 @@
   function closePrizeModal() {
     hideModal(els.prizeModal);
     state.editingPrizeId = null;
+    state.editingPrizeOriginalKind = null;
   }
 
   async function submitPrizeModal(ev) {
@@ -510,13 +682,23 @@
     if (state.selectedPoolId === null) return;
     const kind = els.prizeFieldKind.value;
     const wRaw = els.prizeFieldWeight.value.trim();
+    let weightValue = null;
+    if (wRaw !== "") {
+      const num = Number(wRaw);
+      if (!Number.isFinite(num)) {
+        showAlert(els.prizeModalAlert, "概率必须为有限数值", "error");
+        return;
+      }
+      // M-9：钳制到 4 位小数，与后端 round(weight, 4) 一致。
+      weightValue = Math.round(num * 10000) / 10000;
+    }
     const payload = {
       name: els.prizeFieldName.value.trim(),
       description: els.prizeFieldDescription.value.trim(),
       kind: kind,
       sort_order: Number(els.prizeFieldSortOrder.value || 0),
       enabled: els.prizeFieldEnabled.checked,
-      weight: wRaw === "" ? null : Number(wRaw),
+      weight: weightValue,
     };
     if (kind === "item") {
       payload.item_id = Number(els.prizeFieldItemId.value || 0);
@@ -532,6 +714,12 @@
       payload.command_template = els.prizeFieldCommandTemplate.value;
       payload.show_command = els.prizeFieldShowCommand.checked;
       payload.require_online = els.prizeFieldRequireOnline.checked;
+      // H-2：客户端预检命令前缀，避免无谓的服务端往返。
+      const hit = detectDenylistedPrefix(payload.command_template);
+      if (hit) {
+        showAlert(els.prizeModalAlert, `命令前缀 ${hit} 不允许作为抽奖奖品`, "error");
+        return;
+      }
     } else {  // coin
       const c = els.prizeFieldCoinAmount.value.trim();
       payload.coin_amount = c === "" ? 0 : Number(c);
@@ -703,8 +891,31 @@
     const isReplace = document.querySelector('input[name="lottery-import-mode"]:checked')?.value === "replace_all";
     if (isReplace) {
       els.lotteryImportReplaceWarn.classList.remove("hidden");
+      if (els.lotteryImportConfirmField) {
+        els.lotteryImportConfirmField.classList.remove("hidden");
+      }
     } else {
       els.lotteryImportReplaceWarn.classList.add("hidden");
+      if (els.lotteryImportConfirmField) {
+        els.lotteryImportConfirmField.classList.add("hidden");
+      }
+      if (els.lotteryImportConfirmInput) {
+        els.lotteryImportConfirmInput.value = "";
+      }
+    }
+    refreshImportConfirmButton();
+  }
+
+  // H-1：根据模式与 confirm 输入框控制「导入」按钮启用状态。
+  function refreshImportConfirmButton() {
+    if (!els.lotteryImportConfirm) return;
+    const mode = document.querySelector('input[name="lottery-import-mode"]:checked')?.value || "merge";
+    if (mode === "replace_all") {
+      const phrase = els.lotteryImportConfirmInput
+        ? els.lotteryImportConfirmInput.value.trim() : "";
+      els.lotteryImportConfirm.disabled = (phrase !== REPLACE_ALL_CONFIRM_PHRASE);
+    } else {
+      els.lotteryImportConfirm.disabled = false;
     }
   }
 
@@ -712,18 +923,33 @@
     if (!state.pendingImport) return;
     const mode = document.querySelector('input[name="lottery-import-mode"]:checked')?.value || "merge";
     hideAlert(els.lotteryImportAlert);
+    // H-1：replace_all 必须本地校验 confirm 字段，且作为 payload 字段透传到后端。
+    let confirmPhrase = "";
+    if (mode === "replace_all") {
+      confirmPhrase = els.lotteryImportConfirmInput
+        ? els.lotteryImportConfirmInput.value.trim() : "";
+      if (confirmPhrase !== REPLACE_ALL_CONFIRM_PHRASE) {
+        showAlert(els.lotteryImportAlert,
+          `请在确认输入框中精确键入「${REPLACE_ALL_CONFIRM_PHRASE}」`, "error");
+        return;
+      }
+    }
+    const payloadToSend = mode === "replace_all"
+      ? Object.assign({}, state.pendingImport.payload, { confirm: confirmPhrase })
+      : state.pendingImport.payload;
     try {
       await callApi(
         "/webui/api/lottery/import?mode=" + encodeURIComponent(mode),
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(state.pendingImport.payload),
+          body: JSON.stringify(payloadToSend),
           action: "导入",
         },
       );
       hideModal(els.lotteryImportModal);
       state.pendingImport = null;
+      if (els.lotteryImportConfirmInput) els.lotteryImportConfirmInput.value = "";
       showAlert(els.alert, "导入成功", "success");
       await loadPools();
     } catch (err) {
@@ -802,6 +1028,8 @@
     els.lotteryImportSummary = $("lottery-import-summary");
     els.lotteryImportReplaceWarn = $("lottery-import-replace-warn");
     els.lotteryImportConfirm = $("lottery-import-confirm");
+    els.lotteryImportConfirmField = $("lottery-import-confirm-field");
+    els.lotteryImportConfirmInput = $("lottery-import-confirm-input");
   }
 
   function bindEvents() {
@@ -813,7 +1041,12 @@
     els.prizeCreateBtn.addEventListener("click", () => openPrizeModal(null));
     els.prizeModalForm.addEventListener("submit", submitPrizeModal);
     els.prizeDeleteConfirm.addEventListener("click", confirmDeletePrize);
-    els.prizeFieldKind.addEventListener("change", applyKindVisibility);
+    // H-6：kind change 走自定义 handler，必要时弹确认。
+    els.prizeFieldKind.addEventListener("change", handleKindChange);
+    // H-2：命令模板 input 实时校验前缀，提前警告。
+    if (els.prizeFieldCommandTemplate) {
+      els.prizeFieldCommandTemplate.addEventListener("input", refreshCommandWarning);
+    }
 
     els.lotteryExportBtn.addEventListener("click", handleExport);
     els.lotteryImportBtn.addEventListener("click", () => els.lotteryImportFile.click());
@@ -822,19 +1055,57 @@
     document.querySelectorAll('input[name="lottery-import-mode"]').forEach((r) => {
       r.addEventListener("change", refreshImportReplaceWarn);
     });
+    // H-1：confirm 输入框实时更新「导入」按钮启用状态。
+    if (els.lotteryImportConfirmInput) {
+      els.lotteryImportConfirmInput.addEventListener("input", refreshImportConfirmButton);
+    }
 
+    // M-11：通用 modal 关闭 dispatcher，复用 hideModal 以触发 previousFocus 恢复 + 清理 pending state。
     document.querySelectorAll("[data-modal-close]").forEach((el) => {
       el.addEventListener("click", () => {
         const targetId = el.getAttribute("data-modal-close");
         const target = document.getElementById(targetId);
-        if (target) target.classList.add("hidden");
+        if (!target) return;
+        hideModal(target);
+        clearPendingForModal(targetId);
       });
     });
     document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") {
-        document.querySelectorAll(".modal:not(.hidden)").forEach((m) => m.classList.add("hidden"));
+      if (e.key !== "Escape") return;
+      const openModals = document.querySelectorAll(".modal:not(.hidden)");
+      if (openModals.length === 0) return;
+      openModals.forEach((m) => {
+        hideModal(m);
+        if (m.id) clearPendingForModal(m.id);
+      });
+    });
+
+    // L-6：页面卸载时 abort 在飞请求，避免悬挂 fetch。
+    window.addEventListener("beforeunload", () => {
+      if (poolsAbortController) {
+        try { poolsAbortController.abort(); } catch (_e) { /* ignore */ }
+      }
+      if (detailAbortController) {
+        try { detailAbortController.abort(); } catch (_e) { /* ignore */ }
       }
     });
+  }
+
+  // M-11：modal 关闭时按 id 清理对应 pending state，避免 ESC / 取消时 state 残留。
+  function clearPendingForModal(modalId) {
+    if (modalId === "pool-delete-modal") {
+      state.pendingDeletePool = null;
+    } else if (modalId === "prize-delete-modal") {
+      state.pendingDeletePrize = null;
+    } else if (modalId === "lottery-import-modal") {
+      state.pendingImport = null;
+      if (els.lotteryImportConfirmInput) els.lotteryImportConfirmInput.value = "";
+    } else if (modalId === "prize-modal") {
+      state.editingPrizeId = null;
+      state.editingPrizeOriginalKind = null;
+    } else if (modalId === "pool-modal") {
+      state.editingPoolId = null;
+    }
   }
 
   async function init() {

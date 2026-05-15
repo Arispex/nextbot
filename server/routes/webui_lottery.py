@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import math
 from typing import Any
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from nonebot.log import logger
+from sqlalchemy.exc import IntegrityError
 
 from nextbot.db import LotteryPool, LotteryPrize, Server, get_session
 from nextbot.progression import PROGRESSION_KEY_TO_ZH, TIER_OPTIONS
@@ -20,6 +22,79 @@ _CMD_MAX_LEN = 500
 _EXPORT_VERSION = 1
 _EXPORT_KIND = "lottery_pools"
 _IMPORT_MODES = {"merge", "replace_all"}
+
+# M-1 / M-2 / M-3 / M-4：整型字段统一上下界，避免 2**31 / 2**63 类极端值落地。
+_COST_MAX = 1_000_000_000  # 10**9 金币上限
+_QUANTITY_MAX = 9999
+_ITEM_ID_MAX = 2_147_483_647  # int32 与 DB 模型一致
+_PREFIX_ID_MAX = 2_147_483_647
+_SORT_ORDER_MAX = 1_000_000
+_SORT_ORDER_MIN = -1_000_000
+_COIN_AMOUNT_MAX = 100_000_000  # ±10**8
+_ACTUAL_VALUE_MAX = 1_000_000_000
+
+# H-2：危险命令前缀黑名单。WebUI 是 lottery 奖品命令的唯一录入端，禁止录入高权命令。
+# 抽奖落地阶段（nextbot/plugins/lottery.py）通过 RCON 直发到 MC 服务器。
+_COMMAND_DENYLIST_PREFIXES = (
+    "op ",
+    "deop ",
+    "ban ",
+    "ban-ip ",
+    "pardon",
+    "kick ",
+    "stop",
+    "shutdown",
+    "restart",
+    "whitelist ",
+    "save-all",
+    "save-off",
+    "save-on",
+)
+
+# H-1：replace_all 模式要求前端传入此 confirm 字段（用户在 modal 中键入「全量替换」四个汉字）。
+_REPLACE_ALL_CONFIRM_PHRASE = "全量替换"
+
+
+def _client_ip(request: Request) -> str:
+    """从 X-Forwarded-For 或 client.host 取调用方 IP（与 webui_servers._client_ip 同实现）。"""
+    forwarded = request.headers.get("x-forwarded-for", "").strip()
+    if forwarded:
+        return forwarded.split(",")[0].strip() or "unknown"
+    if request.client is not None:
+        return request.client.host or "unknown"
+    return "unknown"
+
+
+def _user_agent(request: Request) -> str:
+    """截断 User-Agent 防超长（与 webui_servers._user_agent 同实现）。"""
+    return request.headers.get("user-agent", "")[:200]
+
+
+def _strict_int(raw: Any) -> tuple[int | None, bool]:
+    """L-3 / M-3：拒绝 bool（int 子类），返回 (value, ok)。"""
+    if isinstance(raw, bool):
+        return None, False
+    try:
+        return int(raw), True
+    except (TypeError, ValueError):
+        return None, False
+
+
+def _strip_control_chars(text: str) -> str:
+    """L-2：去除换行 / 回车 / 制表符等控制字符，避免日志注入。"""
+    return text.replace("\r", "").replace("\n", "").replace("\t", " ")
+
+
+def _command_denylist_hit(stripped_cmd: str) -> str | None:
+    """H-2：返回命中的危险前缀（lower-cased），若命中。
+
+    支持 `/op ` / `op ` 两种形式（MC 命令可带或不带 `/`）。
+    """
+    lower = stripped_cmd.lower().lstrip("/")
+    for prefix in _COMMAND_DENYLIST_PREFIXES:
+        if lower == prefix.rstrip() or lower.startswith(prefix):
+            return prefix
+    return None
 
 
 def _validation_error_response(details: list[dict[str, str]]) -> JSONResponse:
@@ -83,7 +158,8 @@ def _validate_pool_payload(
     out: dict[str, Any] = {}
 
     if "name" in data or not partial:
-        name = str(data.get("name", "")).strip()
+        # L-2：去控制字符后再校验长度，避免日志注入。
+        name = _strip_control_chars(str(data.get("name", ""))).strip()
         if not name:
             details.append({"field": "name", "message": "名称不能为空"})
         elif len(name) > _NAME_MAX_LEN:
@@ -92,30 +168,36 @@ def _validate_pool_payload(
             out["name"] = name
 
     if "description" in data:
-        desc = str(data.get("description", "")).strip()
+        desc = _strip_control_chars(str(data.get("description", ""))).strip()
         if len(desc) > _DESC_MAX_LEN:
             details.append({"field": "description", "message": f"说明长度不能超过 {_DESC_MAX_LEN}"})
         else:
             out["description"] = desc
 
     if "sort_order" in data:
-        try:
-            out["sort_order"] = int(data["sort_order"])
-        except (TypeError, ValueError):
+        # L-3 / M-4：拒绝 bool，钳制上下界。
+        sort_value, ok = _strict_int(data["sort_order"])
+        if not ok or sort_value is None:
             details.append({"field": "sort_order", "message": "排序值必须为整数"})
+        elif sort_value < _SORT_ORDER_MIN or sort_value > _SORT_ORDER_MAX:
+            details.append({"field": "sort_order", "message": f"排序值范围 {_SORT_ORDER_MIN}~{_SORT_ORDER_MAX}"})
+        else:
+            out["sort_order"] = sort_value
 
     if "enabled" in data:
         out["enabled"] = bool(data["enabled"])
 
     if "cost_per_draw" in data or not partial:
-        try:
-            cost = int(data.get("cost_per_draw", 0))
-        except (TypeError, ValueError):
-            cost = -1
-        if cost < 0:
+        # L-3 / M-1：拒绝 bool，钳制上界。
+        cost_value, ok = _strict_int(data.get("cost_per_draw", 0))
+        if not ok or cost_value is None:
             details.append({"field": "cost_per_draw", "message": "抽奖单价必须为非负整数"})
+        elif cost_value < 0:
+            details.append({"field": "cost_per_draw", "message": "抽奖单价必须为非负整数"})
+        elif cost_value > _COST_MAX:
+            details.append({"field": "cost_per_draw", "message": f"抽奖单价不能超过 {_COST_MAX}"})
         else:
-            out["cost_per_draw"] = cost
+            out["cost_per_draw"] = cost_value
 
     if details:
         return None, details
@@ -129,13 +211,14 @@ def _validate_prize_payload(
 ) -> tuple[dict[str, Any] | None, list[dict[str, str]]]:
     details: list[dict[str, str]] = []
 
-    name = str(data.get("name", "")).strip()
+    # L-2：去控制字符。
+    name = _strip_control_chars(str(data.get("name", ""))).strip()
     if not name:
         details.append({"field": "name", "message": "名称不能为空"})
     elif len(name) > _NAME_MAX_LEN:
         details.append({"field": "name", "message": f"名称长度不能超过 {_NAME_MAX_LEN}"})
 
-    description = str(data.get("description", "")).strip()
+    description = _strip_control_chars(str(data.get("description", ""))).strip()
     if len(description) > _DESC_MAX_LEN:
         details.append({"field": "description", "message": f"说明长度不能超过 {_DESC_MAX_LEN}"})
 
@@ -143,11 +226,16 @@ def _validate_prize_payload(
     if kind not in _VALID_KINDS:
         details.append({"field": "kind", "message": "类型必须为 item、command 或 coin"})
 
-    try:
-        sort_order = int(data.get("sort_order", 0))
-    except (TypeError, ValueError):
+    # L-3 / M-4：拒绝 bool，钳制上下界。
+    sort_value, ok = _strict_int(data.get("sort_order", 0))
+    if not ok or sort_value is None:
         sort_order = 0
         details.append({"field": "sort_order", "message": "排序值必须为整数"})
+    elif sort_value < _SORT_ORDER_MIN or sort_value > _SORT_ORDER_MAX:
+        sort_order = 0
+        details.append({"field": "sort_order", "message": f"排序值范围 {_SORT_ORDER_MIN}~{_SORT_ORDER_MAX}"})
+    else:
+        sort_order = sort_value
 
     enabled = bool(data.get("enabled", True))
 
@@ -155,12 +243,29 @@ def _validate_prize_payload(
     if raw_weight is None or (isinstance(raw_weight, str) and raw_weight.strip() == ""):
         weight = None
     else:
-        try:
-            weight = float(raw_weight)
-        except (TypeError, ValueError):
-            weight = -1.0
-        if weight is not None and (weight < 0.0 or weight > 100.0):
+        # H-4：拒绝 NaN/Inf。`float("nan") < 0` 与 `float("nan") > 100` 均为 False，
+        # 必须显式用 math.isfinite 拦截。同时 bool 是 int 子类，避免 True/False 当数值。
+        weight: float | None = None
+        weight_ok = True
+        if isinstance(raw_weight, bool):
+            weight_ok = False
+        else:
+            try:
+                weight = float(raw_weight)
+            except (TypeError, ValueError):
+                weight_ok = False
+        if not weight_ok or weight is None:
+            details.append({"field": "weight", "message": "概率必须为有限数值"})
+            weight = None
+        elif not math.isfinite(weight):
+            details.append({"field": "weight", "message": "概率必须为有限数值"})
+            weight = None
+        elif weight < 0.0 or weight > 100.0:
             details.append({"field": "weight", "message": "概率必须为 0-100 之间的数值"})
+            weight = None
+        else:
+            # M-9：钳制精度到 4 位小数，覆盖前端 step=0.01。
+            weight = round(weight, 4)
 
     item_id = 0
     prefix_id = 0
@@ -175,26 +280,35 @@ def _validate_prize_payload(
     coin_amount = 0
 
     if kind == "item":
-        try:
-            item_id = int(data.get("item_id", 0))
-        except (TypeError, ValueError):
-            item_id = -1
-        if item_id < 1:
+        item_value, ok = _strict_int(data.get("item_id", 0))
+        if not ok or item_value is None or item_value < 1:
             details.append({"field": "item_id", "message": "item_id 必须为正整数"})
+            item_id = 0
+        elif item_value > _ITEM_ID_MAX:
+            details.append({"field": "item_id", "message": f"item_id 不能超过 {_ITEM_ID_MAX}"})
+            item_id = 0
+        else:
+            item_id = item_value
 
-        try:
-            prefix_id = int(data.get("prefix_id", 0))
-        except (TypeError, ValueError):
-            prefix_id = -1
-        if prefix_id < 0:
+        prefix_value, ok = _strict_int(data.get("prefix_id", 0))
+        if not ok or prefix_value is None or prefix_value < 0:
             details.append({"field": "prefix_id", "message": "prefix_id 必须为非负整数"})
+            prefix_id = 0
+        elif prefix_value > _PREFIX_ID_MAX:
+            details.append({"field": "prefix_id", "message": f"prefix_id 不能超过 {_PREFIX_ID_MAX}"})
+            prefix_id = 0
+        else:
+            prefix_id = prefix_value
 
-        try:
-            quantity = int(data.get("quantity", 1))
-        except (TypeError, ValueError):
-            quantity = 0
-        if quantity < 1:
+        quantity_value, ok = _strict_int(data.get("quantity", 1))
+        if not ok or quantity_value is None or quantity_value < 1:
             details.append({"field": "quantity", "message": "数量必须为正整数"})
+            quantity = 1
+        elif quantity_value > _QUANTITY_MAX:
+            details.append({"field": "quantity", "message": f"数量不能超过 {_QUANTITY_MAX}"})
+            quantity = 1
+        else:
+            quantity = quantity_value
 
         min_tier = str(data.get("min_tier", "none")).strip() or "none"
         if min_tier not in PROGRESSION_KEY_TO_ZH:
@@ -204,12 +318,15 @@ def _validate_prize_payload(
         if raw_actual is None or (isinstance(raw_actual, str) and raw_actual.strip() == ""):
             actual_value = None
         else:
-            try:
-                actual_value = int(raw_actual)
-            except (TypeError, ValueError):
-                actual_value = -1
-            if actual_value is not None and actual_value < 0:
+            actual_value_int, ok = _strict_int(raw_actual)
+            if not ok or actual_value_int is None or actual_value_int < 0:
                 details.append({"field": "actual_value", "message": "实际单价必须为非负整数"})
+                actual_value = None
+            elif actual_value_int > _ACTUAL_VALUE_MAX:
+                details.append({"field": "actual_value", "message": f"实际单价不能超过 {_ACTUAL_VALUE_MAX}"})
+                actual_value = None
+            else:
+                actual_value = actual_value_int
 
         is_mystery = bool(data.get("is_mystery", False))
 
@@ -218,33 +335,54 @@ def _validate_prize_payload(
         if raw_target is None or (isinstance(raw_target, str) and raw_target.strip() == ""):
             target_server_id = None
         else:
-            try:
-                target_server_id = int(raw_target)
-            except (TypeError, ValueError):
-                target_server_id = -1
-            if target_server_id is not None and target_server_id not in valid_server_ids:
+            target_value, ok = _strict_int(raw_target)
+            if not ok or target_value is None:
                 details.append({"field": "target_server_id", "message": "目标服务器不存在"})
+                target_server_id = None
+            elif target_value not in valid_server_ids:
+                details.append({"field": "target_server_id", "message": "目标服务器不存在"})
+                target_server_id = None
+            else:
+                target_server_id = target_value
 
-        command_template = str(data.get("command_template", ""))
+        # L-2：去控制字符；空白 strip。
+        command_template = _strip_control_chars(str(data.get("command_template", "")))
         stripped_cmd = command_template.strip()
         if not stripped_cmd:
             details.append({"field": "command_template", "message": "命令模板不能为空"})
         elif len(command_template) > _CMD_MAX_LEN:
             details.append({"field": "command_template", "message": f"命令长度不能超过 {_CMD_MAX_LEN}"})
         else:
-            command_template = stripped_cmd
+            # H-2：危险命令前缀黑名单。
+            hit = _command_denylist_hit(stripped_cmd)
+            if hit is not None:
+                details.append({
+                    "field": "command_template",
+                    "message": f"命令前缀 {hit.strip()} 不允许作为抽奖奖品",
+                })
+            else:
+                command_template = stripped_cmd
 
         show_command = bool(data.get("show_command", False))
         require_online = bool(data.get("require_online", False))
 
     if kind == "coin":
-        try:
-            coin_amount = int(data.get("coin_amount", 0))
-        except (TypeError, ValueError):
-            coin_amount = None
+        raw_coin = data.get("coin_amount", 0)
+        coin_value, ok = _strict_int(raw_coin)
+        if not ok or coin_value is None:
+            coin_amount = 0
             details.append({"field": "coin_amount", "message": "金币数量必须为整数（可正可负）"})
-        if coin_amount == 0:
+        elif coin_value == 0:
+            coin_amount = 0
             details.append({"field": "coin_amount", "message": "金币数量不能为 0"})
+        elif coin_value < -_COIN_AMOUNT_MAX or coin_value > _COIN_AMOUNT_MAX:
+            coin_amount = 0
+            details.append({
+                "field": "coin_amount",
+                "message": f"金币数量范围 -{_COIN_AMOUNT_MAX}~{_COIN_AMOUNT_MAX}",
+            })
+        else:
+            coin_amount = coin_value
 
     if details:
         return None, details
@@ -276,6 +414,26 @@ def _load_server_id_set() -> set[int]:
         return {int(s.id) for s in session.query(Server).all()}
     finally:
         session.close()
+
+
+def _existing_weight_sum(session: Any, pool_id: int, exclude_prize_id: int | None = None) -> float:
+    """C-1：同 pool 内、enabled、weight 非空的其他 prize 已设置权重之和。"""
+    query = session.query(LotteryPrize).filter(
+        LotteryPrize.pool_id == pool_id,
+        LotteryPrize.enabled == True,  # noqa: E712 — SQLAlchemy boolean compare
+        LotteryPrize.weight.isnot(None),
+    )
+    if exclude_prize_id is not None:
+        query = query.filter(LotteryPrize.id != exclude_prize_id)
+    total = 0.0
+    for prize in query.all():
+        try:
+            w = float(prize.weight)
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(w):
+            total += w
+    return total
 
 
 def _load_server_label_map() -> dict[int, str]:
@@ -339,13 +497,17 @@ async def create_pool(request: Request) -> JSONResponse:
             details=[{"field": "name", "message": "名称不能为空"}],
         )
 
+    # H-3：录入侧关键操作补 client_ip / user_agent，与 servers / commands R1+R2 标准对齐。
+    client_ip = _client_ip(request)
+    user_agent = _user_agent(request)
     session = get_session()
     try:
         existing = session.query(LotteryPool).filter(LotteryPool.name == validated["name"]).first()
         if existing is not None:
+            # L-9：details message 与 top-level message 解耦，避免前端拼出重复内容。
             return api_error(
                 status_code=409, code="duplicate_name", message="奖池名称已存在",
-                details=[{"field": "name", "message": "奖池名称已存在"}],
+                details=[{"field": "name", "message": "该名称已被其他奖池占用"}],
             )
         pool = LotteryPool(
             name=validated["name"],
@@ -355,9 +517,23 @@ async def create_pool(request: Request) -> JSONResponse:
             cost_per_draw=int(validated.get("cost_per_draw", 0)),
         )
         session.add(pool)
-        session.commit()
+        try:
+            session.commit()
+        except IntegrityError:
+            # M-5：name 并发冲突由 DB unique 兜底，转 409 而非 500。
+            session.rollback()
+            logger.warning(
+                f"创建奖池失败：reason=name 并发重复 client_ip={client_ip}"
+            )
+            return api_error(
+                status_code=409, code="duplicate_name", message="奖池名称已存在",
+                details=[{"field": "name", "message": "该名称已被其他奖池占用"}],
+            )
         session.refresh(pool)
-        logger.info(f"WebUI 奖池 create：pool_id={pool.id} name={pool.name}")
+        logger.info(
+            f"创建奖池成功：pool_id={pool.id} name={pool.name!r} "
+            f"client_ip={client_ip} user_agent={user_agent!r}"
+        )
         return api_success(
             status_code=201,
             data=_serialize_pool(pool, prize_count=0),
@@ -394,6 +570,9 @@ def _export_prize_dict(prize: LotteryPrize) -> dict[str, Any]:
 
 @router.get("/webui/api/lottery/export")
 async def export_lottery(request: Request) -> JSONResponse:
+    # H-3：export 暴露全量明文配置，记录调用方便审计。
+    client_ip = _client_ip(request)
+    user_agent = _user_agent(request)
     session = get_session()
     try:
         pools = (
@@ -430,8 +609,9 @@ async def export_lottery(request: Request) -> JSONResponse:
             })
 
         logger.info(
-            f"WebUI 奖池 export：pool_count={len(exported)} "
-            f"prize_count={sum(len(p['prizes']) for p in exported)}"
+            f"导出奖池配置成功：pool_count={len(exported)} "
+            f"prize_count={sum(len(p['prizes']) for p in exported)} "
+            f"client_ip={client_ip} user_agent={user_agent!r}"
         )
         return api_success(data={
             "version": _EXPORT_VERSION,
@@ -458,6 +638,27 @@ async def import_lottery(request: Request) -> JSONResponse:
             message="mode 必须为 merge 或 replace_all",
             details=[{"field": "mode", "message": "mode 必须为 merge 或 replace_all"}],
         )
+
+    # H-1：replace_all 高危操作，要求 confirm 字段精确匹配「全量替换」。
+    # 前端 modal 校验同步约束，后端二次校验避免被劫持的 fetch / CSRF 绕过。
+    client_ip = _client_ip(request)
+    user_agent = _user_agent(request)
+    if mode == "replace_all":
+        confirm_phrase = str(payload.get("confirm", "")).strip()
+        if confirm_phrase != _REPLACE_ALL_CONFIRM_PHRASE:
+            logger.warning(
+                f"导入奖池失败：reason=replace_all 缺少二次确认 "
+                f"client_ip={client_ip} user_agent={user_agent!r}"
+            )
+            return api_error(
+                status_code=400,
+                code="confirm_required",
+                message=f"全量替换需在 confirm 字段输入「{_REPLACE_ALL_CONFIRM_PHRASE}」",
+                details=[{
+                    "field": "confirm",
+                    "message": f"全量替换需在 confirm 字段输入「{_REPLACE_ALL_CONFIRM_PHRASE}」",
+                }],
+            )
 
     # ---- Top-level structural checks ----
     structural: list[dict[str, str]] = []
@@ -550,6 +751,14 @@ async def import_lottery(request: Request) -> JSONResponse:
         prizes_total = 0
 
         if mode == "replace_all":
+            # H-1：先记录将要清空的规模，便于审计排障。
+            prev_pool_count = session.query(LotteryPool).count()
+            prev_prize_count = session.query(LotteryPrize).count()
+            logger.warning(
+                f"全量替换奖池配置触发：prev_pool_count={prev_pool_count} "
+                f"prev_prize_count={prev_prize_count} "
+                f"client_ip={client_ip} user_agent={user_agent!r}"
+            )
             session.query(LotteryPrize).delete(synchronize_session=False)
             session.query(LotteryPool).delete(synchronize_session=False)
             session.flush()
@@ -617,8 +826,9 @@ async def import_lottery(request: Request) -> JSONResponse:
 
         session.commit()
         logger.info(
-            f"WebUI 奖池 import：mode={mode} created={created} updated={updated} "
-            f"prizes_total={prizes_total}"
+            f"导入奖池配置成功：mode={mode} created={created} updated={updated} "
+            f"prizes_total={prizes_total} "
+            f"client_ip={client_ip} user_agent={user_agent!r}"
         )
         return api_success(data={
             "mode": mode,
@@ -626,8 +836,12 @@ async def import_lottery(request: Request) -> JSONResponse:
             "updated": updated,
             "prizes_total": prizes_total,
         })
-    except Exception:
+    except Exception as exc:
         session.rollback()
+        logger.exception(
+            f"导入奖池配置异常：mode={mode} reason={exc} "
+            f"client_ip={client_ip} user_agent={user_agent!r}"
+        )
         raise
     finally:
         session.close()
@@ -672,6 +886,8 @@ async def update_pool(pool_id: int, request: Request) -> JSONResponse:
         return _validation_error_response(details)
     assert validated is not None
 
+    client_ip = _client_ip(request)
+    user_agent = _user_agent(request)
     session = get_session()
     try:
         pool = session.query(LotteryPool).filter(LotteryPool.id == pool_id).first()
@@ -680,9 +896,10 @@ async def update_pool(pool_id: int, request: Request) -> JSONResponse:
         if "name" in validated and validated["name"] != pool.name:
             dup = session.query(LotteryPool).filter(LotteryPool.name == validated["name"]).first()
             if dup is not None:
+                # L-9：details message 与 top-level message 解耦。
                 return api_error(
                     status_code=409, code="duplicate_name", message="奖池名称已存在",
-                    details=[{"field": "name", "message": "奖池名称已存在"}],
+                    details=[{"field": "name", "message": "该名称已被其他奖池占用"}],
                 )
             pool.name = validated["name"]
         if "description" in validated:
@@ -693,29 +910,64 @@ async def update_pool(pool_id: int, request: Request) -> JSONResponse:
             pool.enabled = bool(validated["enabled"])
         if "cost_per_draw" in validated:
             pool.cost_per_draw = int(validated["cost_per_draw"])
-        session.commit()
+        try:
+            session.commit()
+        except IntegrityError:
+            session.rollback()
+            logger.warning(
+                f"更新奖池失败：pool_id={pool_id} reason=name 并发重复 client_ip={client_ip}"
+            )
+            return api_error(
+                status_code=409, code="duplicate_name", message="奖池名称已存在",
+                details=[{"field": "name", "message": "该名称已被其他奖池占用"}],
+            )
         prize_count = (
             session.query(LotteryPrize).filter(LotteryPrize.pool_id == pool_id).count()
         )
-        logger.info(f"WebUI 奖池 update：pool_id={pool.id} name={pool.name}")
+        logger.info(
+            f"更新奖池成功：pool_id={pool.id} name={pool.name!r} "
+            f"client_ip={client_ip} user_agent={user_agent!r}"
+        )
         return api_success(data=_serialize_pool(pool, prize_count=prize_count))
     finally:
         session.close()
 
 
 @router.delete("/webui/api/lottery/{pool_id}")
-async def delete_pool(pool_id: int) -> JSONResponse:
+async def delete_pool(pool_id: int, request: Request) -> JSONResponse:
+    # H-3：删除属于高危状态变更，WARN 级日志 + 完整 IP/UA。
+    # H-5：try/except 显式 rollback，避免异常吞没导致 prize 残留。
+    client_ip = _client_ip(request)
+    user_agent = _user_agent(request)
     session = get_session()
     try:
         pool = session.query(LotteryPool).filter(LotteryPool.id == pool_id).first()
         if pool is None:
+            logger.warning(
+                f"删除奖池失败：pool_id={pool_id} reason=奖池不存在 "
+                f"client_ip={client_ip}"
+            )
             return api_error(status_code=404, code="not_found", message="奖池不存在")
-        session.query(LotteryPrize).filter(LotteryPrize.pool_id == pool_id).delete(
-            synchronize_session=False
+        pool_name = str(pool.name)
+        prize_count = session.query(LotteryPrize).filter(LotteryPrize.pool_id == pool_id).count()
+        try:
+            session.query(LotteryPrize).filter(LotteryPrize.pool_id == pool_id).delete(
+                synchronize_session=False
+            )
+            session.delete(pool)
+            session.commit()
+        except Exception as exc:
+            session.rollback()
+            logger.exception(
+                f"删除奖池异常：pool_id={pool_id} reason={exc} "
+                f"client_ip={client_ip}"
+            )
+            raise
+        logger.warning(
+            f"删除奖池成功：pool_id={pool_id} name={pool_name!r} "
+            f"prize_count={prize_count} "
+            f"client_ip={client_ip} user_agent={user_agent!r}"
         )
-        session.delete(pool)
-        session.commit()
-        logger.info(f"WebUI 奖池 delete：pool_id={pool_id}")
         return api_success(data={"id": pool_id})
     finally:
         session.close()
@@ -734,11 +986,37 @@ async def create_prize(pool_id: int, request: Request) -> JSONResponse:
         return _validation_error_response(details)
     assert validated is not None
 
+    client_ip = _client_ip(request)
+    user_agent = _user_agent(request)
     session = get_session()
     try:
         pool = session.query(LotteryPool).filter(LotteryPool.id == pool_id).first()
         if pool is None:
             return api_error(status_code=404, code="not_found", message="奖池不存在")
+
+        # C-1：录入侧强约束「同奖池 enabled prize 已设置权重之和 ≤ 100」，
+        # 避免前端展示与落地实际概率不一致（业务公平性）。
+        new_weight = validated["weight"]
+        new_enabled = bool(validated["enabled"])
+        if new_enabled and new_weight is not None:
+            existing_sum = _existing_weight_sum(session, pool_id)
+            projected = existing_sum + float(new_weight)
+            if projected > 100.0 + 1e-9:
+                logger.warning(
+                    f"创建奖品失败：pool_id={pool_id} reason=权重越界 "
+                    f"existing_sum={existing_sum} new={new_weight} "
+                    f"client_ip={client_ip}"
+                )
+                return api_error(
+                    status_code=422,
+                    code="weight_sum_exceeded",
+                    message=f"同奖池已设置权重之和会超过 100（当前 {existing_sum:g}，新加 {new_weight}）",
+                    details=[{
+                        "field": "weight",
+                        "message": f"同奖池已设置权重之和会超过 100（当前 {existing_sum:g}）",
+                    }],
+                )
+
         prize = LotteryPrize(
             pool_id=pool_id,
             sort_order=validated["sort_order"],
@@ -768,8 +1046,9 @@ async def create_prize(pool_id: int, request: Request) -> JSONResponse:
             if prize.target_server_id is not None else None
         )
         logger.info(
-            f"WebUI 奖池奖品 create：pool_id={pool_id} prize_id={prize.id} "
-            f"name={prize.name} kind={prize.kind} weight={prize.weight}"
+            f"创建奖品成功：pool_id={pool_id} prize_id={prize.id} "
+            f"name={prize.name!r} kind={prize.kind} weight={prize.weight} "
+            f"client_ip={client_ip} user_agent={user_agent!r}"
         )
         return api_success(
             status_code=201,
@@ -793,6 +1072,8 @@ async def update_prize(pool_id: int, prize_id: int, request: Request) -> JSONRes
         return _validation_error_response(details)
     assert validated is not None
 
+    client_ip = _client_ip(request)
+    user_agent = _user_agent(request)
     session = get_session()
     try:
         prize = (
@@ -802,6 +1083,29 @@ async def update_prize(pool_id: int, prize_id: int, request: Request) -> JSONRes
         )
         if prize is None:
             return api_error(status_code=404, code="not_found", message="奖品不存在")
+
+        # C-1：更新路径同步校验权重之和，排除自身。
+        new_weight = validated["weight"]
+        new_enabled = bool(validated["enabled"])
+        if new_enabled and new_weight is not None:
+            existing_sum = _existing_weight_sum(session, pool_id, exclude_prize_id=prize_id)
+            projected = existing_sum + float(new_weight)
+            if projected > 100.0 + 1e-9:
+                logger.warning(
+                    f"更新奖品失败：pool_id={pool_id} prize_id={prize_id} "
+                    f"reason=权重越界 existing_sum={existing_sum} new={new_weight} "
+                    f"client_ip={client_ip}"
+                )
+                return api_error(
+                    status_code=422,
+                    code="weight_sum_exceeded",
+                    message=f"同奖池已设置权重之和会超过 100（当前 {existing_sum:g}，新值 {new_weight}）",
+                    details=[{
+                        "field": "weight",
+                        "message": f"同奖池已设置权重之和会超过 100（当前 {existing_sum:g}）",
+                    }],
+                )
+
         prize.sort_order = validated["sort_order"]
         prize.name = validated["name"]
         prize.description = validated["description"]
@@ -826,8 +1130,9 @@ async def update_prize(pool_id: int, prize_id: int, request: Request) -> JSONRes
             if prize.target_server_id is not None else None
         )
         logger.info(
-            f"WebUI 奖池奖品 update：pool_id={pool_id} prize_id={prize.id} "
-            f"name={prize.name} kind={prize.kind} weight={prize.weight}"
+            f"更新奖品成功：pool_id={pool_id} prize_id={prize.id} "
+            f"name={prize.name!r} kind={prize.kind} weight={prize.weight} "
+            f"client_ip={client_ip} user_agent={user_agent!r}"
         )
         return api_success(data=_serialize_prize(prize, target_server_label=target_label))
     finally:
@@ -835,7 +1140,9 @@ async def update_prize(pool_id: int, prize_id: int, request: Request) -> JSONRes
 
 
 @router.delete("/webui/api/lottery/{pool_id}/prizes/{prize_id}")
-async def delete_prize(pool_id: int, prize_id: int) -> JSONResponse:
+async def delete_prize(pool_id: int, prize_id: int, request: Request) -> JSONResponse:
+    client_ip = _client_ip(request)
+    user_agent = _user_agent(request)
     session = get_session()
     try:
         prize = (
@@ -844,10 +1151,20 @@ async def delete_prize(pool_id: int, prize_id: int) -> JSONResponse:
             .first()
         )
         if prize is None:
+            logger.warning(
+                f"删除奖品失败：pool_id={pool_id} prize_id={prize_id} "
+                f"reason=奖品不存在 client_ip={client_ip}"
+            )
             return api_error(status_code=404, code="not_found", message="奖品不存在")
+        prize_name = str(prize.name)
+        prize_kind = str(prize.kind)
         session.delete(prize)
         session.commit()
-        logger.info(f"WebUI 奖池奖品 delete：pool_id={pool_id} prize_id={prize_id}")
+        logger.info(
+            f"删除奖品成功：pool_id={pool_id} prize_id={prize_id} "
+            f"name={prize_name!r} kind={prize_kind} "
+            f"client_ip={client_ip} user_agent={user_agent!r}"
+        )
         return api_success(data={"id": prize_id})
     finally:
         session.close()

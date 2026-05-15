@@ -114,7 +114,7 @@
         </label>
         <label class="form-item">
           <span class="form-label">排序（小靠前）</span>
-          <input id="shop-field-sort-order" class="input" type="number" value="0" />
+          <input id="shop-field-sort-order" class="input" type="number" min="-1000000" max="1000000" value="0" />
         </label>
         <label class="form-checkbox-row form-item form-item-bool">
           <input id="shop-field-enabled" type="checkbox" checked />
@@ -164,7 +164,7 @@
         </label>
         <label class="form-item">
           <span class="form-label">排序（小靠前）</span>
-          <input id="item-field-sort-order" class="input" type="number" value="0" />
+          <input id="item-field-sort-order" class="input" type="number" min="-1000000" max="1000000" value="0" />
         </label>
         <label class="form-checkbox-row form-item form-item-bool">
           <input id="item-field-enabled" type="checkbox" checked />
@@ -235,7 +235,7 @@
 </div>
 
 <!-- Delete confirm: shop -->
-<div id="shop-delete-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="shop-delete-title">
+<div id="shop-delete-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="shop-delete-title" aria-describedby="shop-delete-desc">
   <div class="modal-mask" data-modal-close="shop-delete-modal"></div>
   <div class="modal-card confirm-modal-card">
     <div class="modal-head">
@@ -246,9 +246,9 @@
       <span class="alert-message"></span>
     </div>
     <div class="modal-body confirm-modal-body">
-      <p class="confirm-modal-text">
+      <p id="shop-delete-desc" class="confirm-modal-text">
         确定删除商店「<span id="shop-delete-name" class="confirm-modal-highlight"></span>」吗？<br />
-        该商店下的所有商品会一起被删除，此操作不可恢复。
+        该商店下含 <span id="shop-delete-item-count" class="confirm-modal-highlight">0</span> 件商品，会一起被删除，此操作不可恢复。
       </p>
     </div>
     <div class="modal-foot">
@@ -259,7 +259,7 @@
 </div>
 
 <!-- Delete confirm: item -->
-<div id="item-delete-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="item-delete-title">
+<div id="item-delete-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="item-delete-title" aria-describedby="item-delete-desc">
   <div class="modal-mask" data-modal-close="item-delete-modal"></div>
   <div class="modal-card confirm-modal-card">
     <div class="modal-head">
@@ -270,7 +270,7 @@
       <span class="alert-message"></span>
     </div>
     <div class="modal-body confirm-modal-body">
-      <p class="confirm-modal-text">
+      <p id="item-delete-desc" class="confirm-modal-text">
         确定删除商品「<span id="item-delete-name" class="confirm-modal-highlight"></span>」吗？此操作不可恢复。
       </p>
     </div>
@@ -306,8 +306,12 @@
           <span><strong>全量替换</strong>（先删除现有所有商店和商品，再按 JSON 重建）</span>
         </label>
         <div id="shop-import-replace-warn" class="field-section-hint hidden" style="color:var(--danger);">
-          ⚠️ 全量替换会清空现有所有商店、所有商品，此操作不可撤销。建议先「导出」备份。
+          <strong>注意：</strong>全量替换会清空现有所有商店、所有商品，此操作不可撤销。建议先「导出」备份。
         </div>
+        <label id="shop-import-replace-confirm-row" class="form-item form-item-full hidden">
+          <span class="form-label">输入 <code>REPLACE</code> 以启用</span>
+          <input id="shop-import-replace-confirm" class="input" type="text" autocomplete="off" placeholder="REPLACE" />
+        </label>
       </div>
     </div>
     <div class="modal-foot">

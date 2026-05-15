@@ -67,30 +67,48 @@ def _render_app_shell_page(  # noqa: PLR0913
         f'<script src="{html.escape(url, quote=True)}"></script>'
         for url in page_script_urls
     )
-    dashboard_active = "is-active" if active_menu == "dashboard" else ""
-    commands_active = "is-active" if active_menu == "commands" else ""
-    servers_active = "is-active" if active_menu == "servers" else ""
-    users_active = "is-active" if active_menu == "users" else ""
-    groups_active = "is-active" if active_menu == "groups" else ""
-    warehouse_active = "is-active" if active_menu == "warehouse" else ""
-    shop_active = "is-active" if active_menu == "shop" else ""
-    lottery_active = "is-active" if active_menu == "lottery" else ""
-    settings_active = "is-active" if active_menu == "settings" else ""
+    def _nav_attrs(menu: AppShellMenu) -> tuple[str, str]:
+        if active_menu == menu:
+            return ("is-active", 'aria-current="page"')
+        return ("", "")
+
+    dashboard_active, dashboard_aria = _nav_attrs("dashboard")
+    commands_active, commands_aria = _nav_attrs("commands")
+    servers_active, servers_aria = _nav_attrs("servers")
+    users_active, users_aria = _nav_attrs("users")
+    groups_active, groups_aria = _nav_attrs("groups")
+    warehouse_active, warehouse_aria = _nav_attrs("warehouse")
+    shop_active, shop_aria = _nav_attrs("shop")
+    lottery_active, lottery_aria = _nav_attrs("lottery")
+    settings_active, settings_aria = _nav_attrs("settings")
 
     return (
         base_template.replace("__PAGE_TITLE__", html.escape(page_title))
         .replace("__HEADER_TITLE__", html.escape(header_title))
         .replace("__PAGE_STYLE_LINKS__", style_links_html)
         .replace("__NAV_DASHBOARD_ACTIVE__", dashboard_active)
+        .replace("__NAV_DASHBOARD_ARIA__", dashboard_aria)
         .replace("__NAV_COMMANDS_ACTIVE__", commands_active)
+        .replace("__NAV_COMMANDS_ARIA__", commands_aria)
         .replace("__NAV_SERVERS_ACTIVE__", servers_active)
+        .replace("__NAV_SERVERS_ARIA__", servers_aria)
         .replace("__NAV_USERS_ACTIVE__", users_active)
+        .replace("__NAV_USERS_ARIA__", users_aria)
         .replace("__NAV_GROUPS_ACTIVE__", groups_active)
+        .replace("__NAV_GROUPS_ARIA__", groups_aria)
         .replace("__NAV_WAREHOUSE_ACTIVE__", warehouse_active)
+        .replace("__NAV_WAREHOUSE_ARIA__", warehouse_aria)
         .replace("__NAV_SHOP_ACTIVE__", shop_active)
+        .replace("__NAV_SHOP_ARIA__", shop_aria)
         .replace("__NAV_LOTTERY_ACTIVE__", lottery_active)
+        .replace("__NAV_LOTTERY_ARIA__", lottery_aria)
         .replace("__NAV_SETTINGS_ACTIVE__", settings_active)
+        .replace("__NAV_SETTINGS_ARIA__", settings_aria)
         .replace("__MAIN_CONTENT__", content_html)
+        .replace(
+            "__THEME_INIT_SCRIPT_URL__",
+            html.escape(_asset_url("js/theme-init.js"), quote=True),
+        )
         .replace(
             "__WEBUI_SCRIPT_URL__",
             html.escape(_asset_url("js/webui.js"), quote=True),
@@ -133,8 +151,8 @@ def render_console_page() -> str:
 
 def render_commands_page() -> str:
     return _render_app_shell_page(
-        page_title="NextBot WebUI - 命令配置",
-        header_title="命令配置",
+        page_title="NextBot WebUI - 命令",
+        header_title="命令",
         active_menu="commands",
         content_template="commands_content.html",
         page_style_urls=(
@@ -149,8 +167,8 @@ def render_commands_page() -> str:
 
 def render_servers_page() -> str:
     return _render_app_shell_page(
-        page_title="NextBot WebUI - 服务器管理",
-        header_title="服务器管理",
+        page_title="NextBot WebUI - 服务器",
+        header_title="服务器",
         active_menu="servers",
         content_template="servers_content.html",
         page_style_urls=(
@@ -165,8 +183,8 @@ def render_servers_page() -> str:
 
 def render_users_page() -> str:
     return _render_app_shell_page(
-        page_title="NextBot WebUI - 用户管理",
-        header_title="用户管理",
+        page_title="NextBot WebUI - 用户",
+        header_title="用户",
         active_menu="users",
         content_template="users_content.html",
         page_style_urls=(
@@ -181,8 +199,8 @@ def render_users_page() -> str:
 
 def render_groups_page() -> str:
     return _render_app_shell_page(
-        page_title="NextBot WebUI - 身份组管理",
-        header_title="身份组管理",
+        page_title="NextBot WebUI - 身份组",
+        header_title="身份组",
         active_menu="groups",
         content_template="groups_content.html",
         page_style_urls=(
@@ -197,8 +215,8 @@ def render_groups_page() -> str:
 
 def render_warehouse_page() -> str:
     return _render_app_shell_page(
-        page_title="NextBot WebUI - 仓库管理",
-        header_title="仓库管理",
+        page_title="NextBot WebUI - 仓库",
+        header_title="仓库",
         active_menu="warehouse",
         content_template="warehouse_content.html",
         page_style_urls=(
@@ -213,8 +231,8 @@ def render_warehouse_page() -> str:
 
 def render_shop_page() -> str:
     return _render_app_shell_page(
-        page_title="NextBot WebUI - 商店管理",
-        header_title="商店管理",
+        page_title="NextBot WebUI - 商店",
+        header_title="商店",
         active_menu="shop",
         content_template="shop_content.html",
         page_style_urls=(
@@ -229,8 +247,8 @@ def render_shop_page() -> str:
 
 def render_lottery_page() -> str:
     return _render_app_shell_page(
-        page_title="NextBot WebUI - 抽奖管理",
-        header_title="抽奖管理",
+        page_title="NextBot WebUI - 抽奖",
+        header_title="抽奖",
         active_menu="lottery",
         content_template="lottery_content.html",
         page_style_urls=(

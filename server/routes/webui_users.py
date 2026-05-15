@@ -1,14 +1,16 @@
 from __future__ import annotations
 
 import re
+import time
 from dataclasses import dataclass
 from datetime import datetime
+from threading import Lock
 from typing import Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Path, Request
 from fastapi.responses import JSONResponse, Response
 from nonebot.log import logger
-from sqlalchemy import func
+from sqlalchemy import func, or_
 
 from nextbot.access_control import get_owner_ids
 from nextbot.db import Group, Server, User, get_session
@@ -27,12 +29,59 @@ from server.routes import (
     read_json_object,
     read_pagination_query,
 )
+from server.routes.webui import _client_ip
 
 router = APIRouter()
 
 _USER_ID_PATTERN = re.compile(r"^\d{5,20}$")
 _USER_NAME_PATTERN = re.compile(r"^[A-Za-z0-9\u4e00-\u9fff]+$")
 _MAX_USER_NAME_LENGTH = 16
+_KEYWORD_MAX_LENGTH = 128  # H-6：搜索关键字长度上限
+_PER_PAGE_MAX = 100  # H-2：每页上限，禁止 per_page=0 / 超大 per_page
+
+# M-4：sync-whitelist 每用户 5s 冷却（curl 直连同样限流）
+_SYNC_COOLDOWN_SECONDS = 5.0
+_sync_cooldown_lock = Lock()
+_sync_last_request: dict[int, float] = {}
+
+
+def _user_agent(request: Request) -> str:
+    """M-S-5：截断 User-Agent 防超长（与 webui_servers 同实现）。"""
+    return request.headers.get("user-agent", "")[:200]
+
+
+def _mask_qq(qq: str) -> str:
+    """M-2：QQ 中间打码，仅保留首尾 2 位，防 PII 落日志。"""
+    text = str(qq or "")
+    if len(text) < 4:
+        return text
+    return text[:2] + "***" + text[-2:]
+
+
+def _sanitize_log_text(text: str) -> str:
+    """M-2：剔除 CR / LF 防 log injection，限制单条 reason 长度。"""
+    return str(text or "").replace("\n", "\\n").replace("\r", "\\r")[:200]
+
+
+def _escape_like_keyword(keyword: str) -> str:
+    """H-2：转义 ilike 通配符 % / _ / \\，避免 keyword 注入 LIKE 模式。"""
+    return (
+        keyword.replace("\\", "\\\\")
+        .replace("%", "\\%")
+        .replace("_", "\\_")
+    )
+
+
+def _check_sync_cooldown(user_db_id: int) -> tuple[bool, float]:
+    """M-4：返回 (allowed, remaining_seconds)；首次调用直接放行。"""
+    now = time.monotonic()
+    with _sync_cooldown_lock:
+        last = _sync_last_request.get(user_db_id)
+        if last is not None and (now - last) < _SYNC_COOLDOWN_SECONDS:
+            remaining = _SYNC_COOLDOWN_SECONDS - (now - last)
+            return False, remaining
+        _sync_last_request[user_db_id] = now
+        return True, 0.0
 
 
 @dataclass(frozen=True)
@@ -254,51 +303,48 @@ def _validation_error(exc: UserPayloadValidationError) -> JSONResponse:
 
 @router.get("/webui/api/users")
 async def webui_users_list(request: Request) -> JSONResponse:
-    raw_per_page = request.query_params.get("per_page")
-    fetch_all = raw_per_page is not None and str(raw_per_page).strip() == "0"
+    # H-2：禁用 per_page=0 全量通道；统一走分页 + 上限 cap，避免内存放大。
+    pagination, error_response = read_pagination_query(request)
+    if error_response is not None:
+        return error_response
+    assert pagination is not None
 
-    if fetch_all:
-        pagination = {"page": 1, "per_page": 0}
-    else:
-        pagination, error_response = read_pagination_query(request)
-        if error_response is not None:
-            return error_response
-        assert pagination is not None
+    page = max(1, int(pagination["page"]))
+    per_page = int(pagination["per_page"])
+    if per_page <= 0 or per_page > _PER_PAGE_MAX:
+        per_page = min(_PER_PAGE_MAX, max(1, per_page if per_page > 0 else 10))
 
-    keyword = str(request.query_params.get("q") or "").strip().lower()
+    # H-6：keyword 长度截断，防 DoS / 超长 LIKE
+    keyword = str(request.query_params.get("q") or "").strip()[:_KEYWORD_MAX_LENGTH]
 
     session = get_session()
     try:
-        users = session.query(User).order_by(User.id.asc()).all()
-        serialized = [_serialize_user(item) for item in users]
+        # H-2：搜索下推 SQL ilike + LIMIT/OFFSET，避免全表加载到内存
+        base = session.query(User)
         if keyword:
-            serialized = [
-                item
-                for item in serialized
-                if keyword in " ".join(
-                    [
-                        str(item.get("id") or ""),
-                        str(item.get("user_id") or ""),
-                        str(item.get("name") or ""),
-                        str(item.get("group") or ""),
-                        str(item.get("permissions") or ""),
-                    ]
-                ).lower()
-            ]
-        if pagination["per_page"] == 0:
-            return api_success(
-                data=serialized,
-                meta={"total": len(serialized), "page": 1, "per_page": len(serialized), "total_pages": 1},
+            escaped = _escape_like_keyword(keyword)
+            pattern = f"%{escaped}%"
+            base = base.filter(
+                or_(
+                    User.user_id.ilike(pattern, escape="\\"),
+                    User.name.ilike(pattern, escape="\\"),
+                )
             )
+
+        total = int(base.with_entities(func.count(User.id)).scalar() or 0)
         meta, offset, limit = build_pagination_slice(
-            total=len(serialized),
-            page=pagination["page"],
-            per_page=pagination["per_page"],
+            total=total,
+            page=page,
+            per_page=per_page,
         )
-        return api_success(
-            data=serialized[offset : offset + limit],
-            meta=meta,
+        users = (
+            base.order_by(User.id.asc())
+            .offset(offset)
+            .limit(limit)
+            .all()
         )
+        serialized = [_serialize_user(item) for item in users]
+        return api_success(data=serialized, meta=meta)
     except Exception as exc:
         logger.exception(f"加载用户列表失败：reason={exc}")
         return api_error(
@@ -321,6 +367,9 @@ async def webui_users_create(request: Request) -> JSONResponse:
         validated = _validate_payload(data)
     except UserPayloadValidationError as exc:
         return _validation_error(exc)
+
+    client_ip = _client_ip(request)
+    user_agent = _user_agent(request)
 
     session = get_session()
     try:
@@ -359,7 +408,10 @@ async def webui_users_create(request: Request) -> JSONResponse:
         )
         session.add(user)
         session.commit()
-        logger.info(f"创建用户成功：user_id={user.user_id}，name={user.name}")
+        logger.info(
+            f"创建用户成功：user_id={_mask_qq(user.user_id)}，name={user.name} "
+            f"client_ip={client_ip} user_agent={user_agent!r}"
+        )
         return api_success(
             status_code=201,
             data=_serialize_user(user),
@@ -367,7 +419,10 @@ async def webui_users_create(request: Request) -> JSONResponse:
         )
     except Exception as exc:
         session.rollback()
-        logger.exception(f"创建用户异常：user_id={validated.user_id}，reason={exc}")
+        logger.exception(
+            f"创建用户异常：user_id={_mask_qq(validated.user_id)}，reason={exc} "
+            f"client_ip={client_ip}"
+        )
         return api_error(
             status_code=500,
             code="internal_error",
@@ -378,7 +433,10 @@ async def webui_users_create(request: Request) -> JSONResponse:
 
 
 @router.put("/webui/api/users/{user_id}")
-async def webui_users_update(user_id: int, request: Request) -> JSONResponse:
+async def webui_users_update(
+    request: Request,
+    user_id: int = Path(..., ge=1),  # H-5
+) -> JSONResponse:
     payload, error_response = await read_json_object(request)
     if error_response is not None:
         return error_response
@@ -389,15 +447,33 @@ async def webui_users_update(user_id: int, request: Request) -> JSONResponse:
     except UserPayloadValidationError as exc:
         return _validation_error(exc)
 
+    client_ip = _client_ip(request)
+    user_agent = _user_agent(request)
+
     session = get_session()
     try:
         user = session.query(User).filter(User.id == user_id).first()
         if user is None:
-            logger.warning(f"更新用户失败：user_id={user_id}，reason=用户不存在")
+            logger.warning(
+                f"更新用户失败：user_id={user_id}，reason=用户不存在 "
+                f"client_ip={client_ip}"
+            )
             return api_error(
                 status_code=404,
                 code="not_found",
                 message="用户不存在",
+            )
+
+        # H-4：Owner 边界检查（与 ban 路由对齐）
+        if str(user.user_id) in get_owner_ids():
+            logger.warning(
+                f"更新用户被拒：user_id={user_id}，reason=owner_protected "
+                f"client_ip={client_ip}"
+            )
+            return api_error(
+                status_code=403,
+                code="owner_protected",
+                message="不能对管理员执行此操作",
             )
 
         if (
@@ -442,11 +518,17 @@ async def webui_users_update(user_id: int, request: Request) -> JSONResponse:
         user.permissions = validated.permissions
         user.group = validated.group
         session.commit()
-        logger.info(f"更新用户成功：user_id={user_id}，account_id={user.user_id}")
+        logger.info(
+            f"更新用户成功：user_id={user_id}，account_id={_mask_qq(user.user_id)} "
+            f"client_ip={client_ip} user_agent={user_agent!r}"
+        )
         return api_success(data=_serialize_user(user))
     except Exception as exc:
         session.rollback()
-        logger.exception(f"更新用户异常：user_id={user_id}，reason={exc}")
+        logger.exception(
+            f"更新用户异常：user_id={user_id}，reason={exc} "
+            f"client_ip={client_ip}"
+        )
         return api_error(
             status_code=500,
             code="internal_error",
@@ -457,27 +539,54 @@ async def webui_users_update(user_id: int, request: Request) -> JSONResponse:
 
 
 @router.delete("/webui/api/users/{user_id}")
-async def webui_users_delete(user_id: int) -> JSONResponse:
+async def webui_users_delete(
+    request: Request,
+    user_id: int = Path(..., ge=1),  # H-5
+) -> JSONResponse:
+    # M-1：补 request 参数；H-1：日志补 client_ip / user_agent
+    client_ip = _client_ip(request)
+    user_agent = _user_agent(request)
     session = get_session()
     try:
         user = session.query(User).filter(User.id == user_id).first()
         if user is None:
-            logger.warning(f"删除用户失败：user_id={user_id}，reason=用户不存在")
+            logger.warning(
+                f"删除用户失败：user_id={user_id}，reason=用户不存在 "
+                f"client_ip={client_ip}"
+            )
             return api_error(
                 status_code=404,
                 code="not_found",
                 message="用户不存在",
             )
 
+        # H-4：Owner 不可被删除
+        if str(user.user_id) in get_owner_ids():
+            logger.warning(
+                f"删除用户被拒：user_id={user_id}，reason=owner_protected "
+                f"client_ip={client_ip}"
+            )
+            return api_error(
+                status_code=403,
+                code="owner_protected",
+                message="不能对管理员执行此操作",
+            )
+
         deleted_user_id = str(user.user_id)
         deleted_name = str(user.name)
         session.delete(user)
         session.commit()
-        logger.info(f"删除用户成功：user_id={user_id}，account_id={deleted_user_id}，name={deleted_name}")
+        logger.info(
+            f"删除用户成功：user_id={user_id}，account_id={_mask_qq(deleted_user_id)}，"
+            f"name={deleted_name} client_ip={client_ip} user_agent={user_agent!r}"
+        )
         return Response(status_code=204)
     except Exception as exc:
         session.rollback()
-        logger.exception(f"删除用户异常：user_id={user_id}，reason={exc}")
+        logger.exception(
+            f"删除用户异常：user_id={user_id}，reason={exc} "
+            f"client_ip={client_ip}"
+        )
         return api_error(
             status_code=500,
             code="internal_error",
@@ -488,12 +597,35 @@ async def webui_users_delete(user_id: int) -> JSONResponse:
 
 
 @router.post("/webui/api/users/{user_id}/sync-whitelist")
-async def webui_users_sync_whitelist(user_id: int) -> JSONResponse:
+async def webui_users_sync_whitelist(
+    request: Request,
+    user_id: int = Path(..., ge=1),  # H-5
+) -> JSONResponse:
+    # M-1：补 request 参数；H-1：日志补 client_ip / user_agent
+    client_ip = _client_ip(request)
+    user_agent = _user_agent(request)
+
+    # M-4：5s cooldown，避免单击连发 + curl 直连泛洪
+    allowed, remaining = _check_sync_cooldown(user_id)
+    if not allowed:
+        logger.warning(
+            f"同步用户白名单被限流：user_id={user_id}，"
+            f"retry_after={remaining:.1f}s client_ip={client_ip}"
+        )
+        return api_error(
+            status_code=429,
+            code="rate_limited",
+            message="操作过于频繁，请稍后再试",
+        )
+
     session = get_session()
     try:
         user = session.query(User).filter(User.id == user_id).first()
     except Exception as exc:
-        logger.exception(f"同步用户白名单异常：user_id={user_id}，reason={exc}")
+        logger.exception(
+            f"同步用户白名单异常：user_id={user_id}，reason={exc} "
+            f"client_ip={client_ip}"
+        )
         return api_error(
             status_code=500,
             code="internal_error",
@@ -503,7 +635,10 @@ async def webui_users_sync_whitelist(user_id: int) -> JSONResponse:
         session.close()
 
     if user is None:
-        logger.warning(f"同步用户白名单失败：user_id={user_id}，reason=用户不存在")
+        logger.warning(
+            f"同步用户白名单失败：user_id={user_id}，reason=用户不存在 "
+            f"client_ip={client_ip}"
+        )
         return api_error(
             status_code=404,
             code="not_found",
@@ -513,7 +648,10 @@ async def webui_users_sync_whitelist(user_id: int) -> JSONResponse:
     try:
         results = await _sync_user_whitelist(user)
     except Exception as exc:
-        logger.exception(f"同步用户白名单异常：user_id={user_id}，reason={exc}")
+        logger.exception(
+            f"同步用户白名单异常：user_id={user_id}，reason={exc} "
+            f"client_ip={client_ip}"
+        )
         return api_error(
             status_code=500,
             code="internal_error",
@@ -521,9 +659,15 @@ async def webui_users_sync_whitelist(user_id: int) -> JSONResponse:
         )
 
     if not results:
-        logger.warning(f"同步用户白名单失败：user_id={user_id}，reason=暂无可同步的服务器")
+        logger.warning(
+            f"同步用户白名单失败：user_id={user_id}，reason=暂无可同步的服务器 "
+            f"client_ip={client_ip}"
+        )
     else:
-        logger.info(f"同步用户白名单完成：user_id={user_id}，server_count={len(results)}")
+        logger.info(
+            f"同步用户白名单完成：user_id={user_id}，server_count={len(results)} "
+            f"client_ip={client_ip} user_agent={user_agent!r}"
+        )
 
     return api_success(
         data={
@@ -535,7 +679,10 @@ async def webui_users_sync_whitelist(user_id: int) -> JSONResponse:
 
 
 @router.post("/webui/api/users/{user_id}/ban")
-async def webui_users_ban(user_id: int, request: Request) -> JSONResponse:
+async def webui_users_ban(
+    request: Request,
+    user_id: int = Path(..., ge=1),  # H-5
+) -> JSONResponse:
     data, error_response = await read_json_object(request)
     if error_response is not None:
         return error_response
@@ -550,6 +697,16 @@ async def webui_users_ban(user_id: int, request: Request) -> JSONResponse:
             details=[{"field": "reason", "message": "封禁原因不能为空"}],
         )
 
+    # H-1：日志补 client_ip / user_agent
+    client_ip = _client_ip(request)
+    user_agent = _user_agent(request)
+    # M-2：reason 防 log injection
+    sanitized_reason = _sanitize_log_text(reason)
+
+    # H-3：user_name / user_qq 在 try 入口最早就读出，避免 except / finally 引用未绑定变量
+    user_name = ""
+    user_qq = ""
+
     session = get_session()
     try:
         user = session.query(User).filter(User.id == user_id).first()
@@ -557,7 +714,11 @@ async def webui_users_ban(user_id: int, request: Request) -> JSONResponse:
             return api_error(status_code=404, code="not_found", message="用户不存在")
 
         if str(user.user_id) in get_owner_ids():
-            return api_error(status_code=403, code="forbidden", message="不能封禁 Owner")
+            return api_error(
+                status_code=403,
+                code="owner_protected",
+                message="不能对管理员执行此操作",
+            )
 
         if user.is_banned:
             return api_error(
@@ -567,17 +728,25 @@ async def webui_users_ban(user_id: int, request: Request) -> JSONResponse:
                 details=[{"reason": str(user.ban_reason or "")}],
             )
 
+        # H-3：在 mutation / commit 之前先读出，except 分支也能安全引用
+        user_name = str(user.name)
+        user_qq = str(user.user_id)
+
         user.is_banned = True
         user.banned_at = db_now_utc_naive()
         user.ban_reason = reason
         session.commit()
 
-        user_name = str(user.name)
-        user_qq = str(user.user_id)
-        logger.info(f"WebUI 封禁用户成功：user_id={user_qq} name={user_name} reason={reason}")
+        logger.info(
+            f"WebUI 封禁用户成功：user_id={_mask_qq(user_qq)} name={user_name} "
+            f"reason={sanitized_reason} client_ip={client_ip} user_agent={user_agent!r}"
+        )
     except Exception as exc:
         session.rollback()
-        logger.exception(f"WebUI 封禁用户异常：user_id={user_id}，reason={exc}")
+        logger.exception(
+            f"WebUI 封禁用户异常：user_id={user_id}，reason={exc} "
+            f"client_ip={client_ip}"
+        )
         return api_error(status_code=500, code="internal_error", message="内部错误")
     finally:
         session.close()
@@ -641,7 +810,10 @@ async def webui_users_ban(user_id: int, request: Request) -> JSONResponse:
         for o in outcomes
     ]
 
-    logger.info(f"WebUI 封禁用户黑名单同步完成：user_id={user_qq} name={user_name} server_count={len(servers)}")
+    logger.info(
+        f"WebUI 封禁用户黑名单同步完成：user_id={_mask_qq(user_qq)} name={user_name} "
+        f"server_count={len(servers)} client_ip={client_ip}"
+    )
 
     session = get_session()
     try:
@@ -654,27 +826,54 @@ async def webui_users_ban(user_id: int, request: Request) -> JSONResponse:
 
 
 @router.post("/webui/api/users/{user_id}/unban")
-async def webui_users_unban(user_id: int) -> JSONResponse:
+async def webui_users_unban(
+    request: Request,
+    user_id: int = Path(..., ge=1),  # H-5
+) -> JSONResponse:
+    # M-1：补 request 参数；H-1：日志补 client_ip / user_agent
+    client_ip = _client_ip(request)
+    user_agent = _user_agent(request)
+
+    # H-3：user_name / user_qq 在 try 入口最早就读出，避免 except / finally 引用未绑定变量
+    user_name = ""
+    user_qq = ""
+
     session = get_session()
     try:
         user = session.query(User).filter(User.id == user_id).first()
         if user is None:
             return api_error(status_code=404, code="not_found", message="用户不存在")
 
+        # H-4：Owner 在业务上不应处于"被封禁"状态，但仍补一道边界
+        if str(user.user_id) in get_owner_ids():
+            return api_error(
+                status_code=403,
+                code="owner_protected",
+                message="不能对管理员执行此操作",
+            )
+
         if not user.is_banned:
             return api_error(status_code=409, code="conflict", message="该用户未被封禁")
+
+        # H-3：在 mutation / commit 之前先读出，except 分支也能安全引用
+        user_name = str(user.name)
+        user_qq = str(user.user_id)
 
         user.is_banned = False
         user.banned_at = None
         user.ban_reason = ""
         session.commit()
 
-        user_name = str(user.name)
-        user_qq = str(user.user_id)
-        logger.info(f"WebUI 解封用户成功：user_id={user_qq} name={user_name}")
+        logger.info(
+            f"WebUI 解封用户成功：user_id={_mask_qq(user_qq)} name={user_name} "
+            f"client_ip={client_ip} user_agent={user_agent!r}"
+        )
     except Exception as exc:
         session.rollback()
-        logger.exception(f"WebUI 解封用户异常：user_id={user_id}，reason={exc}")
+        logger.exception(
+            f"WebUI 解封用户异常：user_id={user_id}，reason={exc} "
+            f"client_ip={client_ip}"
+        )
         return api_error(status_code=500, code="internal_error", message="内部错误")
     finally:
         session.close()
@@ -736,7 +935,10 @@ async def webui_users_unban(user_id: int) -> JSONResponse:
         for o in outcomes
     ]
 
-    logger.info(f"WebUI 解封用户黑名单同步完成：user_id={user_qq} name={user_name} server_count={len(servers)}")
+    logger.info(
+        f"WebUI 解封用户黑名单同步完成：user_id={_mask_qq(user_qq)} name={user_name} "
+        f"server_count={len(servers)} client_ip={client_ip}"
+    )
 
     session = get_session()
     try:

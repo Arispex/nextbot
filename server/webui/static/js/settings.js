@@ -72,6 +72,18 @@
   const api = window.NextBotWebUIApi;
 
   const QQ_ID_PATTERN = /^\d{5,20}$/;
+  // M-9：监听地址格式白名单（IPv4 / IPv6-in-brackets / hostname / 0.0.0.0 / localhost）。
+  const WEB_HOST_PATTERN =
+    /^(0\.0\.0\.0|127\.0\.0\.1|localhost|\d{1,3}(\.\d{1,3}){3}|\[[0-9a-fA-F:]+\]|[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)*)$/;
+  // CRIT-1：mask token 与后端约定（`****` + 末 4 位），用于识别"保留原值"语义。
+  const TOKEN_MASK_PREFIX = "****";
+  const TOKEN_REVEAL_HIDE_MS = 10000;
+  // H-4：保存后 reload 探活轮询参数。
+  const RESTART_POLL_INITIAL_DELAY_MS = 1500;
+  const RESTART_POLL_INTERVAL_MS = 500;
+  const RESTART_POLL_MAX_ATTEMPTS = 15;
+  // H-3：自定义请求头让 cross-site form POST 无法伪造。
+  const CSRF_HEADERS = { "X-Requested-With": "NextBotWebUI" };
   const FIELD_LABELS = {
     onebot_ws_urls: "OneBot WebSocket 地址",
     onebot_access_token: "OneBot 访问令牌",
@@ -117,6 +129,13 @@
   `;
 
   let tokenVisible = false;
+  // CRIT-1：缓存通过 reveal 端点拉取到的明文 token，仅在显示状态下临时持有。
+  let revealedToken = "";
+  let tokenRevealTimer = 0;
+  // M-7：reload 并发抑制；进行中的 fetch 在下一次 reload 时被 abort。
+  let loadAbortController = null;
+  // M-8：表单脏标记，用于 beforeunload 提示。
+  let isDirty = false;
 
   const setStatus = (message, type = "info") => {
     const text = String(message || "").trim();
@@ -139,17 +158,34 @@
     onebotAccessTokenInput.type = visible ? "text" : "password";
   };
 
+  const clearTokenRevealTimer = () => {
+    if (tokenRevealTimer) {
+      clearTimeout(tokenRevealTimer);
+      tokenRevealTimer = 0;
+    }
+  };
+
+  // CRIT-1：自动隐藏 token，并清空缓存避免明文滞留在 DOM。
+  const hideToken = () => {
+    clearTokenRevealTimer();
+    revealedToken = "";
+    tokenVisible = false;
+    onebotAccessTokenInput.value = "";
+    setTokenButtonIcon(false);
+  };
+
   const parseCommaListField = (fieldLabel, rawText) => {
     const text = String(rawText || "").trim();
     if (!text) {
-      throw new Error(`${fieldLabel} 不能为空`);
+      // M-5：中文字段名 + 中文谓词之间不加空格。
+      throw new Error(`${fieldLabel}不能为空`);
     }
     const values = text
       .split(",")
       .map((item) => item.trim())
       .filter(Boolean);
     if (!values.length) {
-      throw new Error(`${fieldLabel} 不能为空`);
+      throw new Error(`${fieldLabel}不能为空`);
     }
     return [...new Set(values)];
   };
@@ -195,16 +231,16 @@
   const validateWsUrls = (values) => {
     for (const value of values) {
       if (!value) {
-        throw new Error(`${FIELD_LABELS.onebot_ws_urls} 不能包含空项`);
+        throw new Error(`${FIELD_LABELS.onebot_ws_urls}不能包含空项`);
       }
       let parsed;
       try {
         parsed = new URL(value);
       } catch (_error) {
-        throw new Error(`${FIELD_LABELS.onebot_ws_urls} 必须是 ws/wss URL`);
+        throw new Error(`${FIELD_LABELS.onebot_ws_urls}必须是 ws/wss URL`);
       }
       if (!["ws:", "wss:"].includes(parsed.protocol)) {
-        throw new Error(`${FIELD_LABELS.onebot_ws_urls} 必须是 ws/wss URL`);
+        throw new Error(`${FIELD_LABELS.onebot_ws_urls}必须是 ws/wss URL`);
       }
     }
   };
@@ -212,7 +248,7 @@
   const validateQqIdList = (fieldLabel, values) => {
     for (const value of values) {
       if (!QQ_ID_PATTERN.test(value)) {
-        throw new Error(`${fieldLabel} 仅支持 5-20 位数字`);
+        throw new Error(`${fieldLabel}仅支持 5-20 位数字`);
       }
     }
   };
@@ -220,7 +256,7 @@
   const assertSingleLineValue = (fieldLabel, rawValue) => {
     const text = String(rawValue ?? "");
     if (text.includes("\r") || text.includes("\n")) {
-      throw new Error(`${fieldLabel} 不能包含换行`);
+      throw new Error(`${fieldLabel}不能包含换行`);
     }
     return text.trim();
   };
@@ -235,29 +271,36 @@
     const groupId = parseCommaListField(FIELD_LABELS.group_id, groupIdInput.value);
     validateQqIdList(FIELD_LABELS.group_id, groupId);
 
-    const onebotAccessToken = assertSingleLineValue(
+    // CRIT-1：token input 留空表示保留原值；当前显示的 mask 串也视为保留原值。
+    // 后端在收到空串 / mask 串时会从 snapshot 复用现有 token。
+    const onebotAccessTokenRaw = assertSingleLineValue(
       FIELD_LABELS.onebot_access_token,
       onebotAccessTokenInput.value
     );
-    if (!onebotAccessToken) {
-      throw new Error(`${FIELD_LABELS.onebot_access_token} 不能为空`);
-    }
+    const onebotAccessToken =
+      !onebotAccessTokenRaw || onebotAccessTokenRaw.startsWith(TOKEN_MASK_PREFIX)
+        ? ""
+        : onebotAccessTokenRaw;
 
     const webServerHost = assertSingleLineValue(
       FIELD_LABELS.web_server_host,
       webServerHostInput.value
     );
     if (!webServerHost) {
-      throw new Error(`${FIELD_LABELS.web_server_host} 不能为空`);
+      throw new Error(`${FIELD_LABELS.web_server_host}不能为空`);
+    }
+    // M-9：格式校验，防 `;`、空格、`&` 等非法字符落进 .env 导致下次启动失败。
+    if (!WEB_HOST_PATTERN.test(webServerHost)) {
+      throw new Error(`${FIELD_LABELS.web_server_host}格式无效`);
     }
 
     const webServerPortText = String(webServerPortInput.value || "").trim();
     if (!webServerPortText) {
-      throw new Error(`${FIELD_LABELS.web_server_port} 不能为空`);
+      throw new Error(`${FIELD_LABELS.web_server_port}不能为空`);
     }
     const webServerPort = Number(webServerPortText);
     if (!Number.isInteger(webServerPort) || webServerPort < 1 || webServerPort > 65535) {
-      throw new Error(`${FIELD_LABELS.web_server_port} 范围必须在 1-65535`);
+      throw new Error(`${FIELD_LABELS.web_server_port}范围必须在 1-65535`);
     }
 
     const baseUrl = assertSingleLineValue(
@@ -265,16 +308,16 @@
       webServerPublicBaseUrlInput.value
     );
     if (!baseUrl) {
-      throw new Error(`${FIELD_LABELS.web_server_public_base_url} 不能为空`);
+      throw new Error(`${FIELD_LABELS.web_server_public_base_url}不能为空`);
     }
     let parsedBaseUrl;
     try {
       parsedBaseUrl = new URL(baseUrl);
     } catch (_error) {
-      throw new Error(`${FIELD_LABELS.web_server_public_base_url} 必须是 http/https URL`);
+      throw new Error(`${FIELD_LABELS.web_server_public_base_url}必须是 http/https URL`);
     }
     if (!["http:", "https:"].includes(parsedBaseUrl.protocol)) {
-      throw new Error(`${FIELD_LABELS.web_server_public_base_url} 必须是 http/https URL`);
+      throw new Error(`${FIELD_LABELS.web_server_public_base_url}必须是 http/https URL`);
     }
 
     const commandDisabledMode = assertSingleLineValue(
@@ -283,7 +326,7 @@
     ).toLowerCase();
     if (!["reply", "silent"].includes(commandDisabledMode)) {
       throw new Error(
-        `${FIELD_LABELS.command_disabled_mode} 仅支持 ${MODE_LABELS.reply} 或 ${MODE_LABELS.silent}`
+        `${FIELD_LABELS.command_disabled_mode}仅支持 ${MODE_LABELS.reply} 或 ${MODE_LABELS.silent}`
       );
     }
 
@@ -292,7 +335,7 @@
       commandDisabledMessageInput.value
     );
     if (!commandDisabledMessage) {
-      throw new Error(`${FIELD_LABELS.command_disabled_message} 不能为空`);
+      throw new Error(`${FIELD_LABELS.command_disabled_message}不能为空`);
     }
 
     return {
@@ -326,7 +369,13 @@
     onebotWsUrlsInput.value = Array.isArray(data.onebot_ws_urls)
       ? data.onebot_ws_urls.join(", ")
       : "";
-    onebotAccessTokenInput.value = String(data.onebot_access_token ?? "");
+    // CRIT-1：返回的 token 是 mask 形式，不回填进 input；用户须点眼睛图标显式拉取。
+    onebotAccessTokenInput.value = "";
+    onebotAccessTokenInput.placeholder = "留空保留原 Token";
+    revealedToken = "";
+    tokenVisible = false;
+    clearTokenRevealTimer();
+    setTokenButtonIcon(false);
     ownerIdInput.value = Array.isArray(data.owner_id) ? data.owner_id.join(", ") : "";
     groupIdInput.value = Array.isArray(data.group_id) ? data.group_id.join(", ") : "";
     webServerHostInput.value = String(data.web_server_host ?? "");
@@ -362,20 +411,121 @@
   };
 
   const loadSettings = async () => {
-    setStatus("");
+    // M-7：取消进行中的请求，避免并发响应覆盖。
+    if (loadAbortController) {
+      loadAbortController.abort();
+    }
+    const controller = new AbortController();
+    loadAbortController = controller;
+    // M-6：进入加载态。
+    setStatus("加载中…", "info");
+    reloadButton.disabled = true;
     try {
       const payload = await api.apiRequest("/webui/api/settings", {
         method: "GET",
         headers: { Accept: "application/json" },
         action: "加载",
         expectedStatus: 200,
+        signal: controller.signal,
       });
       fillForm(api.unwrapData(payload));
       setStatus("");
+      // M-8：成功加载视为表单干净。
+      isDirty = false;
+    } catch (error) {
+      // 主动 abort 引发的错误不向用户报错。
+      if (error && error.name === "AbortError") {
+        return;
+      }
+      const message = error instanceof Error ? error.message : "加载失败";
+      setStatus(message, "error");
+    } finally {
+      if (loadAbortController === controller) {
+        loadAbortController = null;
+      }
+      reloadButton.disabled = false;
+    }
+  };
+
+  // CRIT-1：点击眼睛图标时按需拉取明文 token；10s 后自动隐藏并清空。
+  const revealToken = async () => {
+    try {
+      const payload = await api.apiRequest("/webui/api/settings/onebot-token", {
+        method: "GET",
+        headers: { Accept: "application/json" },
+        action: "加载",
+        expectedStatus: 200,
+      });
+      const data = api.unwrapData(payload);
+      revealedToken = String((data && data.token) || "");
     } catch (error) {
       const message = error instanceof Error ? error.message : "加载失败";
       setStatus(message, "error");
+      return false;
     }
+    onebotAccessTokenInput.value = revealedToken;
+    tokenVisible = true;
+    setTokenButtonIcon(true);
+    clearTokenRevealTimer();
+    tokenRevealTimer = window.setTimeout(() => {
+      tokenRevealTimer = 0;
+      hideToken();
+    }, TOKEN_REVEAL_HIDE_MS);
+    return true;
+  };
+
+  // H-4：探活 /webui/api/settings；返回 200 即视为恢复，401 / 网络错误均视为未恢复。
+  const probeRestartReady = async (signal) => {
+    try {
+      const response = await fetch("/webui/api/settings", {
+        method: "GET",
+        headers: { Accept: "application/json" },
+        signal,
+      });
+      return response.status === 200;
+    } catch (_error) {
+      return false;
+    }
+  };
+
+  const waitForRestart = async (signal) => {
+    await new Promise((resolve, reject) => {
+      const timer = window.setTimeout(resolve, RESTART_POLL_INITIAL_DELAY_MS);
+      const onAbort = () => {
+        window.clearTimeout(timer);
+        reject(new DOMException("Aborted", "AbortError"));
+      };
+      if (signal.aborted) {
+        onAbort();
+        return;
+      }
+      signal.addEventListener("abort", onAbort, { once: true });
+    });
+
+    for (let attempt = 0; attempt < RESTART_POLL_MAX_ATTEMPTS; attempt += 1) {
+      if (signal.aborted) {
+        return false;
+      }
+      // eslint-disable-next-line no-await-in-loop
+      const ready = await probeRestartReady(signal);
+      if (ready) {
+        return true;
+      }
+      // eslint-disable-next-line no-await-in-loop
+      await new Promise((resolve, reject) => {
+        const timer = window.setTimeout(resolve, RESTART_POLL_INTERVAL_MS);
+        const onAbort = () => {
+          window.clearTimeout(timer);
+          reject(new DOMException("Aborted", "AbortError"));
+        };
+        if (signal.aborted) {
+          onAbort();
+          return;
+        }
+        signal.addEventListener("abort", onAbort, { once: true });
+      });
+    }
+    return false;
   };
 
   const saveSettings = async () => {
@@ -396,16 +546,36 @@
         headers: {
           "Content-Type": "application/json",
           Accept: "application/json",
+          // H-3：cross-site form 无法塞自定义头，作为 CSRF 防护。
+          ...CSRF_HEADERS,
         },
         body: JSON.stringify(data),
         action: "保存",
         expectedStatus: 200,
       });
 
-      setStatus("保存成功，正在重启程序", "success");
-      setTimeout(() => {
-        window.location.reload();
-      }, 3000);
+      // M-4：成功文案严格遵守"动作+结果"，不再拼接"正在重启程序"。
+      setStatus("保存成功", "success");
+      // M-8：保存成功后表单视为干净。
+      isDirty = false;
+
+      // H-4：等首次响应可用后再 reload，避免冷启动慢时撞到 connection refused。
+      const pollController = new AbortController();
+      const onUnload = () => pollController.abort();
+      window.addEventListener("beforeunload", onUnload, { once: true });
+      try {
+        const ready = await waitForRestart(pollController.signal);
+        if (ready) {
+          window.location.reload();
+          return;
+        }
+        setStatus("重启超时，请手动刷新页面", "warning");
+        saveButton.disabled = false;
+      } catch (_error) {
+        // 主动 abort（用户已离开页面）不需要再展示文案。
+      } finally {
+        window.removeEventListener("beforeunload", onUnload);
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : "保存失败";
       setStatus(message, "error");
@@ -422,13 +592,58 @@
   });
 
   tokenToggleButton.addEventListener("click", () => {
-    tokenVisible = !tokenVisible;
-    setTokenButtonIcon(tokenVisible);
+    if (tokenVisible) {
+      hideToken();
+      return;
+    }
+    void revealToken();
   });
 
   onebotWsUrlsInput.addEventListener("input", updateArrayPreviews);
   ownerIdInput.addEventListener("input", updateArrayPreviews);
   groupIdInput.addEventListener("input", updateArrayPreviews);
+
+  // M-8：所有输入控件都标记表单为脏，并在 beforeunload 时提示用户。
+  const dirtyTargets = [
+    onebotWsUrlsInput,
+    onebotAccessTokenInput,
+    ownerIdInput,
+    groupIdInput,
+    webServerHostInput,
+    webServerPortInput,
+    webServerPublicBaseUrlInput,
+    commandDisabledModeInput,
+    commandDisabledMessageInput,
+    loginNotifyAllGroupsInput,
+    playerNotifyModeInput,
+    playerNotifyGroupIdInput,
+    playerNotifyOnlineTemplateInput,
+    playerNotifyOfflineTemplateInput,
+    chatSyncModeInput,
+    chatSyncGroupIdInput,
+    chatSyncTemplateInput,
+    groupWelcomeEnabledInput,
+    groupWelcomeTemplateInput,
+    groupFarewellEnabledInput,
+    groupFarewellTemplateInput,
+    groupAutoBanOnLeaveEnabledInput,
+    groupAutoBanOnLeaveNotifyInput,
+  ];
+  const markDirty = () => {
+    isDirty = true;
+  };
+  for (const node of dirtyTargets) {
+    node.addEventListener("input", markDirty);
+    node.addEventListener("change", markDirty);
+  }
+
+  window.addEventListener("beforeunload", (event) => {
+    if (!isDirty) {
+      return;
+    }
+    event.preventDefault();
+    event.returnValue = "";
+  });
 
   setTokenButtonIcon(false);
   updateArrayPreviews();

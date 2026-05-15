@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from fastapi import APIRouter, Request
@@ -13,6 +14,45 @@ from nextbot.warehouse_lock import warehouse_lock
 from server.routes import api_error, api_success, read_json_object
 
 router = APIRouter()
+
+# H-1：user_id 字符集与 webui_users.py `_USER_ID_PATTERN` 一致（5-20 位数字）。
+_USER_ID_PATTERN = re.compile(r"^\d{5,20}$")
+
+# H-4：数值字段上限，避免奇怪溢出 / 经济系统输入污染。
+_ITEM_ID_MAX = 999_999
+_PREFIX_ID_MAX = 999_999
+_QUANTITY_MAX = 9_999
+_VALUE_MAX = 1_000_000_000
+
+
+def _client_ip(request: Request) -> str:
+    """H-2：取调用方 IP（与 webui_servers.py 同实现）。"""
+    forwarded = request.headers.get("x-forwarded-for", "").strip()
+    if forwarded:
+        return forwarded.split(",")[0].strip() or "unknown"
+    if request.client is not None:
+        return request.client.host or "unknown"
+    return "unknown"
+
+
+def _user_agent(request: Request) -> str:
+    """H-2：截断 User-Agent 防超长（与 webui_servers.py 同实现）。"""
+    return request.headers.get("user-agent", "")[:200]
+
+
+def _validate_user_id(user_id: str) -> JSONResponse | None:
+    """H-1 / L-2：user_id 必须为 5-20 位数字，否则 400 早拒（不占锁）。"""
+    value = (user_id or "").strip()
+    if not value or _USER_ID_PATTERN.fullmatch(value) is None:
+        return api_error(
+            status_code=400,
+            code="invalid_path_parameter",
+            message="user_id 必须为 5-20 位数字",
+            details=[
+                {"field": "user_id", "message": "user_id 必须为 5-20 位数字"},
+            ],
+        )
+    return None
 
 
 @router.get("/webui/api/warehouse/tiers")
@@ -31,6 +71,14 @@ async def list_warehouse(request: Request) -> JSONResponse:
             code="invalid_query_parameter",
             message="user_id 不能为空",
             details=[{"field": "user_id", "message": "user_id 不能为空"}],
+        )
+    # L-2：query 参数也走与路径参数一致的字符集校验，区分 user_id 非法 vs 用户不存在。
+    if _USER_ID_PATTERN.fullmatch(user_id) is None:
+        return api_error(
+            status_code=400,
+            code="invalid_query_parameter",
+            message="user_id 必须为 5-20 位数字",
+            details=[{"field": "user_id", "message": "user_id 必须为 5-20 位数字"}],
         )
 
     session = get_session()
@@ -54,7 +102,9 @@ async def list_warehouse(request: Request) -> JSONResponse:
                 "quantity": int(it.quantity),
                 "value": int(it.value or 0),
                 "min_tier": str(it.min_tier),
-                "min_tier_label": PROGRESSION_KEY_TO_ZH.get(str(it.min_tier), str(it.min_tier)),
+                "min_tier_label": PROGRESSION_KEY_TO_ZH.get(
+                    str(it.min_tier), str(it.min_tier),
+                ),
             }
             for it in items
         ]
@@ -72,36 +122,75 @@ async def list_warehouse(request: Request) -> JSONResponse:
     )
 
 
-def _validate_slot_payload(data: dict[str, Any]) -> tuple[dict[str, Any] | None, JSONResponse | None]:
+_INT_STRING_RE = re.compile(r"-?\d+")
+
+
+def _coerce_to_int(raw: Any) -> int | None:  # noqa: PLR0911
+    """H-4：严格 coerce 为 int；非法返回 None。
+
+    - `True/False` 是 bool 子类 int，语义上不是数值 → 拒绝。
+    - `1.5` float 会被 `int()` 截断 → 必须先用 `is_integer()` 过滤。
+    - 字符串 `"1e10"` 在 `int()` 会抛 ValueError → 由 regex 提前拦截。
+    """
+    if isinstance(raw, bool):
+        return None
+    if isinstance(raw, int):
+        return raw
+    if isinstance(raw, float):
+        return int(raw) if raw.is_integer() else None
+    if not isinstance(raw, str):
+        return None
+    text = raw.strip()
+    if not text or _INT_STRING_RE.fullmatch(text) is None:
+        return None
+    try:
+        return int(text)
+    except ValueError:
+        return None
+
+
+def _parse_strict_int(
+    raw: Any, field: str, *, min_value: int, max_value: int,
+) -> tuple[int | None, dict[str, str] | None]:
+    """H-4：严格整数校验入口；返回 (parsed, error_detail)。"""
+    parsed = _coerce_to_int(raw)
+    if parsed is None:
+        return None, {"field": field, "message": f"{field} 必须是整数"}
+    if parsed < min_value:
+        return None, {"field": field, "message": f"{field} 不能小于 {min_value}"}
+    if parsed > max_value:
+        return None, {"field": field, "message": f"{field} 不能大于 {max_value}"}
+    return parsed, None
+
+
+def _validate_slot_payload(
+    data: dict[str, Any],
+) -> tuple[dict[str, Any] | None, JSONResponse | None]:
     details: list[dict[str, str]] = []
 
-    try:
-        item_id = int(data.get("item_id", 0))
-    except (TypeError, ValueError):
-        item_id = -1
-    if item_id < 1:
-        details.append({"field": "item_id", "message": "item_id 必须为正整数"})
+    item_id, err = _parse_strict_int(
+        data.get("item_id"), "item_id", min_value=1, max_value=_ITEM_ID_MAX,
+    )
+    if err is not None:
+        details.append(err)
 
-    try:
-        prefix_id = int(data.get("prefix_id", 0))
-    except (TypeError, ValueError):
-        prefix_id = -1
-    if prefix_id < 0:
-        details.append({"field": "prefix_id", "message": "prefix_id 必须为非负整数"})
+    prefix_id, err = _parse_strict_int(
+        data.get("prefix_id"), "prefix_id", min_value=0, max_value=_PREFIX_ID_MAX,
+    )
+    if err is not None:
+        details.append(err)
 
-    try:
-        quantity = int(data.get("quantity", 0))
-    except (TypeError, ValueError):
-        quantity = 0
-    if quantity < 1:
-        details.append({"field": "quantity", "message": "quantity 必须为正整数"})
+    quantity, err = _parse_strict_int(
+        data.get("quantity"), "quantity", min_value=1, max_value=_QUANTITY_MAX,
+    )
+    if err is not None:
+        details.append(err)
 
-    try:
-        value = int(data.get("value", 0))
-    except (TypeError, ValueError):
-        value = -1
-    if value < 0:
-        details.append({"field": "value", "message": "value 必须为非负整数"})
+    value, err = _parse_strict_int(
+        data.get("value"), "value", min_value=0, max_value=_VALUE_MAX,
+    )
+    if err is not None:
+        details.append(err)
 
     min_tier = str(data.get("min_tier", "")).strip()
     if min_tier not in PROGRESSION_KEY_TO_ZH:
@@ -126,6 +215,10 @@ def _validate_slot_payload(data: dict[str, Any]) -> tuple[dict[str, Any] | None,
 
 @router.put("/webui/api/warehouse/{user_id}/{slot_index}")
 async def upsert_slot(user_id: str, slot_index: int, request: Request) -> JSONResponse:
+    # H-1：在拿锁 / 解析 body 之前先做 user_id 字符集 / slot 范围校验。
+    path_error = _validate_user_id(user_id)
+    if path_error is not None:
+        return path_error
     if not (1 <= slot_index <= WAREHOUSE_CAPACITY):
         return api_error(
             status_code=400,
@@ -143,6 +236,11 @@ async def upsert_slot(user_id: str, slot_index: int, request: Request) -> JSONRe
         return validation_error
     assert validated is not None
 
+    client_ip = _client_ip(request)
+    user_agent = _user_agent(request)
+
+    # H-1：user 存在性检查保留在 lock 内（与原实现一致），_validate_user_id
+    # 已在 lock 之前做字符集 / 长度校验，避免明显非法路径占用锁。
     async with warehouse_lock(user_id):
         session = get_session()
         try:
@@ -184,10 +282,12 @@ async def upsert_slot(user_id: str, slot_index: int, request: Request) -> JSONRe
         finally:
             session.close()
 
+    # H-2 / M-1：日志与 servers/commands 对齐 — 动作 + 对象成功 + key=value。
     logger.info(
-        f"WebUI 仓库 {action}：user_id={user_id} slot={slot_index} "
+        f"WebUI 仓库 {action} 成功：user_id={user_id} slot={slot_index} "
         f"item={validated['item_id']} qty={validated['quantity']} "
-        f"value={validated['value']} tier={validated['min_tier']}"
+        f"value={validated['value']} tier={validated['min_tier']} "
+        f"client_ip={client_ip} user_agent={user_agent!r}"
     )
     return api_success(
         data={
@@ -203,13 +303,20 @@ async def upsert_slot(user_id: str, slot_index: int, request: Request) -> JSONRe
 
 
 @router.delete("/webui/api/warehouse/{user_id}/{slot_index}")
-async def delete_slot(user_id: str, slot_index: int) -> JSONResponse:
+async def delete_slot(user_id: str, slot_index: int, request: Request) -> JSONResponse:
+    # H-1：DELETE 与 PUT 对齐做 user_id 字符集 / slot 范围校验。
+    path_error = _validate_user_id(user_id)
+    if path_error is not None:
+        return path_error
     if not (1 <= slot_index <= WAREHOUSE_CAPACITY):
         return api_error(
             status_code=400,
             code="invalid_path_parameter",
             message=f"slot_index 必须为 1-{WAREHOUSE_CAPACITY}",
         )
+
+    client_ip = _client_ip(request)
+    user_agent = _user_agent(request)
 
     async with warehouse_lock(user_id):
         session = get_session()
@@ -231,5 +338,8 @@ async def delete_slot(user_id: str, slot_index: int) -> JSONResponse:
         finally:
             session.close()
 
-    logger.info(f"WebUI 仓库 delete：user_id={user_id} slot={slot_index}")
+    logger.info(
+        f"WebUI 仓库 delete 成功：user_id={user_id} slot={slot_index} "
+        f"client_ip={client_ip} user_agent={user_agent!r}"
+    )
     return api_success(data={"slot_index": slot_index})
