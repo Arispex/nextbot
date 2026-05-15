@@ -252,6 +252,23 @@ m1139 600 c143 -72 158 -311 26 -402 -59 -41 -120 -48 -416 -48 l-269 0 0
             </div>
         </div>
 
+        <div id="webui-dialog" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="webui-dialog-title" aria-describedby="webui-dialog-body">
+            <div class="modal-mask" data-webui-dialog-close="1"></div>
+            <div class="modal-card confirm-modal-card">
+                <div class="modal-head">
+                    <h3 id="webui-dialog-title" class="modal-title">提示</h3>
+                    <button id="webui-dialog-close-btn" type="button" class="btn btn-icon modal-close-btn" aria-label="关闭">✕</button>
+                </div>
+                <div class="modal-body confirm-modal-body">
+                    <p id="webui-dialog-body" class="confirm-modal-text"></p>
+                </div>
+                <div class="modal-foot">
+                    <button id="webui-dialog-cancel-btn" type="button" class="btn">取消</button>
+                    <button id="webui-dialog-confirm-btn" type="button" class="btn btn-primary">确定</button>
+                </div>
+            </div>
+        </div>
+
         <script src="__WEBUI_API_SCRIPT_URL__"></script>
         <script src="__WEBUI_SCRIPT_URL__"></script>
         __PAGE_SCRIPT_TAGS__

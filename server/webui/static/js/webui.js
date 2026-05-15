@@ -28,6 +28,145 @@
     },
   };
 
+  // 自写 dialog：替换 window.alert / window.confirm，统一视觉与无障碍。
+  const dialogEls = {
+    root: document.getElementById("webui-dialog"),
+    title: document.getElementById("webui-dialog-title"),
+    body: document.getElementById("webui-dialog-body"),
+    cancelBtn: document.getElementById("webui-dialog-cancel-btn"),
+    confirmBtn: document.getElementById("webui-dialog-confirm-btn"),
+    closeBtn: document.getElementById("webui-dialog-close-btn"),
+  };
+  let dialogPreviousFocus = null;
+  let dialogPreviousBodyOverflow = "";
+  let dialogQueue = Promise.resolve();
+  let activeDialogResolve = null;
+  let activeDialogMode = "alert"; // "alert" | "confirm"
+
+  const isDialogOpen = () => !!(dialogEls.root && !dialogEls.root.classList.contains("hidden"));
+
+  const openDialog = ({ title, message, mode, confirmText, cancelText, danger }) => {
+    return new Promise((resolve) => {
+      if (!dialogEls.root || !dialogEls.title || !dialogEls.body || !dialogEls.confirmBtn || !dialogEls.cancelBtn) {
+        // Shell 未注入 dialog 节点（理论不会发生）— 直接 resolve 取消语义，避免阻塞调用方。
+        log.warn("webui-dialog", "webui-dialog 节点缺失", null);
+        resolve(mode === "confirm" ? false : undefined);
+        return;
+      }
+      dialogPreviousFocus =
+        document.activeElement && document.activeElement !== document.body
+          ? document.activeElement
+          : null;
+      dialogPreviousBodyOverflow = document.body.style.overflow;
+      activeDialogResolve = resolve;
+      activeDialogMode = mode;
+      dialogEls.title.textContent = title || (mode === "confirm" ? "请确认" : "提示");
+      dialogEls.body.textContent = message;
+      dialogEls.confirmBtn.textContent = confirmText || (mode === "confirm" ? "确定" : "知道了");
+      dialogEls.cancelBtn.textContent = cancelText || "取消";
+      dialogEls.cancelBtn.classList.toggle("hidden", mode !== "confirm");
+      dialogEls.confirmBtn.classList.toggle("btn-danger", !!danger);
+      dialogEls.confirmBtn.classList.toggle("btn-primary", !danger);
+      document.body.style.overflow = "hidden";
+      dialogEls.root.classList.remove("hidden");
+      window.setTimeout(() => {
+        try {
+          dialogEls.confirmBtn.focus();
+        } catch (focusError) {
+          log.warn("webui-dialog", "focus 主按钮失败", focusError);
+        }
+      }, 0);
+    });
+  };
+
+  const closeDialog = (result) => {
+    if (!activeDialogResolve) {
+      return;
+    }
+    const resolve = activeDialogResolve;
+    const mode = activeDialogMode;
+    activeDialogResolve = null;
+    if (dialogEls.root) {
+      dialogEls.root.classList.add("hidden");
+    }
+    document.body.style.overflow = dialogPreviousBodyOverflow || "";
+    const focusTarget = dialogPreviousFocus && document.contains(dialogPreviousFocus)
+      ? dialogPreviousFocus
+      : null;
+    dialogPreviousFocus = null;
+    if (focusTarget && typeof focusTarget.focus === "function") {
+      try {
+        focusTarget.focus();
+      } catch (focusError) {
+        log.warn("webui-dialog", "还原焦点失败", focusError);
+      }
+    }
+    resolve(mode === "confirm" ? !!result : undefined);
+  };
+
+  if (dialogEls.confirmBtn) {
+    dialogEls.confirmBtn.addEventListener("click", () => {
+      closeDialog(true);
+    });
+  }
+  if (dialogEls.cancelBtn) {
+    dialogEls.cancelBtn.addEventListener("click", () => {
+      closeDialog(false);
+    });
+  }
+  if (dialogEls.closeBtn) {
+    dialogEls.closeBtn.addEventListener("click", () => {
+      closeDialog(false);
+    });
+  }
+  if (dialogEls.root) {
+    dialogEls.root.querySelectorAll("[data-webui-dialog-close]").forEach((node) => {
+      node.addEventListener("click", () => {
+        closeDialog(false);
+      });
+    });
+  }
+  window.addEventListener("keydown", (event) => {
+    if (event.defaultPrevented) {
+      return;
+    }
+    if (event.key !== "Escape") {
+      return;
+    }
+    if (!isDialogOpen()) {
+      return;
+    }
+    event.preventDefault();
+    closeDialog(false);
+  });
+
+  const webuiAlert = (message, opts = {}) => {
+    const job = () => openDialog({
+      message: String(message == null ? "" : message),
+      title: opts.title,
+      confirmText: opts.buttonText,
+      mode: "alert",
+    });
+    const next = dialogQueue.then(job, job);
+    dialogQueue = next.catch(() => {});
+    return next;
+  };
+  const webuiConfirm = (message, opts = {}) => {
+    const job = () => openDialog({
+      message: String(message == null ? "" : message),
+      title: opts.title,
+      confirmText: opts.confirmText,
+      cancelText: opts.cancelText,
+      danger: !!opts.danger,
+      mode: "confirm",
+    });
+    const next = dialogQueue.then(job, job);
+    dialogQueue = next.catch(() => false);
+    return next;
+  };
+  window.webuiAlert = webuiAlert;
+  window.webuiConfirm = webuiConfirm;
+
   let desktopCollapsed = false;
   let mobileOpen = false;
   let mobileMode = mobileMedia.matches;
@@ -223,9 +362,7 @@
 
       // M-2：失败时不再静默跳转。展示原始原因（保留 API error.message），由用户决定下一步。
       try {
-        if (typeof window.alert === "function") {
-          window.alert(failureReason ? `退出失败，${failureReason}` : "退出失败");
-        }
+        await webuiAlert(failureReason || "退出失败，未知原因", { title: "退出失败" });
       } catch (alertError) {
         log.warn("logout", "弹出失败提示异常", alertError);
       }

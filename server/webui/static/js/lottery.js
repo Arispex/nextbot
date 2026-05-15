@@ -615,25 +615,27 @@
   }
 
   // H-6：kind 切换确认。
-  function handleKindChange(ev) {
+  async function handleKindChange(ev) {
     const newKind = els.prizeFieldKind.value;
     // 仅在编辑已有 prize 且 kind 发生变化时确认。
     if (state.editingPrizeId !== null && state.editingPrizeOriginalKind &&
         state.editingPrizeOriginalKind !== newKind) {
       const prevLabel = kindLabel(state.editingPrizeOriginalKind);
-      const ok = window.confirm(
-        `切换类型会清空「${prevLabel}」配置，确定继续？`
+      // 先 revert 视觉值，避免 dialog 弹出期间显示新值（保留原 sync confirm 的视觉语义）。
+      els.prizeFieldKind.value = state.editingPrizeOriginalKind;
+      const ok = await window.webuiConfirm(
+        `切换类型会清空「${prevLabel}」配置，确定继续？`,
+        { title: "切换奖品类型", confirmText: "继续", danger: true }
       );
       if (!ok) {
-        // 回退选择。
-        els.prizeFieldKind.value = state.editingPrizeOriginalKind;
         return;
       }
-      // 用户确认后，把 originalKind 设为新值，避免反复弹窗。
+      // 用户确认后，应用新 kind 并把 originalKind 设为新值，避免反复弹窗。
+      els.prizeFieldKind.value = newKind;
       state.editingPrizeOriginalKind = newKind;
     }
     // M-10：用户切 kind 时清空另两组字段。
-    resetFieldsForOtherKinds(newKind);
+    resetFieldsForOtherKinds(els.prizeFieldKind.value);
     applyKindVisibility();
   }
 
