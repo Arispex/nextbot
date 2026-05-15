@@ -15,6 +15,7 @@
     servers: [],
     editingShopId: null,
     editingItemId: null,
+    editingItemOriginalKind: null,
     pendingDeleteShop: null, // { id, name, itemCount }
     pendingDeleteItem: null, // { id, name }
     pendingImport: null,     // { fileName, payload, shopCount, itemCount, exportedAt }
@@ -529,7 +530,22 @@
 
   // L-1：用户切换 kind 时，把对端字段重置回初始值，避免「保存的字段是哪一组」的视觉困惑。
   // 注意：openItemModal 用 applyKindVisibility 仅切显示，不应触发该重置。
-  function handleKindUserChange() {
+  async function handleKindUserChange() {
+    const newKind = els.itemFieldKind.value;
+    if (state.editingItemId !== null
+        && state.editingItemOriginalKind
+        && state.editingItemOriginalKind !== newKind) {
+      const prevLabel = state.editingItemOriginalKind === "item" ? "商品" : "命令";
+      // 先 revert 视觉值，避免 dialog 期间 select 显示新值
+      els.itemFieldKind.value = state.editingItemOriginalKind;
+      const ok = await window.webuiConfirm(
+        `切换类型会清空「${prevLabel}」配置，确定继续？`,
+        { title: "切换商品类型", confirmText: "继续", danger: true }
+      );
+      if (!ok) return;
+      els.itemFieldKind.value = newKind;
+      state.editingItemOriginalKind = newKind;
+    }
     const kind = els.itemFieldKind.value;
     if (kind === "item") {
       els.itemFieldTargetServer.value = "";
@@ -550,6 +566,7 @@
   function openItemModal(item) {
     if (state.selectedShopId === null) return;
     state.editingItemId = item ? item.id : null;
+    state.editingItemOriginalKind = item ? item.kind : null;
     hideAlert(els.itemModalAlert);
     els.itemModalTitle.textContent = item ? "编辑商品" : "新建商品";
     els.itemFieldName.value = item ? item.name : "";
@@ -580,6 +597,7 @@
   function closeItemModal() {
     hideModal(els.itemModal);
     state.editingItemId = null;
+    state.editingItemOriginalKind = null;
   }
 
   async function submitItemModal(ev) {
