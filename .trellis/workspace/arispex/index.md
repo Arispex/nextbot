@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-3.md`
-- **Total Sessions**: 140
+- **Total Sessions**: 141
 - **Last Active**: 2026-05-16
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-3.md` | ~1522 | Active |
+| `journal-3.md` | ~1555 | Active |
 | `journal-2.md` | ~1973 | Archived |
 | `journal-1.md` | ~1999 | Archived |
 <!-- @@@/auto:active-documents -->
@@ -31,6 +31,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 141 | 2026-05-16 | 用自写 dialog 替换 window.alert / window.confirm | `ac908a4` | `main` |
 | 140 | 2026-05-16 | shop / lottery 导入确认文案统一为「全量替换」 | `c613417` | `main` |
 | 139 | 2026-05-16 | shop / lottery CRUD 成功补 toast | `b9080bd` | `main` |
 | 138 | 2026-05-15 | app_shell 退出登入加确认 dialog（含共享 modal 样式下沉） | `bddbcdd` | `main` |

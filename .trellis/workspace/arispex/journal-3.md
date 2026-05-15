@@ -1520,3 +1520,36 @@ shop 与 lottery 导入 modal 的二次确认输入框文案断层（shop: REPLA
 ### Next Steps
 
 - None - task complete
+
+
+## Session 141: 用自写 dialog 替换 window.alert / window.confirm
+
+**Date**: 2026-05-16
+**Task**: 用自写 dialog 替换 window.alert / window.confirm
+**Branch**: `main`
+
+### Summary
+
+WebUI 还有 2 处原生 dialog（webui.js logout 失败 window.alert + lottery.js kind 切换 window.confirm）。在 shell 层加 #webui-dialog modal + window.webuiAlert/webuiConfirm Promise API，复用已下沉的 .modal/.confirm-modal-card 样式，支持 alert/confirm 模式 + danger 变体 + 队列串行 + ESC/mask 等取消语义。替换 2 处调用，lottery handleKindChange 改 async 并先 revert select 视觉值避免闪烁。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ac908a4` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
