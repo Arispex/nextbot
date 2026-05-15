@@ -474,7 +474,10 @@
     return true;
   };
 
-  // H-4：探活 /webui/api/settings；返回 200 即视为恢复，401 / 网络错误均视为未恢复。
+  // H-4：探活 /webui/api/settings。返回 200 或 401 均视为新进程已上线：
+  // 401 是 auth 中间件对失效 session/token 的响应（API 路由不会 302），
+  // 此时立即 reload，浏览器随后请求 HTML 路由会被自然 302 到登录页。
+  // 仅网络错误 / abort 才视为未恢复。
   const probeRestartReady = async (signal) => {
     try {
       const response = await fetch("/webui/api/settings", {
@@ -482,7 +485,7 @@
         headers: { Accept: "application/json" },
         signal,
       });
-      return response.status === 200;
+      return response.status === 200 || response.status === 401;
     } catch (_error) {
       return false;
     }
@@ -558,6 +561,9 @@
       const onUnload = () => pollController.abort();
       window.addEventListener("beforeunload", onUnload, { once: true });
       try {
+        // 进入 poll 前把状态切到 info，避免 success toast 长时间挂着让用户
+        // 误以为流程已结束；同时显式告知接下来"重启 → 可能要重新登录"是预期行为。
+        setStatus("正在重启，等待服务恢复…", "info");
         const ready = await waitForRestart(pollController.signal);
         if (ready) {
           window.location.reload();
