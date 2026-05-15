@@ -315,7 +315,7 @@
 
     const tdIdx = document.createElement("td");
     tdIdx.className = "col-index";
-    tdIdx.textContent = "#" + displayIndex;
+    tdIdx.textContent = String(prize.id);
     tr.appendChild(tdIdx);
 
     const tdKind = document.createElement("td");
