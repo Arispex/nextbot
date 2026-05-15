@@ -1355,3 +1355,36 @@ create_prize / update_prize 在 commit + refresh 后调用 _load_server_label_ma
 ### Next Steps
 
 - None - task complete
+
+
+## Session 136: 修复商店 _load_server_label_map SQLite 自死锁（同 lottery 同形）
+
+**Date**: 2026-05-15
+**Task**: 修复商店 _load_server_label_map SQLite 自死锁（同 lottery 同形）
+**Branch**: `main`
+
+### Summary
+
+shop 的 get_shop / create_shop_item / update_shop_item 与 lottery 同形：外层 session commit+refresh 后调 _load_server_label_map() 开新 session 触发 BEGIN IMMEDIATE 与外层写锁冲突，sqlite database is locked。让 _load_server_label_map 可选接 session，3 个 caller 改传外层 session 复用连接。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `cccd569` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
