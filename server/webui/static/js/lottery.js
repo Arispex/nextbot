@@ -480,8 +480,9 @@
       sort_order: Number(els.poolFieldSortOrder.value || 0),
       enabled: els.poolFieldEnabled.checked,
     };
+    const isCreate = state.editingPoolId === null;
     try {
-      if (state.editingPoolId === null) {
+      if (isCreate) {
         await callApi("/webui/api/lottery", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -498,6 +499,7 @@
       }
       closePoolModal();
       await loadPools();
+      showAlert(els.alert, isCreate ? "新建成功" : "保存成功", "success");
     } catch (err) {
       showAlert(els.poolModalAlert, err.message || "保存失败", "error");
     }
@@ -533,6 +535,7 @@
       }
       await loadPools();
       renderPoolDetail();
+      showAlert(els.alert, "删除成功", "success");
     } catch (err) {
       showAlert(els.poolDeleteAlert, err.message || "删除失败", "error");
     }
@@ -724,8 +727,9 @@
       const c = els.prizeFieldCoinAmount.value.trim();
       payload.coin_amount = c === "" ? 0 : Number(c);
     }
+    const isCreate = state.editingPrizeId === null;
     try {
-      if (state.editingPrizeId === null) {
+      if (isCreate) {
         await callApi("/webui/api/lottery/" + state.selectedPoolId + "/prizes", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -743,6 +747,7 @@
       closePrizeModal();
       await loadPoolDetail(state.selectedPoolId);
       await loadPools();
+      showAlert(els.alert, isCreate ? "新建成功" : "保存成功", "success");
     } catch (err) {
       showAlert(els.prizeModalAlert, err.message || "保存失败", "error");
     }
@@ -778,6 +783,7 @@
       closePrizeModal();
       await loadPoolDetail(state.selectedPoolId);
       await loadPools();
+      showAlert(els.alert, "删除成功", "success");
     } catch (err) {
       showAlert(els.prizeDeleteAlert, err.message || "删除失败", "error");
     }

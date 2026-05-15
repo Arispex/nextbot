@@ -408,10 +408,11 @@
       sort_order: Number(els.shopFieldSortOrder.value || 0),
       enabled: els.shopFieldEnabled.checked,
     };
+    const isCreate = state.editingShopId === null;
     state.submittingShop = true;
     if (els.shopModalSave) els.shopModalSave.disabled = true;
     try {
-      if (state.editingShopId === null) {
+      if (isCreate) {
         await callApi("/webui/api/shops", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -428,6 +429,7 @@
       }
       closeShopModal();
       await loadShops();
+      showAlert(els.alert, isCreate ? "新建成功" : "保存成功", "success");
     } catch (err) {
       showAlert(els.shopModalAlert, err.message || "保存失败", "error");
     } finally {
@@ -479,6 +481,7 @@
       }
       await loadShops();
       renderShopDetail();
+      showAlert(els.alert, "删除成功", "success");
     } catch (err) {
       showAlert(els.shopDeleteAlert, err.message || "删除失败", "error");
     } finally {
@@ -609,10 +612,11 @@
       payload.show_command = els.itemFieldShowCommand.checked;
       payload.require_online = els.itemFieldRequireOnline.checked;
     }
+    const isCreate = state.editingItemId === null;
     state.submittingItem = true;
     if (els.itemModalSave) els.itemModalSave.disabled = true;
     try {
-      if (state.editingItemId === null) {
+      if (isCreate) {
         await callApi("/webui/api/shops/" + state.selectedShopId + "/items", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -633,6 +637,7 @@
       closeItemModal();
       await loadShopDetail(state.selectedShopId);
       await loadShops();
+      showAlert(els.alert, isCreate ? "新建成功" : "保存成功", "success");
     } catch (err) {
       showAlert(els.itemModalAlert, err.message || "保存失败", "error");
     } finally {
@@ -682,6 +687,7 @@
       closeItemModal();
       await loadShopDetail(state.selectedShopId);
       await loadShops();
+      showAlert(els.alert, "删除成功", "success");
     } catch (err) {
       showAlert(els.itemDeleteAlert, err.message || "删除失败", "error");
     } finally {
