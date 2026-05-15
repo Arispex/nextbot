@@ -432,12 +432,14 @@ def _existing_weight_sum(session: Any, pool_id: int, exclude_prize_id: int | Non
     return total
 
 
-def _load_server_label_map() -> dict[int, str]:
-    session = get_session()
-    try:
+def _load_server_label_map(session: Any | None = None) -> dict[int, str]:
+    if session is not None:
         return {int(s.id): str(s.name) for s in session.query(Server).all()}
+    s = get_session()
+    try:
+        return {int(x.id): str(x.name) for x in s.query(Server).all()}
     finally:
-        session.close()
+        s.close()
 
 
 @router.get("/webui/api/lottery/meta/tiers")
@@ -1036,7 +1038,7 @@ async def create_prize(pool_id: int, request: Request) -> JSONResponse:
         session.add(prize)
         session.commit()
         session.refresh(prize)
-        label_map = _load_server_label_map()
+        label_map = _load_server_label_map(session)
         target_label = (
             label_map.get(int(prize.target_server_id))
             if prize.target_server_id is not None else None
@@ -1120,7 +1122,7 @@ async def update_prize(pool_id: int, prize_id: int, request: Request) -> JSONRes
         prize.require_online = validated["require_online"]
         prize.coin_amount = validated["coin_amount"]
         session.commit()
-        label_map = _load_server_label_map()
+        label_map = _load_server_label_map(session)
         target_label = (
             label_map.get(int(prize.target_server_id))
             if prize.target_server_id is not None else None
