@@ -47,3 +47,12 @@ app.db-journal
 # Misc
 .DS_Store
 *.log
+
+# Docs / internal notes — not needed in runtime image
+docs/
+AGENTS.md
+CLAUDE.md
+DESIGN.md
+*.md
+!README.md
+!LICENSE

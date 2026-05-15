@@ -26,10 +26,11 @@ from server.routes import (
     api_error,
     api_success,
     build_pagination_slice,
+    client_ip as _client_ip,
     read_json_object,
     read_pagination_query,
+    user_agent as _shared_user_agent,
 )
-from server.routes.webui import _client_ip
 
 router = APIRouter()
 
@@ -45,9 +46,8 @@ _sync_cooldown_lock = Lock()
 _sync_last_request: dict[int, float] = {}
 
 
-def _user_agent(request: Request) -> str:
-    """M-S-5：截断 User-Agent 防超长（与 webui_servers 同实现）。"""
-    return request.headers.get("user-agent", "")[:200]
+# CRIT-1 / HIGH-2：thin re-export alias；canonical helper 在 server/routes/__init__.py。
+_user_agent = _shared_user_agent
 
 
 def _mask_qq(qq: str) -> str:

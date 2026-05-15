@@ -317,14 +317,22 @@
       "月亮领主":              { key: "moonLord",                        ext: "gif"  },
     };
 
-    const data = JSON.parse(document.getElementById("progress-data").textContent);
+    const data = (() => {
+      try { return JSON.parse(document.getElementById("progress-data").textContent); }
+      catch (err) { console.warn("[render] page data unavailable", err); return {}; }
+    })();
     const progress = Array.isArray(data.progress) ? data.progress : [];
 
     document.getElementById("meta-server-name").textContent = String(data.server_name || "未知服务器");
     if (data.server_id) {
       document.getElementById("server-id-divider").hidden = false;
       document.getElementById("server-id-wrap").hidden = false;
-      document.getElementById("meta-server-id").textContent = String(data.server_id);
+      // Defensive: server_id is expected numeric; normalize via Number to
+      // avoid arbitrary-string display if payload shape ever drifts.
+      const sid = Number(data.server_id);
+      document.getElementById("meta-server-id").textContent = Number.isFinite(sid)
+        ? String(sid)
+        : "";
     }
     document.getElementById("meta-time").textContent = data.generated_at || "";
 

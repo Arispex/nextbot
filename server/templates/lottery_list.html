@@ -9,6 +9,9 @@
   <style>
     *, *::before, *::after { box-sizing: border-box; }
     html, body { margin: 0; padding: 0; }
+    /* class selectors with display:flex/grid override the UA [hidden]
+     * default; restore it explicitly so hidden sections truly disappear. */
+    [hidden] { display: none !important; }
 
     body {
       background-color: var(--color-canvas);
@@ -177,7 +180,10 @@
 
   <script id="lottery-list-data" type="application/json">__LOTTERY_LIST_DATA_JSON__</script>
   <script>
-    const data = JSON.parse(document.getElementById("lottery-list-data").textContent);
+    const data = (() => {
+      try { return JSON.parse(document.getElementById("lottery-list-data").textContent); }
+      catch (err) { console.warn("[render] page data unavailable", err); return {}; }
+    })();
     const entries = Array.isArray(data.entries) ? data.entries : [];
     const total = Number(data.total || entries.length || 0);
     const totalPages = Number(data.total_pages || 1);

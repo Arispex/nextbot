@@ -9,6 +9,9 @@
   <style>
     *, *::before, *::after { box-sizing: border-box; }
     html, body { margin: 0; padding: 0; }
+    /* class selectors with display:flex/grid override the UA [hidden]
+     * default; restore it explicitly so hidden sections truly disappear. */
+    [hidden] { display: none !important; }
 
     body {
       background-color: var(--color-canvas);
@@ -343,7 +346,10 @@
   <script id="shop-view-data" type="application/json">__SHOP_VIEW_DATA_JSON__</script>
   <script>
     (async function () {
-      const data = JSON.parse(document.getElementById("shop-view-data").textContent);
+      const data = (() => {
+        try { return JSON.parse(document.getElementById("shop-view-data").textContent); }
+        catch (err) { console.warn("[render] page data unavailable", err); return {}; }
+      })();
       const items = Array.isArray(data.items) ? data.items : [];
       const total = Number(data.total || items.length || 0);
       const totalPages = Number(data.total_pages || 1);

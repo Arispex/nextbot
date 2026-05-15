@@ -9,12 +9,26 @@ from nextbot.time_utils import beijing_now_text
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 TEMPLATE_PATH = BASE_DIR / "server" / "templates" / "lottery_list.html"
 
+MAX_ENTRIES = 200
+
+_template_cache: tuple[float, str] | None = None
+
+
+def _load_template() -> str:
+    global _template_cache
+    mtime = TEMPLATE_PATH.stat().st_mtime
+    if _template_cache is None or _template_cache[0] != mtime:
+        _template_cache = (mtime, TEMPLATE_PATH.read_text(encoding="utf-8"))
+    return _template_cache[1]
+
 
 def _normalize_entries(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for raw in entries:
         if not isinstance(raw, dict):
             continue
+        if len(out) >= MAX_ENTRIES:
+            break
         try:
             pool_id = int(raw.get("pool_id", 0))
             prize_count = max(0, int(raw.get("prize_count", 0)))
@@ -49,7 +63,7 @@ def build_payload(
 
 
 def render(payload: dict[str, Any]) -> bytes:
-    template = TEMPLATE_PATH.read_text(encoding="utf-8")
+    template = _load_template()
     data = {
         "generated_at": str(payload.get("generated_at", "")),
         "entries": payload.get("entries", []),

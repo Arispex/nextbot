@@ -279,7 +279,10 @@
   <script id="tut-data" type="application/json">__TUTORIAL_DATA_JSON__</script>
   <script>
     (function () {
-      const data = JSON.parse(document.getElementById("tut-data").textContent);
+      const data = (() => {
+        try { return JSON.parse(document.getElementById("tut-data").textContent); }
+        catch (err) { console.warn("[render] page data unavailable", err); return {}; }
+      })();
       const steps = Array.isArray(data.steps) ? data.steps : [];
 
       // Title — drop emoji prefix per warm-canvas convention.

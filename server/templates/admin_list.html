@@ -156,7 +156,10 @@
 
   <script id="admin-list-data" type="application/json">__ADMIN_LIST_DATA_JSON__</script>
   <script>
-    const data = JSON.parse(document.getElementById("admin-list-data").textContent);
+    const data = (() => {
+      try { return JSON.parse(document.getElementById("admin-list-data").textContent); }
+      catch (err) { console.warn("[render] page data unavailable", err); return {}; }
+    })();
     const admins = Array.isArray(data.admins) ? data.admins : [];
 
     document.getElementById("al-count").textContent = `共 ${admins.length} 名管理员`;
@@ -179,7 +182,7 @@
       const avatar = document.createElement("img");
       avatar.className = "avatar";
       avatar.alt = nickname;
-      avatar.src = `http://q1.qlogo.cn/g?b=qq&nk=${encodeURIComponent(userId)}&s=100`;
+      avatar.src = `https://q1.qlogo.cn/g?b=qq&nk=${encodeURIComponent(userId)}&s=100`;
       card.appendChild(avatar);
 
       const nameEl = document.createElement("div");

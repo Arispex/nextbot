@@ -187,7 +187,10 @@
 
   <script id="ban-list-data" type="application/json">__BAN_LIST_DATA_JSON__</script>
   <script>
-    const data = JSON.parse(document.getElementById("ban-list-data").textContent);
+    const data = (() => {
+      try { return JSON.parse(document.getElementById("ban-list-data").textContent); }
+      catch (err) { console.warn("[render] page data unavailable", err); return {}; }
+    })();
     const entries = Array.isArray(data.entries) ? data.entries : [];
     const page = Number(data.page || 1);
     const totalPages = Number(data.total_pages || 1);
@@ -216,7 +219,7 @@
       const avatar = document.createElement("img");
       avatar.className = "avatar";
       avatar.alt = "";
-      avatar.src = `http://q1.qlogo.cn/g?b=qq&nk=${encodeURIComponent(userId)}&s=100`;
+      avatar.src = `https://q1.qlogo.cn/g?b=qq&nk=${encodeURIComponent(userId)}&s=100`;
       row.appendChild(avatar);
 
       const info = document.createElement("div");

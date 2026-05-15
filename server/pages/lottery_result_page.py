@@ -9,6 +9,19 @@ from nextbot.time_utils import beijing_now_text
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 TEMPLATE_PATH = BASE_DIR / "server" / "templates" / "lottery_result.html"
 
+MAX_ENTRIES = 200
+
+_template_cache: tuple[float, str] | None = None
+
+
+def _load_template() -> str:
+    global _template_cache
+    mtime = TEMPLATE_PATH.stat().st_mtime
+    if _template_cache is None or _template_cache[0] != mtime:
+        _template_cache = (mtime, TEMPLATE_PATH.read_text(encoding="utf-8"))
+    return _template_cache[1]
+
+
 # Rarity tier thresholds — upper bound (inclusive) of draw probability percent.
 # Bucket: 0=miss, 1=common, 2=uncommon, 3=rare, 4=epic, 5=legendary.
 _TIER_LEGENDARY_MAX_PCT = 1.0
@@ -37,6 +50,8 @@ def _normalize_outcomes(outcomes: list[dict[str, Any]]) -> list[dict[str, Any]]:
     for raw in outcomes:
         if not isinstance(raw, dict):
             continue
+        if len(out) >= MAX_ENTRIES:
+            break
         kind = str(raw.get("kind", "")).strip()
         if kind not in {"item", "command", "coin", "miss"}:
             continue
@@ -69,7 +84,7 @@ def _normalize_outcomes(outcomes: list[dict[str, Any]]) -> list[dict[str, Any]]:
             try:
                 entry["coin_amount"] = int(raw.get("coin_amount", 0))
             except (TypeError, ValueError):
-                continue
+                entry["coin_amount"] = 0
             entry["total_coin"] = entry["coin_amount"] * count
         out.append(entry)
     # Sort by rarity desc, then count desc (rarest big-count first)
@@ -120,7 +135,7 @@ def build_payload(
 
 
 def render(payload: dict[str, Any]) -> bytes:
-    template = TEMPLATE_PATH.read_text(encoding="utf-8")
+    template = _load_template()
     data = {
         "generated_at": str(payload.get("generated_at", "")),
         "pool_id": int(payload.get("pool_id", 0)),

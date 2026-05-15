@@ -8,13 +8,24 @@ from typing import Any
 from urllib.parse import urlparse
 
 from nonebot import get_driver
+from nonebot.log import logger
 
 from nextbot.data_dir import DATA_DIR
 
 _ENV_PATH = DATA_DIR / ".env"
-_WRITE_LOCK = threading.RLock()
+# M-10：read / write 共享同一把锁；保证 snapshot 读取与 save 写入串行。
+# 沿用 RLock 兼容潜在 reentrant 链路（虽然当前没有，但加固时不破坏既有行为）。
+_FILE_LOCK = threading.RLock()
+# 向后兼容：保留旧名 ``_WRITE_LOCK``，外部模块若 import 不致 ImportError。
+_WRITE_LOCK = _FILE_LOCK
+# L-9：QQ 号约束收紧到 5-11 位（OneBot 平台实际范围）。
+_QQ_ID_PATTERN = re.compile(r"^\d{5,11}$")
 _ENV_KEY_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
-_QQ_ID_PATTERN = re.compile(r"^\d{5,20}$")
+# M-10：限制 .env 单次读取上限（1 MiB），防止极端膨胀场景下同步 read_text 长持锁。
+_MAX_ENV_SIZE = 1 * 1024 * 1024
+# M-11：明确"需要 multi-line escape 的字段"白名单，加字段时同步从
+# ``_SINGLE_LINE_STRING_FIELDS`` 反向移除。
+_MULTILINE_ESCAPED_FIELDS = frozenset({"group_welcome_template", "group_farewell_template"})
 
 
 @dataclass(frozen=True)
@@ -27,6 +38,8 @@ class FieldSpec:
 @dataclass(frozen=True)
 class SaveSettingsResult:
     saved_fields: list[str]
+    # M-13：返回 normalize 后的当前值，前端可直接对账展示，无需再 GET 一次 snapshot。
+    normalized_values: dict[str, Any] | None = None
 
 
 class SettingsValidationError(ValueError):
@@ -94,17 +107,42 @@ def _parse_env_key(line: str) -> str | None:
 def _read_env_lines() -> list[str]:
     if not _ENV_PATH.is_file():
         return []
+    # M-10：超过上限直接 raise，防 .env 异常膨胀（外部 bug / 攻击）拖慢同步读
+    try:
+        size = _ENV_PATH.stat().st_size
+    except OSError:
+        size = 0
+    if size > _MAX_ENV_SIZE:
+        raise SettingsValidationError(
+            f".env 文件超出 {_MAX_ENV_SIZE} 字节上限，当前 {size} 字节"
+        )
     return _ENV_PATH.read_text(encoding="utf-8").splitlines()
 
 
 def _read_env_values() -> dict[str, str]:
-    values: dict[str, str] = {}
-    for line in _read_env_lines():
-        key = _parse_env_key(line)
-        if key is None:
-            continue
-        values[key] = line.split("=", 1)[1]
-    return values
+    # M-10：read 侧也持锁，保证 snapshot 与 save 之间无中间态读取。
+    with _FILE_LOCK:
+        values: dict[str, str] = {}
+        for line in _read_env_lines():
+            key = _parse_env_key(line)
+            if key is None:
+                continue
+            values[key] = line.split("=", 1)[1]
+        return values
+
+
+def _escape_for_env(text: str) -> str:
+    """L-10：把含换行 / 反斜杠的字符串编码到 .env 单行格式。
+
+    Round-trip 约定：先 ``\\`` 加倍，再 ``\n`` 转义，最后丢 ``\r``；
+    ``_unescape_from_env`` 反向先恢复换行再恢复反斜杠（顺序敏感）。
+    """
+    return text.replace("\\", "\\\\").replace("\n", "\\n").replace("\r", "")
+
+
+def _unescape_from_env(text: str) -> str:
+    """L-10：把 .env 单行字符串还原成多行原文（反向 ``_escape_for_env``）。"""
+    return text.replace("\\n", "\n").replace("\\\\", "\\")
 
 
 def _serialize_env_value(field: str, value: Any) -> str:
@@ -114,8 +152,8 @@ def _serialize_env_value(field: str, value: Any) -> str:
         return str(value)
     if isinstance(value, bool):
         return "true" if value else "false"
-    if field in {"group_welcome_template", "group_farewell_template"}:
-        return str(value).replace("\\", "\\\\").replace("\n", "\\n").replace("\r", "")
+    if field in _MULTILINE_ESCAPED_FIELDS:
+        return _escape_for_env(str(value))
     return str(value)
 
 
@@ -203,7 +241,7 @@ def _coerce_qq_id_list(value: Any, *, field: str) -> list[str]:
 
     for item in values:
         if _QQ_ID_PATTERN.fullmatch(item) is None:
-            raise SettingsValidationError(f"{field} 仅支持 5-20 位数字", field=field)
+            raise SettingsValidationError(f"{field} 仅支持 5-11 位数字", field=field)
     return values
 
 
@@ -333,8 +371,8 @@ def _load_value_from_env(field: str, raw_value: str) -> Any:
         return _coerce_bool(raw_value, field=field)
     if field in {"group_welcome_enabled", "group_farewell_enabled"}:
         return _coerce_bool(raw_value, field=field)
-    if field in {"group_welcome_template", "group_farewell_template"}:
-        unescaped = raw_value.replace("\\n", "\n").replace("\\\\", "\\")
+    if field in _MULTILINE_ESCAPED_FIELDS:
+        unescaped = _unescape_from_env(raw_value)
         return _normalize_field(field, unescaped)
     if field in {"group_auto_ban_on_leave_enabled", "group_auto_ban_on_leave_notify"}:
         return _coerce_bool(raw_value, field=field)
@@ -383,12 +421,12 @@ def _load_value_from_config(field: str, config: Any) -> Any:
         if raw_value is None:
             raw_value = "{at} 欢迎加入本群！\n请先阅读群公告~"
         else:
-            raw_value = str(raw_value).replace("\\n", "\n").replace("\\\\", "\\")
+            raw_value = _unescape_from_env(str(raw_value))
     if field == "group_farewell_template":
         if raw_value is None:
             raw_value = "{nickname}（{user_id}）离开了本群"
         else:
-            raw_value = str(raw_value).replace("\\n", "\n").replace("\\\\", "\\")
+            raw_value = _unescape_from_env(str(raw_value))
     if field in {"group_auto_ban_on_leave_enabled", "group_auto_ban_on_leave_notify"}:
         return _coerce_bool(raw_value if raw_value is not None else False, field=field)
     return _normalize_field(field, raw_value if raw_value is not None else "")
@@ -404,8 +442,12 @@ def get_settings_snapshot() -> dict[str, Any]:
             try:
                 data[spec.field] = _load_value_from_env(spec.field, raw)
                 continue
-            except SettingsValidationError:
-                pass
+            except SettingsValidationError as exc:
+                # M-12：.env 中的字段无法通过 normalize 时降级到 config 默认值。
+                # 静默 fallback 会让用户以为自己的修改已生效，必须 WARN 暴露。
+                logger.warning(
+                    f"读取 settings 字段失败，回退到默认值：field={spec.field} reason={exc}"
+                )
         data[spec.field] = _load_value_from_config(spec.field, config)
     return data
 
@@ -414,7 +456,11 @@ def save_settings(payload: dict[str, Any]) -> SaveSettingsResult:
     normalized_values = _normalize_payload(payload)
     _write_env_values(normalized_values)
     saved_fields = [spec.field for spec in _FIELD_SPECS if spec.field in normalized_values]
-    return SaveSettingsResult(saved_fields=saved_fields)
+    # M-13：把 normalize 后的当前值随返回；前端可直接 fillForm 更新展示，避免再 GET 一次。
+    return SaveSettingsResult(
+        saved_fields=saved_fields,
+        normalized_values={field: normalized_values[field] for field in saved_fields},
+    )
 
 
 def get_settings_metadata() -> dict[str, Any]:

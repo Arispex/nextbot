@@ -11,7 +11,13 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from nonebot.log import logger
 
 from server.pages.console_page import render_settings_page
-from server.routes import api_error, api_success, read_json_object
+from server.routes import (
+    api_error,
+    api_success,
+    client_ip as _shared_client_ip,
+    read_json_object,
+    user_agent as _shared_user_agent,
+)
 from server.settings_service import (
     SettingsValidationError,
     get_settings_metadata,
@@ -74,17 +80,9 @@ def _is_mask_token(token: str) -> bool:
     return token.startswith(_TOKEN_MASK_PREFIX)
 
 
-def _client_ip(request: Request) -> str:
-    forwarded = request.headers.get("x-forwarded-for", "").strip()
-    if forwarded:
-        return forwarded.split(",")[0].strip() or "unknown"
-    if request.client is not None:
-        return request.client.host or "unknown"
-    return "unknown"
-
-
-def _user_agent(request: Request) -> str:
-    return request.headers.get("user-agent", "")[:200]
+# CRIT-1 / HIGH-2：thin re-export aliases；canonical helper 在 server/routes/__init__.py。
+_client_ip = _shared_client_ip
+_user_agent = _shared_user_agent
 
 
 def _check_csrf_header(request: Request) -> JSONResponse | None:

@@ -11,7 +11,13 @@ from nextbot.db import WAREHOUSE_CAPACITY, User, WarehouseItem, get_session
 from nextbot.progression import PROGRESSION_KEY_TO_ZH, TIER_OPTIONS
 from nextbot.time_utils import db_now_utc_naive
 from nextbot.warehouse_lock import warehouse_lock
-from server.routes import api_error, api_success, read_json_object
+from server.routes import (
+    api_error,
+    api_success,
+    client_ip as _shared_client_ip,
+    read_json_object,
+    user_agent as _shared_user_agent,
+)
 
 router = APIRouter()
 
@@ -25,19 +31,9 @@ _QUANTITY_MAX = 9_999
 _VALUE_MAX = 1_000_000_000
 
 
-def _client_ip(request: Request) -> str:
-    """H-2：取调用方 IP（与 webui_servers.py 同实现）。"""
-    forwarded = request.headers.get("x-forwarded-for", "").strip()
-    if forwarded:
-        return forwarded.split(",")[0].strip() or "unknown"
-    if request.client is not None:
-        return request.client.host or "unknown"
-    return "unknown"
-
-
-def _user_agent(request: Request) -> str:
-    """H-2：截断 User-Agent 防超长（与 webui_servers.py 同实现）。"""
-    return request.headers.get("user-agent", "")[:200]
+# CRIT-1 / HIGH-2：thin re-export aliases；canonical helper 在 server/routes/__init__.py。
+_client_ip = _shared_client_ip
+_user_agent = _shared_user_agent
 
 
 def _validate_user_id(user_id: str) -> JSONResponse | None:

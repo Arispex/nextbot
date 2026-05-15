@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import binascii
 import hashlib
 import hmac
 import threading
@@ -25,7 +26,13 @@ from server.pages.console_page import (
     render_users_page,
     render_warehouse_page,
 )
-from server.routes import api_error, api_success, read_json_object
+from server.routes import (
+    api_error,
+    api_success,
+    client_ip as _shared_client_ip,
+    read_json_object,
+    user_agent as _shared_user_agent,
+)
 from server.server_config import WebServerSettings
 
 router = APIRouter()
@@ -43,15 +50,23 @@ _FAILED_LOGIN_WINDOW_SEC = 300
 _FAILED_LOGIN_MAX_ATTEMPTS = 5
 _failed_login_lock = threading.Lock()
 _failed_login_history: dict[str, deque[float]] = {}
+# INFO-15：dict 容量上限，触顶后惰性回收过期键，避免攻击者刷不同 IP 撑大内存。
+_FAILED_LOGIN_MAX_TRACKED_IPS = 10_000
 
 
 def _sanitize_next_path(value: str | None) -> str:
+    # MED-8：强化 next 校验：只允许 /webui 域内的内部跳转、长度上限 512。
     candidate = (value or "").strip()
     if not candidate:
         return "/webui"
     if not candidate.startswith("/"):
         return "/webui"
     if candidate.startswith("//"):
+        return "/webui"
+    if len(candidate) > 512:
+        return "/webui"
+    # 仅允许跳 webui 域内（/webui 或 /webui/...），其他前缀（如 /render/、/health）一律拒绝。
+    if candidate != "/webui" and not candidate.startswith("/webui/"):
         return "/webui"
     return candidate
 
@@ -81,15 +96,21 @@ def _build_session_cookie(secret: str) -> tuple[str, str]:
 
 
 def _decode_session_cookie(cookie_value: str) -> tuple[str, str, str] | None:
-    """解析 cookie，返回 (issued_at, jti, signature) 或 None"""
+    """解析 cookie，返回 (issued_at, jti, signature) 或 None。
+
+    MED-7：仅吞 base64 / utf-8 decode 异常；其他异常向上抛出避免掩盖真 bug。
+    """
     if not cookie_value:
         return None
     padding = "=" * ((4 - len(cookie_value) % 4) % 4)
     try:
         raw = base64.urlsafe_b64decode((cookie_value + padding).encode("ascii"))
-    except Exception:
+    except (binascii.Error, ValueError, UnicodeEncodeError):
         return None
-    decoded = raw.decode("utf-8", errors="ignore")
+    try:
+        decoded = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return None
     parts = decoded.split(".", maxsplit=2)
     if len(parts) != 3:
         return None
@@ -148,15 +169,10 @@ def _set_session_cookie(response: Response, settings: WebServerSettings) -> None
     )
 
 
-def _client_ip(request: Request) -> str:
-    """H-A3 / M-A4：从 X-Forwarded-For 或 client.host 取调用方 IP"""
-    forwarded = request.headers.get("x-forwarded-for", "").strip()
-    if forwarded:
-        # 取链路最左侧（最原始客户端）
-        return forwarded.split(",")[0].strip() or "unknown"
-    if request.client is not None:
-        return request.client.host or "unknown"
-    return "unknown"
+# CRIT-1 / HIGH-2：`_client_ip` / `_user_agent` 下沉到 server/routes/__init__.py。
+# 旧 caller（webui_dashboard / webui_commands / webui_users 等）仍可通过这两个本地名引用。
+_client_ip = _shared_client_ip
+_user_agent = _shared_user_agent
 
 
 def _check_login_rate_limit(client_ip: str) -> tuple[bool, int]:
@@ -179,9 +195,23 @@ def _check_login_rate_limit(client_ip: str) -> tuple[bool, int]:
 
 
 def _record_login_failure(client_ip: str) -> None:
-    """H-A3：登入失败时追加时间戳到滑动窗口"""
+    """H-A3：登入失败时追加时间戳到滑动窗口。
+
+    INFO-15：dict 容量触顶时惰性 GC 过期键；防止攻击者刷不同伪造 IP 撑大内存。
+    """
     now = time.monotonic()
     with _failed_login_lock:
+        if (
+            client_ip not in _failed_login_history
+            and len(_failed_login_history) >= _FAILED_LOGIN_MAX_TRACKED_IPS
+        ):
+            cutoff = now - _FAILED_LOGIN_WINDOW_SEC
+            stale_keys = [
+                key for key, history in _failed_login_history.items()
+                if not history or history[-1] < cutoff
+            ]
+            for key in stale_keys:
+                _failed_login_history.pop(key, None)
         history = _failed_login_history.setdefault(client_ip, deque())
         history.append(now)
 
@@ -259,13 +289,17 @@ def add_security_headers_middleware(app: FastAPI) -> None:
 
 
 def _resolve_webui_static_file(file_path: str) -> Path:
-    resolved_path = (WEBUI_STATIC_DIR / file_path).resolve()
+    raw_target = WEBUI_STATIC_DIR / file_path
+    resolved_path = raw_target.resolve()
     try:
         resolved_path.relative_to(WEBUI_STATIC_DIR.resolve())
     except ValueError as exc:
-        raise HTTPException(status_code=403, detail="forbidden") from exc
+        raise HTTPException(status_code=403, detail="禁止访问") from exc
+    # HIGH-5：显式拒绝 symlink；防止运维误配 bind-mount overlay 时 symlink escape。
+    if raw_target.is_symlink() or resolved_path.is_symlink():
+        raise HTTPException(status_code=403, detail="禁止访问")
     if not resolved_path.is_file():
-        raise HTTPException(status_code=404, detail="not found")
+        raise HTTPException(status_code=404, detail="文件不存在")
     return resolved_path
 
 
@@ -335,10 +369,12 @@ async def webui_session_create(request: Request) -> Response:
             f"创建登录会话被限速：reason=登录失败次数过多 "
             f"client_ip={client_ip} user_agent={user_agent!r} retry_after={retry_after}"
         )
+        # MED-27：后端 error.message 仅返回原因，不拼"请稍后再试"动作建议；
+        # 前端依据 429 + Retry-After 决定展示文案。
         return api_error(
             status_code=429,
             code="too_many_requests",
-            message="登录失败次数过多，请稍后再试",
+            message="登录失败次数过多",
             headers={"Retry-After": str(retry_after)},
         )
 

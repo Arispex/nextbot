@@ -321,12 +321,15 @@
   <script id="inventory-data" type="application/json">__INVENTORY_DATA_JSON__</script>
   <script>
     (async function () {
-      const data = JSON.parse(document.getElementById("inventory-data").textContent);
+      const data = (() => {
+        try { return JSON.parse(document.getElementById("inventory-data").textContent); }
+        catch (err) { console.warn("[render] page data unavailable", err); return {}; }
+      })();
 
       // ── Header / owner bar ─────────────────────────────────
       const userId = String(data.user_id || "");
       document.getElementById("wh-avatar").src =
-        `http://q1.qlogo.cn/g?b=qq&nk=${encodeURIComponent(userId)}&s=100`;
+        `https://q1.qlogo.cn/g?b=qq&nk=${encodeURIComponent(userId)}&s=100`;
       document.getElementById("meta-user-name").textContent = data.user_name || "未知玩家";
       document.getElementById("meta-user-id").textContent = userId ? `(${userId})` : "";
       const serverName = String(data.server_name || "").trim();

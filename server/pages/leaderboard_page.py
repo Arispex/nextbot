@@ -9,6 +9,18 @@ from nextbot.time_utils import beijing_now_text
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 TEMPLATE_PATH = BASE_DIR / "server" / "templates" / "leaderboard.html"
 
+MAX_ENTRIES = 200
+
+_template_cache: tuple[float, str] | None = None
+
+
+def _load_template() -> str:
+    global _template_cache
+    mtime = TEMPLATE_PATH.stat().st_mtime
+    if _template_cache is None or _template_cache[0] != mtime:
+        _template_cache = (mtime, TEMPLATE_PATH.read_text(encoding="utf-8"))
+    return _template_cache[1]
+
 
 def build_payload(
     *,
@@ -23,6 +35,8 @@ def build_payload(
     for item in entries:
         if not isinstance(item, dict):
             continue
+        if len(normalized) >= MAX_ENTRIES:
+            break
         raw_value = item.get("value", 0)
         normalized.append(
             {
@@ -45,15 +59,15 @@ def build_payload(
         "generated_at": beijing_now_text(),
         "title": str(title).strip(),
         "value_label": str(value_label).strip(),
-        "page": int(page),
-        "total_pages": int(total_pages),
+        "page": max(1, int(page)),
+        "total_pages": max(1, int(total_pages)),
         "entries": normalized,
         "self_entry": normalized_self,
     }
 
 
 def render(payload: dict[str, Any]) -> bytes:
-    template = TEMPLATE_PATH.read_text(encoding="utf-8")
+    template = _load_template()
     data = {
         "generated_at": str(payload.get("generated_at", "")),
         "title": str(payload.get("title", "排行榜")),

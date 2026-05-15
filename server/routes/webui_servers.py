@@ -26,8 +26,10 @@ from server.routes import (
     api_error,
     api_success,
     build_pagination_slice,
+    client_ip as _shared_client_ip,
     read_json_object,
     read_pagination_query,
+    user_agent as _shared_user_agent,
 )
 
 router = APIRouter()
@@ -56,19 +58,9 @@ def _is_mask_token(token: str) -> bool:
     return token.startswith(_TOKEN_MASK_PREFIX)
 
 
-def _client_ip(request: Request) -> str:
-    """D-2：从 X-Forwarded-For 或 client.host 取调用方 IP（与 webui.py 同实现）。"""
-    forwarded = request.headers.get("x-forwarded-for", "").strip()
-    if forwarded:
-        return forwarded.split(",")[0].strip() or "unknown"
-    if request.client is not None:
-        return request.client.host or "unknown"
-    return "unknown"
-
-
-def _user_agent(request: Request) -> str:
-    """D-2：截断 User-Agent 防超长（与 webui.py 同实现）。"""
-    return request.headers.get("user-agent", "")[:200]
+# CRIT-1 / HIGH-2：thin re-export aliases；canonical helper 在 server/routes/__init__.py。
+_client_ip = _shared_client_ip
+_user_agent = _shared_user_agent
 
 
 def _serialize_server(server: Server) -> dict[str, Any]:

@@ -14,7 +14,13 @@ from sqlalchemy import func
 
 from nextbot.access_control import get_group_ids
 from nextbot.db import User, get_session
-from server.routes import api_error, api_success, read_json_object
+from server.routes import (
+    api_error,
+    api_success,
+    client_ip as _shared_client_ip,
+    read_json_object,
+    user_agent as _shared_user_agent,
+)
 
 router = APIRouter()
 
@@ -37,22 +43,9 @@ _player_event_lock = threading.Lock()
 _player_event_history: dict[str, deque[float]] = {}
 
 
-def _client_ip(request: Request) -> str:
-    """H-3：从 X-Forwarded-For 或 client.host 取调用方 IP。
-
-    与 webui.py / servers 模块同实现。
-    """
-    forwarded = request.headers.get("x-forwarded-for", "").strip()
-    if forwarded:
-        return forwarded.split(",")[0].strip() or "unknown"
-    if request.client is not None:
-        return request.client.host or "unknown"
-    return "unknown"
-
-
-def _user_agent(request: Request) -> str:
-    """H-3：截断 User-Agent 防超长（与 servers 模块同实现）。"""
-    return request.headers.get("user-agent", "")[:200]
+# CRIT-1 / HIGH-2：thin re-export aliases；canonical helper 在 server/routes/__init__.py。
+_client_ip = _shared_client_ip
+_user_agent = _shared_user_agent
 
 
 def _check_player_event_rate_limit(client_ip: str) -> tuple[bool, int]:

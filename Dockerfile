@@ -12,9 +12,11 @@ WORKDIR /app
 COPY pyproject.toml uv.lock ./
 
 # Build a self-contained venv at /app/.venv with locked dependencies.
+# BuildKit cache mount keeps uv's wheel cache across builds.
 ENV UV_LINK_MODE=copy \
     UV_COMPILE_BYTECODE=1
-RUN uv sync --frozen --no-dev --no-install-project
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev --no-install-project
 
 
 # ---------- Stage 2: runtime ----------
@@ -26,21 +28,33 @@ COPY --from=builder /app/.venv /app/.venv
 ENV PATH="/app/.venv/bin:${PATH}" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    NEXTBOT_DATA_DIR=/app/data
+    NEXTBOT_DATA_DIR=/app/data \
+    PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
 # Install Chromium plus its system libraries via Playwright.
-# `--with-deps` invokes apt-get under the hood; clean lists afterwards.
+# `--with-deps` invokes apt-get under the hood; clean lists + cache afterwards.
+# Maintainer note: any future apt-get additions MUST use
+# `--no-install-recommends` and clean both /var/lib/apt/lists/* and
+# /var/cache/apt/archives/* in the same RUN.
 RUN /app/.venv/bin/playwright install --with-deps chromium \
-    && rm -rf /var/lib/apt/lists/*
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*.deb
 
 WORKDIR /app
 
 # Project source last so iterative code changes only invalidate this layer.
 COPY . .
 
-# Persist .env / app.db / .webui_auth.json across container restarts.
+# Prepare the data directory; bind-mounted from the host in production.
 RUN mkdir -p /app/data
-VOLUME ["/app/data"]
+
+# Create an unprivileged runtime user and transfer ownership of writable paths.
+# playwright cache (/ms-playwright) was populated above as root; chown it so
+# the unprivileged user can launch the browser.
+RUN useradd -r -u 1000 -m -d /home/nextbot -s /bin/bash nextbot \
+    && chown -R nextbot:nextbot /app /home/nextbot /ms-playwright
+
+USER nextbot
 
 EXPOSE 18081
 

@@ -11,6 +11,16 @@ TEMPLATE_PATH = BASE_DIR / "server" / "templates" / "tutorial.html"
 
 _BOT_AVATAR = "__BOT__"
 
+_template_cache: tuple[float, str] | None = None
+
+
+def _load_template() -> str:
+    global _template_cache
+    mtime = TEMPLATE_PATH.stat().st_mtime
+    if _template_cache is None or _template_cache[0] != mtime:
+        _template_cache = (mtime, TEMPLATE_PATH.read_text(encoding="utf-8"))
+    return _template_cache[1]
+
 
 def _resolve_avatar(placeholder: str, self_user_id: str) -> str:
     raw = str(placeholder or "").strip()
@@ -18,7 +28,8 @@ def _resolve_avatar(placeholder: str, self_user_id: str) -> str:
         return f"http://q1.qlogo.cn/g?b=qq&nk={self_user_id}&s=100"
     if raw == "__BOT__":
         return _BOT_AVATAR
-    return raw
+    # 未声明占位符不信任，返回空串，由 template 的 fallback initial 兜底
+    return ""
 
 
 def _resolve_name(raw: str) -> str:
@@ -106,7 +117,7 @@ def build_payload(
 
 
 def render(payload: dict[str, Any]) -> bytes:
-    template = TEMPLATE_PATH.read_text(encoding="utf-8")
+    template = _load_template()
     data = {
         "generated_at": str(payload.get("generated_at", "")),
         "title": str(payload.get("title", "")),

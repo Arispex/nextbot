@@ -9,6 +9,9 @@
   <style>
     *, *::before, *::after { box-sizing: border-box; }
     html, body { margin: 0; padding: 0; }
+    /* class selectors with display:flex/grid override the UA [hidden]
+     * default; restore it explicitly so hidden sections truly disappear. */
+    [hidden] { display: none !important; }
 
     body {
       background-color: var(--color-canvas);
@@ -358,7 +361,10 @@
         return r2 === r1 ? r1.toFixed(1) : r2.toFixed(2);
       }
 
-      const data = JSON.parse(document.getElementById("lottery-view-data").textContent);
+      const data = (() => {
+        try { return JSON.parse(document.getElementById("lottery-view-data").textContent); }
+        catch (err) { console.warn("[render] page data unavailable", err); return {}; }
+      })();
       const prizes = Array.isArray(data.prizes) ? data.prizes : [];
       const total = Number(data.total || prizes.length || 0);
       const totalPages = Number(data.total_pages || 1);

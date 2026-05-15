@@ -9,6 +9,9 @@
   <style>
     *, *::before, *::after { box-sizing: border-box; }
     html, body { margin: 0; padding: 0; }
+    /* class selectors with display:flex/grid override the UA [hidden]
+     * default; restore it explicitly so hidden sections truly disappear. */
+    [hidden] { display: none !important; }
 
     body {
       background-color: var(--color-canvas);
@@ -302,13 +305,16 @@
   <script id="wh-data" type="application/json">__WAREHOUSE_DATA_JSON__</script>
   <script>
     (async function () {
-      const data = JSON.parse(document.getElementById("wh-data").textContent);
+      const data = (() => {
+        try { return JSON.parse(document.getElementById("wh-data").textContent); }
+        catch (err) { console.warn("[render] page data unavailable", err); return {}; }
+      })();
       const slots = Array.isArray(data.slots) ? data.slots : [];
 
       const ownerId = String(data.owner_user_id || "");
       document.getElementById("wh-avatar").src =
-        `http://q1.qlogo.cn/g?b=qq&nk=${encodeURIComponent(ownerId)}&s=100`;
-      document.getElementById("wh-owner-name").textContent = data.owner_user_name || "未知用户";
+        `https://q1.qlogo.cn/g?b=qq&nk=${encodeURIComponent(ownerId)}&s=100`;
+      document.getElementById("wh-owner-name").textContent = data.owner_user_name || "未知玩家";
       document.getElementById("wh-owner-id").textContent = ownerId ? `(${ownerId})` : "";
       document.getElementById("wh-used").textContent = String(data.used || 0);
       document.getElementById("wh-capacity").textContent = String(data.capacity || 0);

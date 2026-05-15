@@ -285,7 +285,10 @@
 
   <script id="page-data" type="application/json">__ABOUT_DATA_JSON__</script>
   <script>
-    const data = JSON.parse(document.getElementById("page-data").textContent);
+    const data = (() => {
+      try { return JSON.parse(document.getElementById("page-data").textContent); }
+      catch (err) { console.warn("[render] page data unavailable", err); return {}; }
+    })();
 
     document.getElementById("meta-time").textContent = data.generated_at || "";
 
@@ -294,14 +297,19 @@
     document.getElementById("hero-name").textContent = data.project_name || "NextBot";
     document.getElementById("hero-desc").textContent = data.project_desc || "";
 
+    // Defensive: only allow http(s) URLs for outbound anchors; reject
+    // javascript:/data:/etc. The current payload is hardcoded but this
+    // guard makes the template safe if the payload is ever opened up.
+    const safeHttpUrl = (u) => (typeof u === "string" && /^https?:\/\//i.test(u) ? u : "#");
+
     const authorEl = document.getElementById("info-author");
     authorEl.textContent = data.author || "";
-    authorEl.href = data.author_url || "#";
+    authorEl.href = safeHttpUrl(data.author_url);
 
     const repoEl = document.getElementById("info-repo");
     const repoUrl = data.project_url || "";
     repoEl.textContent = repoUrl;
-    repoEl.href = repoUrl;
+    repoEl.href = safeHttpUrl(repoUrl);
 
     function maskQQ(qq) {
       if (!qq || qq.length <= 4) return qq || "";
@@ -316,7 +324,7 @@
 
       const img = document.createElement("img");
       img.className = "thanks-avatar";
-      img.src = `http://q1.qlogo.cn/g?b=qq&nk=${encodeURIComponent(t.qq)}&s=100`;
+      img.src = `https://q1.qlogo.cn/g?b=qq&nk=${encodeURIComponent(t.qq)}&s=100`;
       img.alt = "";
       card.appendChild(img);
 

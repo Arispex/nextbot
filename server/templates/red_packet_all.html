@@ -9,6 +9,9 @@
   <style>
     *, *::before, *::after { box-sizing: border-box; }
     html, body { margin: 0; padding: 0; }
+    /* class selectors with display:flex/grid override the UA [hidden]
+     * default; restore it explicitly so hidden sections truly disappear. */
+    [hidden] { display: none !important; }
 
     body {
       background-color: var(--color-canvas);
@@ -212,7 +215,10 @@
 
   <script id="rp-data" type="application/json">__RED_PACKET_ALL_DATA_JSON__</script>
   <script>
-    const data = JSON.parse(document.getElementById("rp-data").textContent);
+    const data = (() => {
+      try { return JSON.parse(document.getElementById("rp-data").textContent); }
+      catch (err) { console.warn("[render] page data unavailable", err); return {}; }
+    })();
     const entries = Array.isArray(data.entries) ? data.entries : [];
     const page = Number(data.page || 1);
     const totalPages = Number(data.total_pages || 1);
@@ -246,7 +252,7 @@
       const avatar = document.createElement("img");
       avatar.className = "avatar";
       avatar.alt = "";
-      avatar.src = `http://q1.qlogo.cn/g?b=qq&nk=${encodeURIComponent(senderId)}&s=100`;
+      avatar.src = `https://q1.qlogo.cn/g?b=qq&nk=${encodeURIComponent(senderId)}&s=100`;
       card.appendChild(avatar);
 
       const info = document.createElement("div");

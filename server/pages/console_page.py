@@ -21,9 +21,16 @@ AppShellMenu = Literal[
 ]
 
 
+_template_cache: dict[str, tuple[float, str]] = {}
+
+
 def _load_template(name: str) -> str:
     path = WEBUI_TEMPLATE_DIR / name
-    return path.read_text(encoding="utf-8")
+    mtime = path.stat().st_mtime
+    cached = _template_cache.get(name)
+    if cached is None or cached[0] != mtime:
+        _template_cache[name] = (mtime, path.read_text(encoding="utf-8"))
+    return _template_cache[name][1]
 
 
 def _asset_url(path: str) -> str:

@@ -304,7 +304,10 @@
   <script id="leaderboard-data" type="application/json">__LEADERBOARD_DATA_JSON__</script>
   <script>
     (function () {
-      const data = JSON.parse(document.getElementById("leaderboard-data").textContent);
+      const data = (() => {
+        try { return JSON.parse(document.getElementById("leaderboard-data").textContent); }
+        catch (err) { console.warn("[render] page data unavailable", err); return {}; }
+      })();
       const entries = Array.isArray(data.entries) ? data.entries : [];
       const valueLabel = String(data.value_label || "");
       const formatValue = (v) => typeof v === "string" ? v : Number(v).toLocaleString();

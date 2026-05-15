@@ -9,6 +9,16 @@ from nextbot.time_utils import beijing_now_text
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 TEMPLATE_PATH = BASE_DIR / "server" / "templates" / "inventory.html"
 
+_template_cache: tuple[float, str] | None = None
+
+
+def _load_template() -> str:
+    global _template_cache
+    mtime = TEMPLATE_PATH.stat().st_mtime
+    if _template_cache is None or _template_cache[0] != mtime:
+        _template_cache = (mtime, TEMPLATE_PATH.read_text(encoding="utf-8"))
+    return _template_cache[1]
+
 
 def _normalize_slots(slots: list[dict[str, Any]]) -> list[dict[str, int]]:
     slot_map: dict[int, dict[str, Any]] = {}
@@ -91,7 +101,7 @@ def build_payload(
 
 
 def render(payload: dict[str, Any]) -> bytes:
-    template = TEMPLATE_PATH.read_text(encoding="utf-8")
+    template = _load_template()
     data = {
         "user_id": payload.get("user_id", ""),
         "user_name": payload.get("user_name", ""),

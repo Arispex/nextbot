@@ -9,6 +9,18 @@ from nextbot.time_utils import beijing_now_text
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 TEMPLATE_PATH = BASE_DIR / "server" / "templates" / "red_packet_own.html"
 
+MAX_ENTRIES = 200
+
+_template_cache: tuple[float, str] | None = None
+
+
+def _load_template() -> str:
+    global _template_cache
+    mtime = TEMPLATE_PATH.stat().st_mtime
+    if _template_cache is None or _template_cache[0] != mtime:
+        _template_cache = (mtime, TEMPLATE_PATH.read_text(encoding="utf-8"))
+    return _template_cache[1]
+
 
 def build_payload(
     *,
@@ -20,6 +32,8 @@ def build_payload(
     for i, item in enumerate(entries):
         if not isinstance(item, dict):
             continue
+        if len(normalized) >= MAX_ENTRIES:
+            break
         total_amount = int(item.get("total_amount", 0))
         taken = int(item.get("taken", 0))
         total_count = int(item.get("total_count", 0))
@@ -39,14 +53,14 @@ def build_payload(
         )
     return {
         "generated_at": beijing_now_text(),
-        "page": int(page),
-        "total_pages": int(total_pages),
+        "page": max(1, int(page)),
+        "total_pages": max(1, int(total_pages)),
         "entries": normalized,
     }
 
 
 def render(payload: dict[str, Any]) -> bytes:
-    template = TEMPLATE_PATH.read_text(encoding="utf-8")
+    template = _load_template()
     data = {
         "generated_at": str(payload.get("generated_at", "")),
         "page": int(payload.get("page", 1)),

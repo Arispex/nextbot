@@ -6,6 +6,7 @@ import contextlib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
+from urllib.parse import urlparse
 
 from nonebot.log import logger
 
@@ -58,7 +59,43 @@ class ScreenshotOptions:
     fit_content_height: bool = False
 
 
-_LAUNCH_ARGS = ["--disable-dev-shm-usage"]
+# M-7：默认加固。
+# - ``--disable-dev-shm-usage``：避免 docker /dev/shm 太小导致渲染 OOM
+# - ``--disable-gpu``：无头模式无需 GPU，减少 VRAM 占用
+# - ``--disable-extensions`` / ``--disable-background-networking``：禁掉非业务网络请求
+# - ``--disable-features=Translate,InterestCohort``：关闭冷门 / 隐私敏感子系统
+_LAUNCH_ARGS = [
+    "--disable-dev-shm-usage",
+    "--disable-gpu",
+    "--disable-extensions",
+    "--disable-background-networking",
+    "--disable-features=Translate,InterestCohort",
+]
+
+# H-5：截图 URL 白名单 host。``screenshot_url`` 是 module-level public API，
+# 任何 caller（含未来 plugin）传入非 loopback URL 都会被 fail-closed 拒绝，
+# 防止 Playwright 携带本机网络访问内网 / 元数据 endpoint / file:// 协议读本地文件。
+_ALLOWED_SCHEMES = frozenset({"http", "https"})
+_ALLOWED_HOSTS = frozenset({"127.0.0.1", "localhost", "::1", "[::1]"})
+
+
+def _assert_local_url(url: str) -> None:
+    """H-5：校验 ``url`` 仅指向 loopback host + http/https scheme。
+
+    不通过则 raise ``RenderScreenshotError``；调用方应在请求 Playwright 前
+    显式调用本函数。
+    """
+    parsed = urlparse(url)
+    scheme = (parsed.scheme or "").lower()
+    if scheme not in _ALLOWED_SCHEMES:
+        raise RenderScreenshotError(
+            f"截图 URL 协议不在白名单：scheme={scheme!r} url={url!r}"
+        )
+    hostname = (parsed.hostname or "").lower()
+    if hostname not in _ALLOWED_HOSTS:
+        raise RenderScreenshotError(
+            f"截图 URL 主机不在白名单：host={hostname!r} url={url!r}"
+        )
 
 
 class _PlaywrightSession:
@@ -88,7 +125,10 @@ class _PlaywrightSession:
                 headless=True,
                 args=_LAUNCH_ARGS,
             )
-            logger.info(f"截图浏览器启动完成，启动参数 {_LAUNCH_ARGS}")
+            # L-6：补充浏览器实例 id 作运维上下文，方便日志检索定位单次启动周期
+            logger.info(
+                f"截图浏览器启动完成，浏览器实例={id(self._browser)} 启动参数={_LAUNCH_ARGS}"
+            )
             return self._browser
 
     async def close(self) -> None:
@@ -114,10 +154,14 @@ async def screenshot_url(
     *,
     options: ScreenshotOptions | None = None,
 ) -> None:
+    # H-5：入口处 URL 白名单校验；非 loopback / 非 http(s) 一律 fail-closed。
+    _assert_local_url(url)
+
     render_options = options or ScreenshotOptions()
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    last_exc: Exception | None = None
+    # M-9：保证 retry 全失败时仍有可读 last_exc 文案，不会出现 "...：None"。
+    last_exc: Exception = RenderScreenshotError("截图失败：未知原因")
     for attempt in (1, 2):
         try:
             browser = await _session.get_browser()
@@ -142,8 +186,13 @@ async def screenshot_url(
 
                 # Plan A 的 load 只等 HTML 同步资源；JS fetch 后动态 createElement('img') 的 sprite
                 # 不在等待范围。下面两道补丁覆盖动态资源场景，避免回退到不稳定的 networkidle。
-                with contextlib.suppress(PlaywrightTimeoutError):
+                # L-5：networkidle 超时降为 DEBUG（频繁触发不应噪音），但保留可见性供性能调优定位。
+                try:
                     await page.wait_for_load_state("networkidle", timeout=5000)
+                except PlaywrightTimeoutError as exc:
+                    logger.debug(
+                        f"截图等待 networkidle 超时，继续渲染：timeout=5000ms reason={exc}"
+                    )
                 await page.evaluate(
                     """
                     () => Promise.all(
