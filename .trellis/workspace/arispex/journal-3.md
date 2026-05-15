@@ -1421,3 +1421,36 @@ shop 的 get_shop / create_shop_item / update_shop_item 与 lottery 同形：外
 ### Next Steps
 
 - None - task complete
+
+
+## Session 138: app_shell 退出登入加确认 dialog（含共享 modal 样式下沉）
+
+**Date**: 2026-05-15
+**Task**: app_shell 退出登入加确认 dialog（含共享 modal 样式下沉）
+**Branch**: `main`
+
+### Summary
+
+之前点击退出按钮立即调 DELETE /webui/api/session 容易误点。在 shell 层加 #logout-confirm-modal（标题/文案/取消/退出按钮 + 关闭 × + mask click + ESC + focus 锁/恢复 + body scroll lock）。把 users.css 的共享 modal 样式与 .btn-danger 复制到 app-shell.css，让 dashboard / settings / servers / login 等不自定义 modal CSS 的页面也能正确渲染。webui.js 把原 DELETE flow 抽成 performLogout()，仅在用户点确认时才执行。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `bddbcdd` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
