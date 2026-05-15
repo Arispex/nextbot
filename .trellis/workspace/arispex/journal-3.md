@@ -1619,3 +1619,36 @@ users / servers 表头是 ID + DB PK；shop / lottery 之前是 # + idx+1（行�
 ### Next Steps
 
 - None - task complete
+
+
+## Session 144: 按用户偏好回退 3 项审计限制（users per_page=0 / groups 保留名 / lottery 命令黑名单）
+
+**Date**: 2026-05-16
+**Task**: 按用户偏好回退 3 项审计限制（users per_page=0 / groups 保留名 / lottery 命令黑名单）
+**Branch**: `main`
+
+### Summary
+
+按用户偏好回退之前 audit 引入的 3 项严格限制：(1) users per_page=0 全表通道重开，meta 反映 total；非 0 路径保留 _PER_PAGE_MAX cap。(2) groups 移除 _RESERVED_GROUP_NAMES 拒绝（owner / admin / root / system / superuser 可作组名）；L-S-2 _BUILTIN_GROUPS 保留。(3) lottery 移除命令前缀黑名单（op / ban / kick / stop / restart 等可作命令奖品）；前后端常量、函数、listener 一并清理。其它 audit 修复保留不动。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `07cde92` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
