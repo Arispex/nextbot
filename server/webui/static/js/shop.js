@@ -798,7 +798,7 @@
     // Reset radio to merge default
     const defaultRadio = document.querySelector('input[name="shop-import-mode"][value="merge"]');
     if (defaultRadio) defaultRadio.checked = true;
-    // H-2：每次打开 modal 时清空 REPLACE 确认输入。
+    // H-2：每次打开 modal 时清空 全量替换 确认输入。
     if (els.shopImportReplaceConfirm) els.shopImportReplaceConfirm.value = "";
     refreshImportReplaceWarn();
     showModal(els.shopImportModal);
@@ -808,12 +808,12 @@
     const isReplace = document.querySelector('input[name="shop-import-mode"]:checked')?.value === "replace_all";
     if (isReplace) {
       els.shopImportReplaceWarn.classList.remove("hidden");
-      // H-2：replace_all 必须额外输入 "REPLACE" 才能启用「导入」按钮。
+      // H-2：replace_all 必须额外输入 "全量替换" 才能启用「导入」按钮。
       if (els.shopImportReplaceConfirmRow) els.shopImportReplaceConfirmRow.classList.remove("hidden");
     } else {
       els.shopImportReplaceWarn.classList.add("hidden");
       if (els.shopImportReplaceConfirmRow) els.shopImportReplaceConfirmRow.classList.add("hidden");
-      // 切回 merge 时清空 REPLACE 输入，避免下次切到 replace_all 误启用。
+      // 切回 merge 时清空 全量替换 输入，避免下次切到 replace_all 误启用。
       if (els.shopImportReplaceConfirm) els.shopImportReplaceConfirm.value = "";
     }
     refreshImportConfirmEnabled();
@@ -828,7 +828,7 @@
     const isReplace = document.querySelector('input[name="shop-import-mode"]:checked')?.value === "replace_all";
     if (isReplace) {
       const typed = els.shopImportReplaceConfirm ? els.shopImportReplaceConfirm.value : "";
-      els.shopImportConfirm.disabled = typed.trim() !== "REPLACE";
+      els.shopImportConfirm.disabled = typed.trim() !== "全量替换";
     } else {
       els.shopImportConfirm.disabled = false;
     }
@@ -839,13 +839,13 @@
     // H-3：飞行 guard，特别保护 replace_all 这条破坏性路径不被双击。
     if (state.importing) return;
     const mode = document.querySelector('input[name="shop-import-mode"]:checked')?.value || "merge";
-    // H-2：replace_all 强制输入 "REPLACE" 才能继续，防止误点。
+    // H-2：replace_all 强制输入 "全量替换" 才能继续，防止误点。
     if (mode === "replace_all") {
       const typed = els.shopImportReplaceConfirm ? els.shopImportReplaceConfirm.value.trim() : "";
-      if (typed !== "REPLACE") {
+      if (typed !== "全量替换") {
         showAlert(
           els.shopImportAlert,
-          api.buildActionFailureMessage("导入", "请输入 REPLACE 以确认全量替换"),
+          api.buildActionFailureMessage("导入", "请输入「全量替换」以确认"),
           "error",
         );
         return;
@@ -973,7 +973,7 @@
     document.querySelectorAll('input[name="shop-import-mode"]').forEach((r) => {
       r.addEventListener("change", refreshImportReplaceWarn);
     });
-    // H-2：REPLACE 确认输入变化时刷新「导入」按钮的 disabled 状态。
+    // H-2：全量替换 确认输入变化时刷新「导入」按钮的 disabled 状态。
     if (els.shopImportReplaceConfirm) {
       els.shopImportReplaceConfirm.addEventListener("input", refreshImportConfirmEnabled);
     }
