@@ -1322,3 +1322,36 @@ R1 (10d7936) commands audit 落地后 R2 复审发现 1 处 R1 regression（B-7 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 135: 修复抽奖创建/更新奖品 SQLite BEGIN IMMEDIATE 自死锁
+
+**Date**: 2026-05-15
+**Task**: 修复抽奖创建/更新奖品 SQLite BEGIN IMMEDIATE 自死锁
+**Branch**: `main`
+
+### Summary
+
+create_prize / update_prize 在 commit + refresh 后调用 _load_server_label_map() 开新 session 触发 BEGIN IMMEDIATE，与外层 session 已持有的写锁冲突报 database is locked。让 _load_server_label_map 可选接收已有 session，两个 caller 改为复用外层 session（其它 caller 行为不变）。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7c24541` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
