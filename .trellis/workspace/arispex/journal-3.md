@@ -1487,3 +1487,36 @@ shop.js 与 lottery.js 的新建 / 保存 / 删除（商店、商品、奖池、
 ### Next Steps
 
 - None - task complete
+
+
+## Session 140: shop / lottery 导入确认文案统一为「全量替换」
+
+**Date**: 2026-05-16
+**Task**: shop / lottery 导入确认文案统一为「全量替换」
+**Branch**: `main`
+
+### Summary
+
+shop 与 lottery 导入 modal 的二次确认输入框文案断层（shop: REPLACE，lottery: 全量替换）。统一为 lottery 已用的中文「全量替换」：shop_content.html label + placeholder + shop.js 8 处字面量 / 注释 / 错误文案；lottery_content.html label「二次确认」→「输入 全量替换 以启用」、placeholder 简化为「全量替换」。lottery 后端 confirm 常量未动；shop 后端无 confirm 校验保持不变（defense-in-depth 是 backlog）。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `c613417` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
