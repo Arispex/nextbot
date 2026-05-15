@@ -1553,3 +1553,36 @@ WebUI 还有 2 处原生 dialog（webui.js logout 失败 window.alert + lottery.
 ### Next Steps
 
 - None - task complete
+
+
+## Session 142: 商店商品切换 kind 加确认 dialog（对齐 lottery）
+
+**Date**: 2026-05-16
+**Task**: 商店商品切换 kind 加确认 dialog（对齐 lottery）
+**Branch**: `main`
+
+### Summary
+
+shop item kind 切换之前直接清空对端字段无二次确认，与 lottery prize kind 切换体验断层。state 加 editingItemOriginalKind 跟踪；handleKindUserChange 改 async，编辑态且 kind 与原值不同时弹 webuiConfirm（标题'切换商品类型'、按钮 danger '继续'），先 revert select 视觉值再 await 避免闪烁。新建 / kind 未变跳过弹窗。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `b369003` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
