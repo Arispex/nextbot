@@ -1,0 +1,5 @@
+{"file": ".trellis/tasks/05-15-audit-webui-6/prd.md", "reason": "本任务 PRD：范围 / 维度 / 流程"}
+{"file": "/Users/arispex/.claude/CLAUDE.md", "reason": "全局规范：toast 文案、log、API error.message、中英混排空格"}
+{"file": ".trellis/tasks/archive/2026-05/05-15-webui-servers-audit-r2/prd.md", "reason": "前轮 servers 审计 PRD，参考 finding 分级 / scope 规则"}
+{"file": ".trellis/tasks/archive/2026-05/05-14-webui-dashboard-audit-r3/prd.md", "reason": "前轮 dashboard 审计 PRD，scope-creep 教训"}
+{"file": ".trellis/tasks/archive/2026-05/05-15-webui-commands-audit-r3/prd.md", "reason": "前轮 commands 审计 PRD，复审节奏"}
