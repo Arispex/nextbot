@@ -1454,3 +1454,36 @@ shop 的 get_shop / create_shop_item / update_shop_item 与 lottery 同形：外
 ### Next Steps
 
 - None - task complete
+
+
+## Session 139: shop / lottery CRUD 成功补 toast
+
+**Date**: 2026-05-16
+**Task**: shop / lottery CRUD 成功补 toast
+**Branch**: `main`
+
+### Summary
+
+shop.js 与 lottery.js 的新建 / 保存 / 删除（商店、商品、奖池、奖品）成功后只关 modal + reload，缺成功 toast。12 处成功路径补 showAlert(els.alert, ...) — '新建成功' / '保存成功' / '删除成功'，严格遵守动作+结果不含对象名规范。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `b9080bd` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

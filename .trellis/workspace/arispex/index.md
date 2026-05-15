@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-3.md`
-- **Total Sessions**: 138
-- **Last Active**: 2026-05-15
+- **Total Sessions**: 139
+- **Last Active**: 2026-05-16
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-3.md` | ~1456 | Active |
+| `journal-3.md` | ~1489 | Active |
 | `journal-2.md` | ~1973 | Archived |
 | `journal-1.md` | ~1999 | Archived |
 <!-- @@@/auto:active-documents -->
@@ -31,6 +31,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 139 | 2026-05-16 | shop / lottery CRUD 成功补 toast | `b9080bd` | `main` |
 | 138 | 2026-05-15 | app_shell 退出登入加确认 dialog（含共享 modal 样式下沉） | `bddbcdd` | `main` |
 | 137 | 2026-05-15 | 修复设置页重启 poll：401 视为已恢复 + '正在重启' 状态提示 | `d0e4a80` | `main` |
 | 136 | 2026-05-15 | 修复商店 _load_server_label_map SQLite 自死锁（同 lottery 同形） | `cccd569` | `main` |
