@@ -337,12 +337,14 @@ def _load_server_id_set() -> set[int]:
         session.close()
 
 
-def _load_server_label_map() -> dict[int, str]:
-    session = get_session()
-    try:
+def _load_server_label_map(session=None) -> dict[int, str]:
+    if session is not None:
         return {int(s.id): str(s.name) for s in session.query(Server).all()}
+    s = get_session()
+    try:
+        return {int(x.id): str(x.name) for x in s.query(Server).all()}
     finally:
-        session.close()
+        s.close()
 
 
 @router.get("/webui/api/shops/meta/tiers")
@@ -788,7 +790,7 @@ async def get_shop(shop_id: int, request: Request) -> JSONResponse:
         )
         # M-12：仅当存在 kind=command 且指定了 target_server_id 的 item 时才查 server label map。
         needs_label_map = any(it.target_server_id is not None for it in items)
-        label_map: dict[int, str] = _load_server_label_map() if needs_label_map else {}
+        label_map: dict[int, str] = _load_server_label_map(session) if needs_label_map else {}
         data = _serialize_shop(shop, item_count=len(items))
         data["items"] = [
             _serialize_shop_item(
@@ -925,7 +927,7 @@ async def create_shop_item(shop_id: int, request: Request) -> JSONResponse:
         session.add(item)
         session.commit()
         session.refresh(item)
-        label_map = _load_server_label_map()
+        label_map = _load_server_label_map(session)
         target_label = (
             label_map.get(int(item.target_server_id))
             if item.target_server_id is not None else None
@@ -986,7 +988,7 @@ async def update_shop_item(shop_id: int, item_id: int, request: Request) -> JSON
         item.show_command = validated["show_command"]
         item.require_online = validated["require_online"]
         session.commit()
-        label_map = _load_server_label_map()
+        label_map = _load_server_label_map(session)
         target_label = (
             label_map.get(int(item.target_server_id))
             if item.target_server_id is not None else None
