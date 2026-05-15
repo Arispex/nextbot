@@ -1289,3 +1289,36 @@ R1 (10d7936) commands audit 落地后 R2 复审发现 1 处 R1 regression（B-7 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 134: 项目剩余未审计代码全量审计 + 修复（5 bucket / 82 项）
+
+**Date**: 2026-05-15
+**Task**: 项目剩余未审计代码全量审计 + 修复（5 bucket / 82 项）
+**Branch**: `main`
+
+### Summary
+
+对之前未单独审计或仅做过 theme 清理的代码做全量审计：5 bucket（server 核心 / 路由公共层 / render page 后端 / render 模板 / scripts+Docker）。派 5 个 trellis-research + 5 个 trellis-implement sub-agent 并行处理。共 119 项 finding（2 CRIT / 14 HIGH / 39 MED / 52 LOW / 12 backlog），落地 82 项最小非破坏硬化（68.9%）。关键命中：trusted_proxies XFF 解析 + 公共 client_ip helper（消除 8 处副本）；read_json_object 256 KiB cap；/render 与 /health loopback-only；page_store LRU+cap；17 render page mtime 模板缓存；17 模板加 [hidden] 守卫 + JSON.parse fallthrough；7 模板 QQ 头像 https；Dockerfile 非 root + 端口绑 127.0.0.1；migration --dry-run + 事务；package_release secret deny-list；render endpoint asyncio.to_thread 解阻塞。57 文件 +1352/-370（d364692）。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d364692` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
