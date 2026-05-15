@@ -24,11 +24,6 @@ router = APIRouter()
 _BUILTIN_GROUPS: tuple[str, str] = ("guest", "default")
 _GROUP_NAME_PATTERN = re.compile(r"^[A-Za-z0-9一-鿿._-]{1,32}$")
 _TOKEN_ITEM_PATTERN = re.compile(r"^[^\s,]{1,256}$")
-# 同步自 nextbot/db.py 的 RESERVED_GROUP_NAMES，如需扩展请同步更新两处。
-# WebUI 不直接 import 是为了避免后端被启动时序耦合，且这是稳定常量集。
-_RESERVED_GROUP_NAMES: frozenset[str] = frozenset(
-    {"owner", "admin", "root", "system", "superuser"}
-)
 # M-S-4：keyword 长度上限，与 servers R1 A-9 对齐。
 _KEYWORD_MAX_LEN = 64
 # M-S-1：用户控制字符串落日志前过滤换行 / 控制字符的最大保留长度。
@@ -77,13 +72,6 @@ def _normalize_group_name(raw_value: Any) -> str:
     if _GROUP_NAME_PATTERN.fullmatch(value) is None:
         raise GroupPayloadValidationError(
             "身份组名称格式错误，仅允许中文、英文、数字和 ._-，长度 1-32",
-            field="name",
-        )
-    # H-1：与 nextbot/plugins/group_manager.py 保持一致，拒绝系统保留字。
-    # 保留字组创建后无任何特权效果（owner 是 .env 短路非 DB 组），仅会污染列表。
-    if value.lower() in _RESERVED_GROUP_NAMES:
-        raise GroupPayloadValidationError(
-            "身份组名称为系统保留字",
             field="name",
         )
     # L-S-2：内置组（guest / default）也显式拒绝，避免依赖 unique 约束兜底

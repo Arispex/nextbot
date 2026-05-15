@@ -38,7 +38,7 @@ _USER_ID_PATTERN = re.compile(r"^\d{5,20}$")
 _USER_NAME_PATTERN = re.compile(r"^[A-Za-z0-9\u4e00-\u9fff]+$")
 _MAX_USER_NAME_LENGTH = 16
 _KEYWORD_MAX_LENGTH = 128  # H-6：搜索关键字长度上限
-_PER_PAGE_MAX = 100  # H-2：每页上限，禁止 per_page=0 / 超大 per_page
+_PER_PAGE_MAX = 100  # 每页上限，仅对非全表请求 cap
 
 # M-4：sync-whitelist 每用户 5s 冷却（curl 直连同样限流）
 _SYNC_COOLDOWN_SECONDS = 5.0
@@ -303,23 +303,27 @@ def _validation_error(exc: UserPayloadValidationError) -> JSONResponse:
 
 @router.get("/webui/api/users")
 async def webui_users_list(request: Request) -> JSONResponse:
-    # H-2：禁用 per_page=0 全量通道；统一走分页 + 上限 cap，避免内存放大。
     pagination, error_response = read_pagination_query(request)
     if error_response is not None:
         return error_response
     assert pagination is not None
 
     page = max(1, int(pagination["page"]))
-    per_page = int(pagination["per_page"])
-    if per_page <= 0 or per_page > _PER_PAGE_MAX:
-        per_page = min(_PER_PAGE_MAX, max(1, per_page if per_page > 0 else 10))
+    per_page_raw = int(pagination["per_page"])
+    fetch_all = per_page_raw == 0  # 0 = 取全表
+    if fetch_all:
+        per_page = 0
+    elif per_page_raw < 0 or per_page_raw > _PER_PAGE_MAX:
+        per_page = min(_PER_PAGE_MAX, max(1, per_page_raw))
+    else:
+        per_page = per_page_raw
 
     # H-6：keyword 长度截断，防 DoS / 超长 LIKE
     keyword = str(request.query_params.get("q") or "").strip()[:_KEYWORD_MAX_LENGTH]
 
     session = get_session()
     try:
-        # H-2：搜索下推 SQL ilike + LIMIT/OFFSET，避免全表加载到内存
+        # 搜索下推 SQL ilike，避免全表加载到内存
         base = session.query(User)
         if keyword:
             escaped = _escape_like_keyword(keyword)
@@ -332,17 +336,27 @@ async def webui_users_list(request: Request) -> JSONResponse:
             )
 
         total = int(base.with_entities(func.count(User.id)).scalar() or 0)
-        meta, offset, limit = build_pagination_slice(
-            total=total,
-            page=page,
-            per_page=per_page,
-        )
-        users = (
-            base.order_by(User.id.asc())
-            .offset(offset)
-            .limit(limit)
-            .all()
-        )
+
+        if fetch_all:
+            users = base.order_by(User.id.asc()).all()
+            meta = {
+                "page": 1,
+                "per_page": total,
+                "total": total,
+                "total_pages": 1,
+            }
+        else:
+            meta, offset, limit = build_pagination_slice(
+                total=total,
+                page=page,
+                per_page=per_page,
+            )
+            users = (
+                base.order_by(User.id.asc())
+                .offset(offset)
+                .limit(limit)
+                .all()
+            )
         serialized = [_serialize_user(item) for item in users]
         return api_success(data=serialized, meta=meta)
     except Exception as exc:

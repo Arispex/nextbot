@@ -39,24 +39,6 @@ _SORT_ORDER_MIN = -1_000_000
 _COIN_AMOUNT_MAX = 100_000_000  # ±10**8
 _ACTUAL_VALUE_MAX = 1_000_000_000
 
-# H-2：危险命令前缀黑名单。WebUI 是 lottery 奖品命令的唯一录入端，禁止录入高权命令。
-# 抽奖落地阶段（nextbot/plugins/lottery.py）通过 RCON 直发到 MC 服务器。
-_COMMAND_DENYLIST_PREFIXES = (
-    "op ",
-    "deop ",
-    "ban ",
-    "ban-ip ",
-    "pardon",
-    "kick ",
-    "stop",
-    "shutdown",
-    "restart",
-    "whitelist ",
-    "save-all",
-    "save-off",
-    "save-on",
-)
-
 # H-1：replace_all 模式要求前端传入此 confirm 字段（用户在 modal 中键入「全量替换」四个汉字）。
 _REPLACE_ALL_CONFIRM_PHRASE = "全量替换"
 
@@ -79,18 +61,6 @@ def _strict_int(raw: Any) -> tuple[int | None, bool]:
 def _strip_control_chars(text: str) -> str:
     """L-2：去除换行 / 回车 / 制表符等控制字符，避免日志注入。"""
     return text.replace("\r", "").replace("\n", "").replace("\t", " ")
-
-
-def _command_denylist_hit(stripped_cmd: str) -> str | None:
-    """H-2：返回命中的危险前缀（lower-cased），若命中。
-
-    支持 `/op ` / `op ` 两种形式（MC 命令可带或不带 `/`）。
-    """
-    lower = stripped_cmd.lower().lstrip("/")
-    for prefix in _COMMAND_DENYLIST_PREFIXES:
-        if lower == prefix.rstrip() or lower.startswith(prefix):
-            return prefix
-    return None
 
 
 def _validation_error_response(details: list[dict[str, str]]) -> JSONResponse:
@@ -349,15 +319,7 @@ def _validate_prize_payload(
         elif len(command_template) > _CMD_MAX_LEN:
             details.append({"field": "command_template", "message": f"命令长度不能超过 {_CMD_MAX_LEN}"})
         else:
-            # H-2：危险命令前缀黑名单。
-            hit = _command_denylist_hit(stripped_cmd)
-            if hit is not None:
-                details.append({
-                    "field": "command_template",
-                    "message": f"命令前缀 {hit.strip()} 不允许作为抽奖奖品",
-                })
-            else:
-                command_template = stripped_cmd
+            command_template = stripped_cmd
 
         show_command = bool(data.get("show_command", False))
         require_online = bool(data.get("require_online", False))

@@ -31,12 +31,6 @@
   // L-7：previousFocus 用于 modal 关闭后恢复键盘焦点。
   let previousFocus = null;
 
-  // H-2：危险命令前缀黑名单（与后端 _COMMAND_DENYLIST_PREFIXES 同步）。
-  const COMMAND_DENYLIST_PREFIXES = [
-    "op ", "deop ", "ban ", "ban-ip ", "pardon", "kick ", "stop", "shutdown",
-    "restart", "whitelist ", "save-all", "save-off", "save-on",
-  ];
-
   // H-1：replace_all 高危操作要求用户精确键入此短语。
   const REPLACE_ALL_CONFIRM_PHRASE = "全量替换";
 
@@ -83,20 +77,6 @@
   }
 
   async function callApi(url, opts = {}) { return api.apiRequest(url, opts); }
-
-  // H-2：检查命令模板是否命中危险前缀。返回命中的前缀（去掉尾部空格），否则 null。
-  function detectDenylistedPrefix(cmd) {
-    if (typeof cmd !== "string") return null;
-    const lower = cmd.trim().toLowerCase().replace(/^\/+/, "");
-    if (!lower) return null;
-    for (const prefix of COMMAND_DENYLIST_PREFIXES) {
-      const trimmed = prefix.replace(/\s+$/, "");
-      if (lower === trimmed || lower.startsWith(prefix)) {
-        return trimmed;
-      }
-    }
-    return null;
-  }
 
   function formatProbabilityPct(n) {
     const v = Number(n) || 0;
@@ -569,12 +549,6 @@
     els.prizeKindItemFields.classList.toggle("hidden", kind !== "item");
     els.prizeKindCommandFields.classList.toggle("hidden", kind !== "command");
     els.prizeKindCoinFields.classList.toggle("hidden", kind !== "coin");
-    // H-2：刷新命令前缀警告状态。
-    if (kind === "command") {
-      refreshCommandWarning();
-    } else {
-      hideCommandWarning();
-    }
   }
 
   // M-10：切到非当前 kind 时清空另两组字段，避免上一 kind 脏数据写入 DB。
@@ -597,21 +571,6 @@
     if (currentKind !== "coin") {
       els.prizeFieldCoinAmount.value = "";
     }
-  }
-
-  // H-2：命令前缀警告 helper（inline 显示在 modal alert 区）。
-  function refreshCommandWarning() {
-    const cmd = els.prizeFieldCommandTemplate ? els.prizeFieldCommandTemplate.value : "";
-    const hit = detectDenylistedPrefix(cmd);
-    if (hit) {
-      showAlert(els.prizeModalAlert, `命令前缀 ${hit} 不允许作为抽奖奖品，提交将被后端拒绝`, "error");
-    } else {
-      hideAlert(els.prizeModalAlert);
-    }
-  }
-
-  function hideCommandWarning() {
-    hideAlert(els.prizeModalAlert);
   }
 
   // H-6：kind 切换确认。
@@ -719,12 +678,6 @@
       payload.command_template = els.prizeFieldCommandTemplate.value;
       payload.show_command = els.prizeFieldShowCommand.checked;
       payload.require_online = els.prizeFieldRequireOnline.checked;
-      // H-2：客户端预检命令前缀，避免无谓的服务端往返。
-      const hit = detectDenylistedPrefix(payload.command_template);
-      if (hit) {
-        showAlert(els.prizeModalAlert, `命令前缀 ${hit} 不允许作为抽奖奖品`, "error");
-        return;
-      }
     } else {  // coin
       const c = els.prizeFieldCoinAmount.value.trim();
       payload.coin_amount = c === "" ? 0 : Number(c);
@@ -1051,10 +1004,6 @@
     els.prizeDeleteConfirm.addEventListener("click", confirmDeletePrize);
     // H-6：kind change 走自定义 handler，必要时弹确认。
     els.prizeFieldKind.addEventListener("change", handleKindChange);
-    // H-2：命令模板 input 实时校验前缀，提前警告。
-    if (els.prizeFieldCommandTemplate) {
-      els.prizeFieldCommandTemplate.addEventListener("input", refreshCommandWarning);
-    }
 
     els.lotteryExportBtn.addEventListener("click", handleExport);
     els.lotteryImportBtn.addEventListener("click", () => els.lotteryImportFile.click());
