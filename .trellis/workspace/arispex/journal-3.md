@@ -1586,3 +1586,36 @@ shop item kind 切换之前直接清空对端字段无二次确认，与 lottery
 ### Next Steps
 
 - None - task complete
+
+
+## Session 143: 统一表格 ID 列文案：shop / lottery 改「#数字」为 DB ID
+
+**Date**: 2026-05-16
+**Task**: 统一表格 ID 列文案：shop / lottery 改「#数字」为 DB ID
+**Branch**: `main`
+
+### Summary
+
+users / servers 表头是 ID + DB PK；shop / lottery 之前是 # + idx+1（行号，非 DB ID），admin 排障无法对应日志。统一为 ID + 真实 item.id / prize.id（与 users/servers 风格一致）。displayIndex 形参保留不动 caller，warehouse 槽位卡片 #N 是 slot 标识符不在本任务范围。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `5aed9c4` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

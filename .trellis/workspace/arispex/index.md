@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-3.md`
-- **Total Sessions**: 142
+- **Total Sessions**: 143
 - **Last Active**: 2026-05-16
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-3.md` | ~1588 | Active |
+| `journal-3.md` | ~1621 | Active |
 | `journal-2.md` | ~1973 | Archived |
 | `journal-1.md` | ~1999 | Archived |
 <!-- @@@/auto:active-documents -->
@@ -31,6 +31,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 143 | 2026-05-16 | 统一表格 ID 列文案：shop / lottery 改「#数字」为 DB ID | `5aed9c4` | `main` |
 | 142 | 2026-05-16 | 商店商品切换 kind 加确认 dialog（对齐 lottery） | `b369003` | `main` |
 | 141 | 2026-05-16 | 用自写 dialog 替换 window.alert / window.confirm | `ac908a4` | `main` |
 | 140 | 2026-05-16 | shop / lottery 导入确认文案统一为「全量替换」 | `c613417` | `main` |
