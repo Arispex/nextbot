@@ -184,6 +184,8 @@
   };
 
   // M-4：统一默认 Accept / Content-Type，避免每个 caller 手写，并保持 caller override 优先。
+  // CSRF-1：所有非 GET 请求默认携带 `X-Requested-With: NextBotWebUI`，
+  // 与后端 `_check_csrf_header` 配合作为 CSRF 防护；caller 显式指定该头时优先。
   const buildDefaultHeaders = (method, body, headers) => {
     const merged = { Accept: "application/json" };
     const isGet = String(method || "GET").toUpperCase() === "GET";
@@ -194,6 +196,9 @@
       typeof URLSearchParams !== "undefined" && body instanceof URLSearchParams;
     if (!isGet && hasBody && !isFormData && !isBlob && !isUrlEncoded) {
       merged["Content-Type"] = "application/json";
+    }
+    if (!isGet) {
+      merged["X-Requested-With"] = "NextBotWebUI";
     }
     return { ...merged, ...(headers || {}) };
   };

@@ -82,8 +82,8 @@
   const RESTART_POLL_INITIAL_DELAY_MS = 1500;
   const RESTART_POLL_INTERVAL_MS = 500;
   const RESTART_POLL_MAX_ATTEMPTS = 15;
-  // H-3：自定义请求头让 cross-site form POST 无法伪造。
-  const CSRF_HEADERS = { "X-Requested-With": "NextBotWebUI" };
+  // H-3：CSRF 防护所需的 `X-Requested-With` 头已由 api.js 在所有非 GET 请求中默认注入，
+  // 此处不再重复维护。
   const FIELD_LABELS = {
     onebot_ws_urls: "OneBot WebSocket 地址",
     onebot_access_token: "OneBot 访问令牌",
@@ -543,12 +543,6 @@
     try {
       await api.apiRequest("/webui/api/settings", {
         method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-          // H-3：cross-site form 无法塞自定义头，作为 CSRF 防护。
-          ...CSRF_HEADERS,
-        },
         body: JSON.stringify(data),
         action: "保存",
         expectedStatus: 200,
