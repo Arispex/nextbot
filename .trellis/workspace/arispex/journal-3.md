@@ -1191,3 +1191,34 @@ R1 (10d7936) commands audit 落地后 R2 复审发现 1 处 R1 regression（B-7 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 131: WebUI servers R2 audit (R1 修复复审 + 全量再扫)
+
+**Date**: 2026-05-15
+**Task**: WebUI servers R2 audit (R1 修复复审 + 全量再扫)
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
