@@ -122,6 +122,93 @@ img { max-width: 100%; height: auto; }
 
 [hidden] { display: none; }
 
+/* ── Modal (shell-shared; usable across pages without local .modal CSS) ─ */
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-dialog);
+}
+
+.modal-mask {
+  position: absolute;
+  inset: 0;
+  background: rgba(20, 20, 19, 0.45);
+}
+
+.modal-card {
+  position: relative;
+  width: min(720px, calc(100% - 24px));
+  margin: 8vh auto 0;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--line);
+  background-color: var(--surface);
+  box-shadow: var(--shadow-elevated);
+  max-height: 84vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.confirm-modal-card {
+  width: min(440px, calc(100% - 24px));
+}
+
+.modal-head {
+  padding: var(--space-md) var(--space-lg);
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+}
+
+.modal-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+.modal-close-btn {
+  width: 28px;
+  height: 28px;
+}
+
+.modal-alert {
+  margin: var(--space-sm) var(--space-lg) 0;
+}
+
+.modal-alert .alert-message {
+  font-size: 12px;
+}
+
+.modal-body {
+  padding: var(--space-md) var(--space-lg);
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.confirm-modal-body { padding-top: var(--space-lg); padding-bottom: var(--space-lg); }
+
+.confirm-modal-text {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text);
+}
+
+.modal-foot {
+  padding: var(--space-md) var(--space-lg);
+  border-top: 1px solid var(--line);
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-xs);
+}
+
 .skip-link {
   position: absolute;
   left: -9999px;
@@ -387,6 +474,18 @@ img { max-width: 100%; height: auto; }
 }
 
 .btn-primary:hover {
+  background-color: var(--primary-active);
+  border-color: var(--primary-active);
+  color: var(--on-primary);
+}
+
+.btn-danger {
+  background-color: var(--primary);
+  border-color: var(--primary);
+  color: var(--on-primary);
+}
+
+.btn-danger:hover {
   background-color: var(--primary-active);
   border-color: var(--primary-active);
   color: var(--on-primary);

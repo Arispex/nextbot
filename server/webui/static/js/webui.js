@@ -186,7 +186,14 @@
   }
 
   if (logoutButton && api) {
-    logoutButton.addEventListener("click", async () => {
+    const logoutModal = document.getElementById("logout-confirm-modal");
+    const logoutConfirmBtn = document.getElementById("logout-confirm-confirm-btn");
+    const logoutCancelBtn = document.getElementById("logout-confirm-cancel-btn");
+    const logoutCloseBtn = document.getElementById("logout-confirm-close-btn");
+    let logoutPreviousFocus = null;
+    let logoutPreviousBodyOverflow = "";
+
+    const performLogout = async () => {
       logoutButton.disabled = true;
       let succeeded = false;
       let failureReason = "";
@@ -223,6 +230,96 @@
         log.warn("logout", "弹出失败提示异常", alertError);
       }
       logoutButton.disabled = false;
+    };
+
+    const isLogoutModalOpen = () => !!(logoutModal && !logoutModal.classList.contains("hidden"));
+
+    const openLogoutModal = () => {
+      if (!logoutModal) {
+        // Shell 未注入 modal（理论不会发生）— 静默忽略点击，避免无确认直接登出。
+        log.warn("logout-modal", "logout-confirm-modal 节点缺失", null);
+        return;
+      }
+      logoutPreviousFocus =
+        document.activeElement && document.activeElement !== document.body
+          ? document.activeElement
+          : null;
+      logoutPreviousBodyOverflow = document.body.style.overflow;
+      logoutModal.classList.remove("hidden");
+      document.body.style.overflow = "hidden";
+      if (logoutCancelBtn) {
+        try {
+          logoutCancelBtn.focus();
+        } catch (focusError) {
+          log.warn("logout-modal", "focus 取消按钮失败", focusError);
+        }
+      }
+    };
+
+    const closeLogoutModal = () => {
+      if (!logoutModal) {
+        return;
+      }
+      logoutModal.classList.add("hidden");
+      document.body.style.overflow = logoutPreviousBodyOverflow || "";
+      const fallback = logoutButton;
+      const target = logoutPreviousFocus && document.contains(logoutPreviousFocus)
+        ? logoutPreviousFocus
+        : fallback;
+      if (target && typeof target.focus === "function") {
+        try {
+          target.focus();
+        } catch (focusError) {
+          log.warn("logout-modal", "还原焦点失败", focusError);
+        }
+      }
+      logoutPreviousFocus = null;
+    };
+
+    logoutButton.addEventListener("click", () => {
+      openLogoutModal();
+    });
+
+    if (logoutCancelBtn) {
+      logoutCancelBtn.addEventListener("click", () => {
+        closeLogoutModal();
+      });
+    }
+
+    if (logoutCloseBtn) {
+      logoutCloseBtn.addEventListener("click", () => {
+        closeLogoutModal();
+      });
+    }
+
+    if (logoutModal) {
+      logoutModal.querySelectorAll("[data-logout-confirm-close]").forEach((node) => {
+        node.addEventListener("click", () => {
+          closeLogoutModal();
+        });
+      });
+    }
+
+    if (logoutConfirmBtn) {
+      logoutConfirmBtn.addEventListener("click", async () => {
+        closeLogoutModal();
+        await performLogout();
+      });
+    }
+
+    // ESC 仅在 logout modal 打开时拦截；其它 page 的 modal-stack 不受影响。
+    window.addEventListener("keydown", (event) => {
+      if (event.defaultPrevented) {
+        return;
+      }
+      if (event.key !== "Escape") {
+        return;
+      }
+      if (!isLogoutModalOpen()) {
+        return;
+      }
+      event.preventDefault();
+      closeLogoutModal();
     });
   }
 
