@@ -402,3 +402,36 @@ shop_list.html 删底部 hint-line（HTML/CSS/JS 整段）；每个 entry-top �
 ### Next Steps
 
 - None - task complete
+
+
+## Session 167: lottery_list 每奖池右侧加抽奖命令
+
+**Date**: 2026-05-16
+**Task**: lottery_list 每奖池右侧加抽奖命令
+**Branch**: `main`
+
+### Summary
+
+lottery_list.html 把单 .entry-cmd 改为 .entry-cmds 容器（flex-column 右对齐）+ 两个 entry-cmd 子项：『查看奖池 <id>』+『抽奖 <id>』。shop_list 独立样式不变。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d75709a` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
