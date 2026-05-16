@@ -699,3 +699,36 @@ _extract_args_text 之前只按 canonical command_name 匹配前缀，用户用 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 176: rename: 全亮地图 → 查看全亮地图
+
+**Date**: 2026-05-16
+**Task**: rename: 全亮地图 → 查看全亮地图
+**Branch**: `main`
+
+### Summary
+
+把 server_tools.py 里 5 处 user-visible 字符串 全亮地图 → 查看全亮地图（L43/216/219/226/275）。command_key/permission/matcher 变量名全部保留。trellis-implement + trellis-check 双 PASS。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `e190f60` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
