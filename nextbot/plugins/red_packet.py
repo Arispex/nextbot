@@ -549,6 +549,7 @@ async def _send_red_packet_image(
     *,
     page_url: str,
     file_prefix: str,
+    at_user_id: str | None = None,
 ) -> None:
     await render_and_send_screenshot(
         bot,
@@ -558,6 +559,7 @@ async def _send_red_packet_image(
         file_prefix=file_prefix,
         semaphore=_red_packet_screenshot_semaphore,
         failure_action="查询",
+        at_user_id=at_user_id,
     )
 
 
@@ -654,7 +656,12 @@ async def handle_list_own(bot: Bot, event: Event, arg: Message = CommandArg()) -
         logger.info(
             f"我的红包渲染地址：user_id={user_id} page={page}/{total_pages} total={total} internal_url={page_url}"
         )
-        await _send_red_packet_image(bot, event, page_url=page_url, file_prefix="red-packet-own")
+        await _send_red_packet_image(
+            bot, event,
+            page_url=page_url,
+            file_prefix="red-packet-own",
+            at_user_id=user_id,
+        )
     except Exception:  # noqa: BLE001
         logger.exception(f"我的红包处理异常：user_id={user_id}")
         try:
