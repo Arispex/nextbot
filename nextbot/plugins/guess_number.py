@@ -1,3 +1,4 @@
+import asyncio
 import random
 from datetime import datetime, timedelta
 
@@ -12,13 +13,21 @@ from nextbot.db import User, execute_rowcount, get_session
 from nextbot.message_parser import parse_command_args_with_fallback
 from nextbot.permissions import require_permission
 from nextbot.plugins.economy import MAX_COINS_AMOUNT, add_coins_with_cap
+from nextbot.screenshot_render import render_and_send_screenshot
 from nextbot.time_utils import db_now_utc_naive
-from nextbot.text_utils import EMOJI_COIN, EMOJI_GAME, EMOJI_TARGET, reply_block, reply_failure, safe_at_segment_or_empty
+from nextbot.text_utils import reply_failure, safe_at_segment_or_empty
+from server.screenshot import ScreenshotOptions
+from server.web_server import create_guess_number_page
 
 guess_matcher = on_command("猜数字")
 
 # 用内存记录冷却，重启清零
 _cooldown_map: dict[str, datetime] = {}
+
+# 限制 guess_number 同时渲染数量，避免 Playwright 浏览器并发过高。
+# guess_number 单页 720×720 轻量，相比项目其它截图业务（Semaphore(2)）放宽到 4。
+# 单玩家 30s cooldown 已限并发，群多人同时玩的峰值需更大缓冲。
+_guess_semaphore = asyncio.Semaphore(4)
 
 
 def _safe_param_int(key: str, default: int, min_value: int = 0) -> int:
@@ -185,6 +194,10 @@ async def handle_guess_number(bot: Bot, event: Event, arg: Message = CommandArg(
             await bot.send(event, at + " " + reply_failure("猜数字", "请先注册账号"))
             return
 
+        # session.close() 后 ORM 属性不可访问；在事务内 cache 出局部变量给
+        # 后续渲染用，避免 detached instance 上读 .name。
+        user_name = str(user.name)
+
         # 原子条件 UPDATE：扣押金。并发时第二条 rowcount=0 → 金币不足。
         rowcount = execute_rowcount(
             session,
@@ -291,27 +304,56 @@ async def handle_guess_number(bot: Bot, event: Event, arg: Message = CommandArg(
 
     _cooldown_map[user_id] = now
 
-    head_emoji = EMOJI_TARGET if diff == 0 else EMOJI_GAME
-    lines = [f"🎯 答案 {answer}，你猜 {guess}（差 {diff}）"]
-    # PC-8.1：reply 中显示 applied_payout（实际入账）而非 payout（理论派奖）。
-    # 触顶时另起一行展示原始派奖与触顶差额，避免"获得 X 金币"与 final_coins 对不上。
-    if net > 0:
-        lines.append(f"{EMOJI_COIN} {result_type}！投入 {cost}，获得 {applied_payout}，净赚 {applied_net} 金币")
-    elif net == 0:
-        lines.append(f"⚖️ {result_type}！投入 {cost} 金币，刚好持平")
+    # result_kind 分类：与模板 5 种 result band 状态对齐
+    if diff == 0:
+        result_kind = "exact"
+    elif diff <= near_range:
+        result_kind = "near"
+    elif diff <= close_range:
+        result_kind = "close"
+    elif diff <= far_range:
+        result_kind = "far"
     else:
-        if payout > 0:
-            applied_loss = cost - applied_payout
-            lines.append(f"❌ {result_type}！投入 {cost}，返还 {applied_payout}，损失 {applied_loss} 金币")
-        else:
-            lines.append(f"❌ {result_type}！投入 {cost} 金币，全部损失")
-    lines.append(f"{EMOJI_COIN} 当前金币：{final_coins}")
-    if capped and applied_payout < payout:
-        lines.append(f"⚠️ 已触账户上限，理论派奖 {payout}，{payout - applied_payout} 金币未入账")
+        result_kind = "miss"
 
     logger.info(
         f"猜数字结果：user_id={user_id} guess={guess} answer={answer} diff={diff} "
         f"result={result_type} cost={cost} payout={payout} applied_payout={applied_payout} "
-        f"capped={capped} net={net}"
+        f"capped={capped} net={net} result_kind={result_kind}"
     )
-    await bot.send(event, at + "\n" + reply_block(f"{head_emoji} 猜数字", lines))
+
+    page_url = create_guess_number_page(
+        player_name=user_name,
+        player_qq=user_id,
+        range_max=range_max,
+        guess=guess,
+        answer=answer,
+        diff=diff,
+        cost=cost,
+        result_kind=result_kind,
+        result_label=result_type,
+        payout=payout,
+        applied_payout=applied_payout,
+        net=net,
+        applied_net=applied_net,
+        final_coins=final_coins,
+        capped=capped,
+    )
+    ok = await render_and_send_screenshot(
+        bot,
+        event,
+        page_url=page_url,
+        options=ScreenshotOptions(
+            viewport_width=720,
+            viewport_height=720,
+            fit_content_height=True,
+        ),
+        file_prefix="guess",
+        semaphore=_guess_semaphore,
+        failure_action="猜数字",
+        at_user_id=user_id,
+    )
+    if not ok:
+        logger.warning(
+            f"猜数字截图发送失败：user_id={user_id} guess={guess} answer={answer}"
+        )

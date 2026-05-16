@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NextBot 猜数字结果</title>
+  <link rel="stylesheet" href="/assets/css/render-fonts.css" />
+  <link rel="stylesheet" href="/assets/css/render-tokens.css" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    /* class selectors with display:flex/grid override the UA [hidden]
+     * default; restore it explicitly so hidden sections truly disappear. */
+    [hidden] { display: none !important; }
+
+    body {
+      background-color: var(--color-canvas);
+      color: var(--color-ink);
+      font-family: var(--font-body);
+      font-size: var(--type-body-md-size);
+      line-height: 1.55;
+      padding: var(--space-xxl) var(--space-xxl);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    .page {
+      max-width: 920px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-xl);
+    }
+
+    /* ── Header (text-hero — coral rule + eyebrow + serif title). */
+    .header-rule {
+      width: 64px;
+      height: 4px;
+      background-color: var(--color-primary);
+      border-radius: var(--radius-pill);
+      margin-bottom: var(--space-md);
+    }
+
+    .header-eyebrow {
+      color: var(--color-muted);
+      margin-bottom: var(--space-xs);
+    }
+
+    .header-title {
+      color: var(--color-ink);
+      margin: 0 0 var(--space-md) 0;
+    }
+
+    .header-meta {
+      color: var(--color-muted-soft);
+      display: flex;
+      gap: var(--space-md);
+      align-items: baseline;
+      flex-wrap: wrap;
+    }
+
+    .header-meta-divider {
+      color: var(--color-hairline);
+    }
+
+    .meta-value {
+      color: var(--color-ink);
+      font-feature-settings: "tnum";
+    }
+
+    /* ── Stats tiles (4 across, cream-card). ─ */
+    .stats-tiles {
+      display: grid;
+      gap: var(--space-sm);
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .stat-tile {
+      background-color: var(--color-surface-card);
+      border: 1px solid var(--color-hairline);
+      border-radius: var(--radius-md);
+      padding: var(--space-sm) var(--space-md);
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
+    }
+
+    .stat-label {
+      color: var(--color-muted);
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .stat-value {
+      color: var(--color-ink);
+      font-family: var(--font-body);
+      font-size: 18px;
+      font-weight: 600;
+      line-height: 1.15;
+      letter-spacing: -0.01em;
+      font-feature-settings: "tnum";
+      overflow-wrap: break-word;
+      word-break: break-all;
+    }
+
+    .stat-value.gain { color: var(--color-accent-teal); }
+    .stat-value.loss { color: var(--color-primary); }
+
+    /* ── Guess display (sits directly on canvas, no card wrap). ── */
+    .guess-display {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: var(--space-lg);
+    }
+
+    .guess-row {
+      display: flex;
+      gap: var(--space-md);
+      align-items: center;
+      justify-content: center;
+    }
+
+    .guess-card {
+      width: 160px;
+      min-height: 120px;
+      background-color: var(--color-surface-cream-strong);
+      border-radius: var(--radius-lg);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: var(--space-xs);
+      padding: var(--space-md);
+    }
+
+    .guess-card-label {
+      color: var(--color-muted);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .guess-card-value {
+      font-family: var(--font-code);
+      font-size: 44px;
+      font-weight: 400;
+      color: var(--color-ink);
+      font-feature-settings: "tnum";
+      line-height: 1.0;
+    }
+
+    .guess-diff {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-xxs);
+      padding: var(--space-xs) var(--space-sm);
+      background-color: var(--color-surface-card);
+      border: 1px solid var(--color-hairline);
+      border-radius: var(--radius-pill);
+      color: var(--color-muted);
+      font-family: var(--font-code);
+      font-size: 13px;
+      font-feature-settings: "tnum";
+    }
+
+    .guess-diff-value {
+      color: var(--color-ink);
+    }
+
+    /* ── Guess result (text label below the cards, single line). ── */
+    .guess-result {
+      font-family: var(--font-display);
+      font-size: var(--type-display-sm-size, 28px);
+      font-weight: 400;
+      letter-spacing: -0.3px;
+      line-height: 1.2;
+      text-align: center;
+      color: var(--color-muted);
+      margin: 0;
+    }
+
+    .guess-result.guess-result-exact { color: var(--color-primary); }
+    .guess-result.guess-result-near { color: var(--color-primary); }
+    .guess-result.guess-result-close { color: var(--color-ink); }
+    .guess-result.guess-result-far { color: var(--color-muted); }
+    .guess-result.guess-result-miss { color: var(--color-body-strong); }
+
+    /* ── Cap warning ───────────────────────────────────────────── */
+    .cap-warning {
+      color: var(--color-warning, var(--color-accent-amber));
+      text-align: center;
+    }
+
+    /* ── Footer ────────────────────────────────────────────────── */
+    .footer {
+      text-align: right;
+      color: var(--color-muted-soft);
+      margin-top: var(--space-md);
+    }
+
+    /* Fallback state when JSON payload fails to parse. */
+    body.fallback .page {
+      opacity: 0.5;
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+
+    <header>
+      <div class="header-rule"></div>
+      <div class="header-eyebrow type-caption-uppercase">小游戏系统</div>
+      <h1 class="header-title type-display-lg">猜数字</h1>
+      <div class="header-meta type-body-sm">
+        <span>玩家 <span class="meta-value" id="meta-player-name"></span></span>
+        <span class="header-meta-divider">·</span>
+        <span>QQ <span class="meta-value" id="meta-player-qq"></span></span>
+        <span class="header-meta-divider">·</span>
+        <span>范围 <span class="meta-value" id="meta-range"></span></span>
+        <span class="header-meta-divider">·</span>
+        <span>投入 <span class="meta-value" id="meta-cost"></span></span>
+        <span class="header-meta-divider">·</span>
+        <span id="generated-at"></span>
+      </div>
+    </header>
+
+    <section class="stats-tiles">
+      <div class="stat-tile">
+        <span class="stat-label">投入</span>
+        <span class="stat-value loss" id="sum-cost"></span>
+      </div>
+      <div class="stat-tile">
+        <span class="stat-label">实际获得</span>
+        <span class="stat-value" id="sum-payout"></span>
+      </div>
+      <div class="stat-tile">
+        <span class="stat-label">净赚</span>
+        <span class="stat-value" id="sum-net"></span>
+      </div>
+      <div class="stat-tile">
+        <span class="stat-label">当前金币</span>
+        <span class="stat-value" id="sum-coins"></span>
+      </div>
+    </section>
+
+    <section class="guess-display">
+      <div class="guess-row">
+        <div class="guess-card">
+          <span class="guess-card-label">你猜</span>
+          <span class="guess-card-value" id="card-guess"></span>
+        </div>
+        <div class="guess-diff">
+          <span>≈ 差</span>
+          <span class="guess-diff-value" id="card-diff"></span>
+        </div>
+        <div class="guess-card">
+          <span class="guess-card-label">答案</span>
+          <span class="guess-card-value" id="card-answer"></span>
+        </div>
+      </div>
+      <div class="guess-result" id="guess-result"></div>
+    </section>
+
+    <div id="cap-warning" class="cap-warning type-caption" hidden></div>
+
+    <footer class="footer type-caption">Powered by NextBot</footer>
+  </main>
+
+  <script id="guess-number-data" type="application/json">__GUESS_NUMBER_DATA_JSON__</script>
+  <script>
+    (function () {
+      let data;
+      try {
+        data = JSON.parse(document.getElementById("guess-number-data").textContent);
+      } catch (err) {
+        console.warn("[guess_number] page data unavailable", err);
+        document.body.classList.add("fallback");
+        return;
+      }
+
+      const playerName = String(data.player_name || "").trim() || "—";
+      const playerQq = String(data.player_qq || "").trim() || "—";
+      const rangeMax = Number(data.range_max || 0);
+      const guess = Number(data.guess || 0);
+      const answer = Number(data.answer || 0);
+      const diff = Number(data.diff || 0);
+      const cost = Number(data.cost || 0);
+      const resultKind = String(data.result_kind || "miss");
+      const payout = Number(data.payout || 0);
+      const appliedPayout = Number(data.applied_payout || 0);
+      const appliedNet = Number(data.applied_net || 0);
+      const finalCoins = Number(data.final_coins || 0);
+      const capped = Boolean(data.capped);
+      const generatedAt = String(data.generated_at || "");
+
+      // ── Header meta ────────────────────────────────────────
+      document.getElementById("meta-player-name").textContent = playerName;
+      document.getElementById("meta-player-qq").textContent = playerQq;
+      document.getElementById("meta-range").textContent = `1-${rangeMax}`;
+      document.getElementById("meta-cost").textContent = String(cost);
+      document.getElementById("generated-at").textContent = generatedAt;
+
+      // ── Stats tiles ────────────────────────────────────────
+      document.getElementById("sum-cost").textContent = `− ${cost}`;
+      document.getElementById("sum-payout").textContent = String(appliedPayout);
+
+      const netEl = document.getElementById("sum-net");
+      netEl.classList.remove("gain", "loss");
+      if (appliedNet > 0) {
+        netEl.textContent = `+ ${appliedNet}`;
+        netEl.classList.add("gain");
+      } else if (appliedNet < 0) {
+        netEl.textContent = `− ${Math.abs(appliedNet)}`;
+        netEl.classList.add("loss");
+      } else {
+        netEl.textContent = "0";
+      }
+
+      document.getElementById("sum-coins").textContent = String(finalCoins);
+
+      // ── Guess display ─────────────────────────────────────
+      document.getElementById("card-guess").textContent = String(guess);
+      document.getElementById("card-answer").textContent = String(answer);
+      document.getElementById("card-diff").textContent = String(diff);
+
+      // ── Guess result ───────────────────────────────────────
+      const resultEl = document.getElementById("guess-result");
+      const RESULT_PRESETS = {
+        exact: { cls: "guess-result-exact", text: "🎯 命中！" },
+        near: { cls: "guess-result-near", text: "✨ 极近" },
+        close: { cls: "guess-result-close", text: "🎯 接近" },
+        far: { cls: "guess-result-far", text: "↗ 偏离" },
+        miss: { cls: "guess-result-miss", text: "❌ 远离" },
+      };
+      const preset = RESULT_PRESETS[resultKind] || RESULT_PRESETS.miss;
+      resultEl.classList.add(preset.cls);
+      resultEl.textContent = preset.text;
+
+      // ── Cap warning ────────────────────────────────────────
+      if (capped && appliedPayout < payout) {
+        const capEl = document.getElementById("cap-warning");
+        const missing = payout - appliedPayout;
+        capEl.textContent = `⚠️ 已触账户上限，理论派奖 ${payout}，${missing} 金币未入账`;
+        capEl.hidden = false;
+      }
+    })();
+  </script>
+</body>
+</html>

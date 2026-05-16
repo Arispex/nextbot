@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, Response
 
 from server.page_store import get_page
-from server.pages import about_page, admin_list_page, ban_list_page, dice_page, inventory_page, leaderboard_page, lottery_list_page, lottery_result_page, lottery_view_page, menu_page, progress_page, red_packet_all_page, red_packet_own_page, shop_list_page, shop_view_page, tutorial_page, user_info_page, warehouse_page
+from server.pages import about_page, admin_list_page, ban_list_page, dice_page, guess_number_page, inventory_page, leaderboard_page, lottery_list_page, lottery_result_page, lottery_view_page, menu_page, progress_page, red_packet_all_page, red_packet_own_page, shop_list_page, shop_view_page, tutorial_page, user_info_page, warehouse_page
 
 router = APIRouter()
 
@@ -112,6 +112,11 @@ async def render_ban_list(request: Request, token: str) -> Response:
 @router.get("/render/dice/{token}")
 async def render_dice(request: Request, token: str) -> Response:
     return await _render_page(request, token, page_type="dice", renderer=dice_page.render)
+
+
+@router.get("/render/guess_number/{token}")
+async def render_guess_number(request: Request, token: str) -> Response:
+    return await _render_page(request, token, page_type="guess_number", renderer=guess_number_page.render)
 
 
 @router.get("/render/red_packet_own/{token}")

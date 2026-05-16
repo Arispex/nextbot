@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from nonebot.log import logger
 
 from server.page_store import create_page
-from server.pages import about_page, admin_list_page, ban_list_page, dice_page, inventory_page, leaderboard_page, lottery_list_page, lottery_result_page, lottery_view_page, menu_page, progress_page, red_packet_all_page, red_packet_own_page, shop_list_page, shop_view_page, tutorial_page, user_info_page, warehouse_page
+from server.pages import about_page, admin_list_page, ban_list_page, dice_page, guess_number_page, inventory_page, leaderboard_page, lottery_list_page, lottery_result_page, lottery_view_page, menu_page, progress_page, red_packet_all_page, red_packet_own_page, shop_list_page, shop_view_page, tutorial_page, user_info_page, warehouse_page
 from server.routes.render import router as render_router
 from server.routes.webui_commands import router as webui_commands_router
 from server.routes.webui_dashboard import router as webui_dashboard_router
@@ -261,6 +261,44 @@ def create_dice_page(
         capped=capped,
     )
     return _make_page_url("dice", payload)
+
+
+def create_guess_number_page(
+    *,
+    player_name: str,
+    player_qq: str,
+    range_max: int,
+    guess: int,
+    answer: int,
+    diff: int,
+    cost: int,
+    result_kind: str,
+    result_label: str,
+    payout: int,
+    applied_payout: int,
+    net: int,
+    applied_net: int,
+    final_coins: int,
+    capped: bool,
+) -> str:
+    payload = guess_number_page.build_payload(
+        player_name=player_name,
+        player_qq=player_qq,
+        range_max=range_max,
+        guess=guess,
+        answer=answer,
+        diff=diff,
+        cost=cost,
+        result_kind=result_kind,
+        result_label=result_label,
+        payout=payout,
+        applied_payout=applied_payout,
+        net=net,
+        applied_net=applied_net,
+        final_coins=final_coins,
+        capped=capped,
+    )
+    return _make_page_url("guess_number", payload)
 
 
 def create_tutorial_page(
