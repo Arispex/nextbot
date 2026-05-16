@@ -270,3 +270,36 @@ command_config.py CommandUsageError except 分支补 at + ' ' 前缀，所有命
 ### Next Steps
 
 - None - task complete
+
+
+## Session 163: 抢劫图片加 QQ 头像 + 中央流向增强
+
+**Date**: 2026-05-16
+**Task**: 抢劫图片加 QQ 头像 + 中央流向增强
+**Branch**: `main`
+
+### Summary
+
+rob.html 增强可读性：robber/victim-card 顶部加 64×64 QQ 头像（q1.qlogo.cn https + onerror 兜底）；中央替换为 .rob-flow（大字 icon + mono 金额 + label + 5 状态切色）；robber/victim-card 按 result_kind 加 .is-source（opacity+amber dot）/.is-target（cream-strong+coral outline），指示金币流向。仅模板内 HTML/CSS/JS 改动，不动 schema/后端。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `dff4eb5` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
