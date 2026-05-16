@@ -1,0 +1,2 @@
+{"file": ".trellis/tasks/05-16-fix-login-action-fail-message-unify/prd.md", "reason": "Scope = collapse full-fail branch to single reply_failure + delete dead helpers + remove unused import."}
+{"file": ".trellis/tasks/archive/2026-05/05-16-fix-login-action-partial-success/prd.md", "reason": "Prior task that collapsed success branch — this task does the symmetric collapse on the fail side."}

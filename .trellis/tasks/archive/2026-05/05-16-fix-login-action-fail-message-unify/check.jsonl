@@ -1,0 +1,1 @@
+{"file": ".trellis/tasks/05-16-fix-login-action-fail-message-unify/prd.md", "reason": "Acceptance: full-fail single line + dead code removed + audit log + decorators intact."}
