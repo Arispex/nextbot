@@ -1,0 +1,4 @@
+{"file": ".trellis/tasks/05-16-audit-plugin-render-template-shared-helper/prd.md", "reason": "本任务 PRD"}
+{"file": "/Users/arispex/.claude/CLAUDE.md", "reason": "全局规范：toast / log / error.message"}
+{"file": ".trellis/tasks/archive/2026-05/05-15-audit/research/render_pages.md", "reason": "上一轮 render page 审计 prior art（XSS 链 / 模板缓存 / 占位符 fallback）"}
+{"file": ".trellis/tasks/archive/2026-05/05-15-audit/research/render_templates.md", "reason": "上一轮 render template 审计 prior art"}
