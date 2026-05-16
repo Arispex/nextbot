@@ -40,7 +40,7 @@ from nextbot.text_utils import (
 
 
 execute_matcher = on_command("执行")
-map_image_matcher = on_command("全亮地图")
+map_image_matcher = on_command("查看全亮地图")
 download_map_matcher = on_command("下载地图")
 
 # 文件名白名单：仅 ASCII 字母 / 数字 / `_` / `-` / `.`，长度 1-128
@@ -213,17 +213,17 @@ async def handle_execute(
 @map_image_matcher.handle()
 @command_control(
     command_key="server_tools.map_image",
-    display_name="全亮地图",
+    display_name="查看全亮地图",
     permission="server_tools.map_image",
     description="生成当前世界地图图片",
-    usage="全亮地图 <服务器 ID>",
+    usage="查看全亮地图 <服务器 ID>",
     category="服务器工具",
 )
 @require_permission("server_tools.map_image")
 async def handle_map_image(
     bot: Bot, event: Event, arg: Message = CommandArg()
 ):
-    args = parse_command_args_with_fallback(event, arg, "全亮地图")
+    args = parse_command_args_with_fallback(event, arg, "查看全亮地图")
     if len(args) != 1:
         raise_command_usage()
 
@@ -272,7 +272,7 @@ async def handle_map_image(
         # ST-2.3：base64 串硬上限，超过就拒绝，避免被打爆
         if len(b64) > _MAX_BASE64_BYTES:
             logger.warning(
-                f"全亮地图返回数据过大：server_id={server.id} size_bytes={len(b64)}"
+                f"查看全亮地图返回数据过大：server_id={server.id} size_bytes={len(b64)}"
             )
             await bot.send(event, at_prefix(event, reply_failure("查询", "返回数据过大")))
             return
