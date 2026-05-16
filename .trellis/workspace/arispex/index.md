@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-3.md`
-- **Total Sessions**: 146
+- **Total Sessions**: 147
 - **Last Active**: 2026-05-16
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-3.md` | ~1720 | Active |
+| `journal-3.md` | ~1753 | Active |
 | `journal-2.md` | ~1973 | Archived |
 | `journal-1.md` | ~1999 | Archived |
 <!-- @@@/auto:active-documents -->
@@ -31,6 +31,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 147 | 2026-05-16 | server_manager 仅保留「服务器列表」（admin 3 条下线） | `a8b2a74` | `main` |
 | 146 | 2026-05-16 | 下线 group_manager 插件（WebUI groups 已完整覆盖） | `bcf49ec` | `main` |
 | 145 | 2026-05-16 | 移除 lottery template 残留的高权命令前缀提示 | `45ce670` | `main` |
 | 144 | 2026-05-16 | 按用户偏好回退 3 项审计限制（users per_page=0 / groups 保留名 / lottery 命令黑名单） | `07cde92` | `main` |

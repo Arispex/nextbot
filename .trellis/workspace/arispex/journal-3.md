@@ -1718,3 +1718,36 @@ nextbot/plugins/group_manager.py 的 7 条 QQ 命令（身份组列表 / 添加 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 147: server_manager 仅保留「服务器列表」（admin 3 条下线）
+
+**Date**: 2026-05-16
+**Task**: server_manager 仅保留「服务器列表」（admin 3 条下线）
+**Branch**: `main`
+
+### Summary
+
+server_manager.py 从 330 行精简到 50 行：删除 3 个 admin handler（添加/删除/测试连通性，已被 /webui/servers 完整覆盖）+ 7 组 admin-only imports；保留服务器列表 命令（玩家也用查 IP / 端口，tutorial 依赖）。共享模块（server_validation / tshock_api / audit / large_image）不动，仍被 webui_servers.py 使用。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `a8b2a74` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
