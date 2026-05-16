@@ -1652,3 +1652,36 @@ users / servers 表头是 ID + DB PK；shop / lottery 之前是 # + idx+1（行�
 ### Next Steps
 
 - None - task complete
+
+
+## Session 145: 移除 lottery template 残留的高权命令前缀提示
+
+**Date**: 2026-05-16
+**Task**: 移除 lottery template 残留的高权命令前缀提示
+**Branch**: `main`
+
+### Summary
+
+commit 8d9546c 移除了 lottery 命令黑名单的前后端逻辑，但 lottery_content.html:225 残留一条橙色 field-section-hint「禁止录入高权命令前缀…」与后端行为脱节。删除该 div；保留 {player} 占位符说明。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `45ce670` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
