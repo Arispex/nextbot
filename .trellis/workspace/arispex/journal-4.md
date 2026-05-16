@@ -798,3 +798,36 @@ stats.py 给 command_total / command_enabled_count 两处 query 加 .filter(Comm
 ### Next Steps
 
 - None - task complete
+
+
+## Session 179: fix: 允许/拒绝登入 至少一台成功即视为成功
+
+**Date**: 2026-05-16
+**Task**: fix: 允许/拒绝登入 至少一台成功即视为成功
+**Branch**: `main`
+
+### Summary
+
+security.py _handle_login_action 把'完全成功 / 部分成功'两个分支合并成 success_count > 0 单分支，统一返回 reply_success；其他台多半是 No pending login 是预期状态不展示明细。审计日志保留 per-server 记录。全失败分支保留不变。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7d9b84a` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
