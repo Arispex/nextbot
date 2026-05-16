@@ -141,9 +141,13 @@
       line-height: 1.55;
     }
 
-    .hint-line {
-      color: var(--color-muted);
-      font-size: var(--type-body-sm-size);
+    .entry-cmd {
+      margin-left: auto;
+      font-family: var(--font-code);
+      font-size: 12px;
+      color: var(--color-muted-soft);
+      font-feature-settings: "tnum";
+      white-space: nowrap;
     }
 
     .footer {
@@ -172,8 +176,6 @@
     <div id="empty-state" class="empty-state type-body-md" hidden>暂无可用奖池</div>
 
     <section id="list" class="list"></section>
-
-    <div id="hint-line" class="hint-line" hidden></div>
 
     <footer class="footer type-caption">Powered by NextBot</footer>
   </main>
@@ -229,6 +231,11 @@
       costBadge.textContent = `${Number(entry?.cost_per_draw || 0)} 金币 / 次`;
       top.appendChild(costBadge);
 
+      const cmdHint = document.createElement("span");
+      cmdHint.className = "entry-cmd";
+      cmdHint.textContent = `查看奖池 ${entry?.pool_id ?? ""}`.trim();
+      top.appendChild(cmdHint);
+
       card.appendChild(top);
 
       const descText = String(entry?.description || "").trim();
@@ -241,10 +248,6 @@
 
       listEl.appendChild(card);
     }
-
-    const hintLine = document.getElementById("hint-line");
-    hintLine.textContent = "查看奖池：「查看奖池 <奖池 ID/奖池名称> [页数]」 · 抽奖：「抽奖 <奖池 ID/奖池名称> [次数]」";
-    hintLine.hidden = false;
   </script>
 </body>
 </html>
