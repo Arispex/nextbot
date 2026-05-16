@@ -1,0 +1,3 @@
+{"file": ".trellis/tasks/05-16-remove-rate-limits-3-endpoints/prd.md", "reason": "本次任务的 PRD：删除 3 个端点的 rate-limit / cooldown 逻辑（包含支撑代码 / 常量 / import）"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "确保删除时不留 dead code"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "理解响应信封约定，确保删 429 路径不破坏其他错误码返回结构"}

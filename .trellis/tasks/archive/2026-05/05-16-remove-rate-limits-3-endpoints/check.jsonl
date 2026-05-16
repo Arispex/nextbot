@@ -1,0 +1,2 @@
+{"file": ".trellis/tasks/05-16-remove-rate-limits-3-endpoints/prd.md", "reason": "Acceptance Criteria 包含 grep 不到指定符号 + 3 个模块 import 通过"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "审查残留死代码（未使用 import / 私有 helper / 模块级常量）"}
