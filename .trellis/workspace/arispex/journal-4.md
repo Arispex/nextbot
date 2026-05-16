@@ -204,3 +204,36 @@ handle_user_info / handle_self_info 顶部统一取 at；5 处失败 bot.send（
 ### Next Steps
 
 - None - task complete
+
+
+## Session 161: 命令格式错误回复加 @ 调用者（集中入口）
+
+**Date**: 2026-05-16
+**Task**: 命令格式错误回复加 @ 调用者（集中入口）
+**Branch**: `main`
+
+### Summary
+
+command_config.py CommandUsageError except 分支补 at + ' ' 前缀，所有命令的 ❌ 格式错误，正确格式：... 自动带 @调用者。集中一处改完，无需逐 plugin 改。复用同函数 ban 分支已用的 safe_at_segment_or_empty 模式。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `35485d4` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
