@@ -963,6 +963,7 @@ async def handle_lottery_draw(bot: Bot, event: Event, arg: Message = CommandArg(
             file_prefix=f"lottery-result-{pool_id}",
             semaphore=_lottery_screenshot_semaphore,
             failure_action="抽奖",
+            at_user_id=user_id,
         )
     except Exception:  # noqa: BLE001
         logger.exception(f"抽奖处理异常：user_id={user_id}")
