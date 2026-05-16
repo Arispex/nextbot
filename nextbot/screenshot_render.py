@@ -40,6 +40,7 @@ async def render_and_send_screenshot(
     semaphore: asyncio.Semaphore | None = None,
     failure_action: str = "查询",
     success_caption: str | None = None,
+    at_user_id: str | None = None,
 ) -> bool:
     """生成截图并发送到 V11 / 非 V11 适配器。
 
@@ -55,6 +56,9 @@ async def render_and_send_screenshot(
         failure_action: 失败回复使用的动作动词（如 "查询" / "抽奖" / "生成"），
             被 `reply_failure(action, reason)` 拼成 "❌ <action>失败，<reason>"。
         success_caption: 非 V11 适配器的成功提示语，None 时使用默认 "截图已生成"。
+        at_user_id: 可选 V11 平台 @ 目标 QQ；None 时不 @。V11 成功路径会
+            把 `@user [图片]` 合成一条消息发出；非 V11 fallback 路径会在
+            head 文案前 prepend `"@<at_user_id> "` 占位，由 adapter 自决渲染。
 
     Returns:
         True 表示成功发送（无论 V11 还是 fallback），False 表示失败（已经
@@ -71,13 +75,13 @@ async def render_and_send_screenshot(
         return await _render_and_send_inner(
             bot, event, page_url=page_url, options=options,
             file_prefix=file_prefix, failure_action=failure_action,
-            success_caption=success_caption,
+            success_caption=success_caption, at_user_id=at_user_id,
         )
     async with semaphore:
         return await _render_and_send_inner(
             bot, event, page_url=page_url, options=options,
             file_prefix=file_prefix, failure_action=failure_action,
-            success_caption=success_caption,
+            success_caption=success_caption, at_user_id=at_user_id,
         )
 
 
@@ -90,6 +94,7 @@ async def _render_and_send_inner(
     file_prefix: str,
     failure_action: str,
     success_caption: str | None,
+    at_user_id: str | None = None,
 ) -> bool:
     async with temp_screenshot_path(file_prefix) as screenshot_path:
         try:
@@ -135,7 +140,15 @@ async def _render_and_send_inner(
                 )
                 await bot.send(event, reply_failure(failure_action, "截图过大"))
                 return False
-            await bot.send(event, OBV11MessageSegment.image(file=f"base64://{encoded}"))
+            if at_user_id:
+                message = (
+                    OBV11MessageSegment.at(at_user_id)
+                    + " "
+                    + OBV11MessageSegment.image(file=f"base64://{encoded}")
+                )
+            else:
+                message = OBV11MessageSegment.image(file=f"base64://{encoded}")
+            await bot.send(event, message)
             return True
 
         # 非 V11 fallback：避免暴露 /tmp 内部路径，只回文件名 + 大小
@@ -149,6 +162,8 @@ async def _render_and_send_inner(
             if success_caption
             else reply_success(failure_action)
         )
+        if at_user_id:
+            head = f"@{at_user_id} " + head
         await bot.send(
             event,
             reply_block(

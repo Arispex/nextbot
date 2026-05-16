@@ -315,4 +315,5 @@ async def handle_dice(bot: Bot, event: Event, arg: Message = CommandArg()) -> No
         file_prefix="dice",
         semaphore=_dice_semaphore,
         failure_action="掷骰子",
+        at_user_id=user_id,
     )
