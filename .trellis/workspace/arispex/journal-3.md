@@ -1850,3 +1850,36 @@ user_manager.py handle_add_user 两处文案：已注册分支由 ❌ 注册失�
 ### Next Steps
 
 - None - task complete
+
+
+## Session 151: 补注册 /render/dice 路由（修复掷骰子图片 404）
+
+**Date**: 2026-05-16
+**Task**: 补注册 /render/dice 路由（修复掷骰子图片 404）
+**Branch**: `main`
+
+### Summary
+
+上次 feat(dice) 漏改 server/routes/render.py — 没加 dice 的路由注册，playwright 访问图片 URL 拿到 FastAPI 默认 {detail:Not Found} 渲染成图。补 import dice_page + @router.get('/render/dice/{token}') 端点。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `5b72f5b` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
