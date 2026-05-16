@@ -193,6 +193,7 @@ def read_pagination_query(
     default_page: int = DEFAULT_PAGE,
     default_per_page: int = DEFAULT_PER_PAGE,
     max_per_page: int = MAX_PER_PAGE,
+    allow_zero_per_page: bool = False,
 ) -> tuple[dict[str, int] | None, JSONResponse | None]:
     # LOW-10：caller 即使误传超大 max_per_page 也被钳到 HARD_MAX_PER_PAGE。
     ceiling = min(int(max_per_page), HARD_MAX_PER_PAGE)
@@ -209,6 +210,7 @@ def read_pagination_query(
         request.query_params.get("per_page"),
         field="per_page",
         default_value=default_per_page,
+        min_value=0 if allow_zero_per_page else 1,
         max_value=ceiling,
     )
     if per_page_error is not None:

@@ -284,7 +284,7 @@ def _validation_error(exc: UserPayloadValidationError) -> JSONResponse:
 
 @router.get("/webui/api/users")
 async def webui_users_list(request: Request) -> JSONResponse:
-    pagination, error_response = read_pagination_query(request)
+    pagination, error_response = read_pagination_query(request, allow_zero_per_page=True)
     if error_response is not None:
         return error_response
     assert pagination is not None
