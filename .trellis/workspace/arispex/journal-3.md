@@ -1883,3 +1883,36 @@ user_manager.py handle_add_user 两处文案：已注册分支由 ❌ 注册失�
 ### Next Steps
 
 - None - task complete
+
+
+## Session 152: dice.html 重排版对齐 lottery_result 风格
+
+**Date**: 2026-05-16
+**Task**: dice.html 重排版对齐 lottery_result 风格
+**Branch**: `main`
+
+### Summary
+
+dice.html 之前用单中央大 card 包所有内容，与其它 render（lottery_result / inventory / red_packet_*）的 text-hero on cream canvas 风格断层。重写为 .page flex column：coral rule + eyebrow + serif display 大标题 + 行内 meta byline + 4 列 stats-tiles + dice-display 直接坐 canvas（3 个 dice-face 容器 + 求和 + 5 状态 result）+ amber cap-warning + 简洁 footer。payload schema / plugin / web_server / render route 不动。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `b1e9c6a` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
