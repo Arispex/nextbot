@@ -40,11 +40,6 @@
       margin-bottom: var(--space-md);
     }
 
-    .header-eyebrow {
-      color: var(--color-muted);
-      margin-bottom: var(--space-xs);
-    }
-
     .header-title {
       color: var(--color-ink);
       margin: 0 0 var(--space-md) 0;
@@ -157,7 +152,6 @@
 
     <header>
       <div class="header-rule"></div>
-      <div id="header-eyebrow" class="header-eyebrow type-caption-uppercase"></div>
       <h1 id="header-title" class="header-title type-display-lg"></h1>
       <div class="header-meta type-body-sm">
         <span id="header-count"></span>
@@ -186,7 +180,6 @@
     const totalPages = Number(data.total_pages || 1);
     const page = Number(data.page || 1);
 
-    document.getElementById("header-eyebrow").textContent = "商店系统";
     document.getElementById("header-title").textContent = "商店列表";
     document.getElementById("header-count").textContent = `共 ${total} 个上架商店`;
     document.getElementById("header-page").textContent = `第 ${page} / ${totalPages} 页`;

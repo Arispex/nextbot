@@ -48,11 +48,6 @@
       margin-bottom: var(--space-lg);
     }
 
-    .header-eyebrow {
-      color: var(--color-muted);
-      margin-bottom: var(--space-xs);
-    }
-
     .header-title {
       color: var(--color-ink);
       margin: 0 0 var(--space-md) 0;
@@ -207,7 +202,6 @@
   <main class="page">
     <header class="header">
       <div class="header-rule"></div>
-      <div id="header-eyebrow" class="header-eyebrow type-caption-uppercase"></div>
       <h1 id="header-title" class="header-title type-display-lg"></h1>
       <div class="header-meta type-body-sm">
         <span id="header-count"></span>
@@ -234,7 +228,6 @@
     })();
     const commands = Array.isArray(data.commands) ? data.commands : [];
 
-    document.getElementById("header-eyebrow").textContent = "命令菜单";
     document.getElementById("header-title").textContent = data.title || "菜单";
     document.getElementById("header-count").textContent = `${commands.length} 个命令`;
     document.getElementById("header-generated-at").textContent = data.generated_at || "";

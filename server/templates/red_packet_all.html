@@ -41,11 +41,6 @@
       margin-bottom: var(--space-md);
     }
 
-    .header-eyebrow {
-      color: var(--color-muted);
-      margin-bottom: var(--space-xs);
-    }
-
     .header-title {
       color: var(--color-ink);
       margin: 0 0 var(--space-md) 0;
@@ -195,7 +190,6 @@
 
     <header>
       <div class="header-rule"></div>
-      <div id="header-eyebrow" class="header-eyebrow type-caption-uppercase"></div>
       <h1 id="header-title" class="header-title type-display-lg"></h1>
       <div class="header-meta type-body-sm">
         <span id="header-count"></span>
@@ -223,7 +217,6 @@
     const page = Number(data.page || 1);
     const totalPages = Number(data.total_pages || 1);
 
-    document.getElementById("header-eyebrow").textContent = "红包系统";
     document.getElementById("header-title").textContent = "当前红包";
     document.getElementById("header-count").textContent = `${entries.length} 个红包`;
     document.getElementById("header-page").textContent = `第 ${page} / ${totalPages} 页`;
