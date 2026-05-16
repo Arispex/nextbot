@@ -897,3 +897,36 @@ security.py 把'全失败'三个子分支（_all_no_pending / 单台 / 多台 re
 ### Next Steps
 
 - None - task complete
+
+
+## Session 182: refactor: 删除所有图片模板的 header-eyebrow
+
+**Date**: 2026-05-16
+**Task**: refactor: 删除所有图片模板的 header-eyebrow
+**Branch**: `main`
+
+### Summary
+
+20 个 image render 模板（server/templates/）批量删除大标题上方的 uppercase 小标题（.header-eyebrow）：CSS 规则 + DOM 元素 + 6 个 dynamic 模板的 JS textContent 赋值。共 -127 行纯删除。.header-rule / .header-title 全部保留。user_info.html 本来就没 eyebrow 正确跳过。type-caption-uppercase utility class 被其他元素继续合法使用，未删 CSS def。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `2874512` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
