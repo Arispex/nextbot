@@ -48,15 +48,42 @@
       margin: 0 0 var(--space-md) 0;
     }
 
-    .header-meta {
+    .owner-bar {
+      display: flex;
+      align-items: center;
+      gap: var(--space-md);
       color: var(--color-muted-soft);
+    }
+
+    .avatar {
+      width: 48px;
+      height: 48px;
+      border-radius: var(--radius-pill);
+      background-color: var(--color-surface-card);
+      border: 1px solid var(--color-hairline);
+      object-fit: cover;
+      flex-shrink: 0;
+    }
+
+    .owner-meta {
       display: flex;
       gap: var(--space-md);
       align-items: baseline;
       flex-wrap: wrap;
+      min-width: 0;
     }
 
-    .header-meta-divider {
+    .owner-name {
+      color: var(--color-ink);
+      font-weight: 500;
+    }
+
+    .owner-id {
+      color: var(--color-muted);
+      font-family: var(--font-code);
+    }
+
+    .meta-divider {
       color: var(--color-hairline);
     }
 
@@ -302,16 +329,16 @@
     <header>
       <div class="header-rule"></div>
       <h1 class="header-title type-display-lg">抽奖</h1>
-      <div class="header-meta type-body-sm">
-        <span>奖池 <span class="meta-value" id="meta-pool-name"></span></span>
-        <span class="header-meta-divider">·</span>
-        <span>ID <span class="meta-value" id="meta-pool-id"></span></span>
-        <span class="header-meta-divider">·</span>
-        <span>玩家 <span class="meta-value" id="meta-user-name"></span></span>
-        <span class="header-meta-divider">·</span>
-        <span>QQ <span class="meta-value" id="meta-user-id"></span></span>
-        <span class="header-meta-divider">·</span>
-        <span id="generated-at"></span>
+      <div class="owner-bar">
+        <img id="lr-avatar" class="avatar" alt="avatar" />
+        <div class="owner-meta type-body-sm">
+          <span class="owner-name" id="lr-owner-name"></span>
+          <span class="owner-id" id="lr-owner-id"></span>
+          <span class="meta-divider">·</span>
+          <span>奖池 <span class="meta-value" id="meta-pool-name"></span> (<span class="meta-value" id="meta-pool-id"></span>)</span>
+          <span class="meta-divider">·</span>
+          <span id="generated-at"></span>
+        </div>
       </div>
     </header>
 
@@ -358,10 +385,14 @@
       const outcomes = Array.isArray(data.outcomes) ? data.outcomes : [];
 
       // ── Header meta ─────────────────────────────────────────
+      const playerName = String(data.user_user_name || "").trim();
+      const playerQq = String(data.user_user_id || "").trim();
+      document.getElementById("lr-avatar").src =
+        `https://q1.qlogo.cn/g?b=qq&nk=${encodeURIComponent(playerQq)}&s=100`;
+      document.getElementById("lr-owner-name").textContent = playerName || "未知玩家";
+      document.getElementById("lr-owner-id").textContent = playerQq ? `(${playerQq})` : "";
       document.getElementById("meta-pool-name").textContent = String(data.pool_name || "未命名");
-      document.getElementById("meta-pool-id").textContent = String(data.pool_id ?? "-");
-      document.getElementById("meta-user-name").textContent = String(data.user_user_name || "未知玩家");
-      document.getElementById("meta-user-id").textContent = String(data.user_user_id || "-");
+      document.getElementById("meta-pool-id").textContent = `#${data.pool_id ?? "-"}`;
       document.getElementById("generated-at").textContent = data.generated_at || "";
 
       // ── Stats tiles ─────────────────────────────────────────

@@ -46,15 +46,42 @@
       margin: 0 0 var(--space-md) 0;
     }
 
-    .header-meta {
+    .owner-bar {
+      display: flex;
+      align-items: center;
+      gap: var(--space-md);
       color: var(--color-muted-soft);
+    }
+
+    .avatar {
+      width: 48px;
+      height: 48px;
+      border-radius: var(--radius-pill);
+      background-color: var(--color-surface-card);
+      border: 1px solid var(--color-hairline);
+      object-fit: cover;
+      flex-shrink: 0;
+    }
+
+    .owner-meta {
       display: flex;
       gap: var(--space-md);
       align-items: baseline;
       flex-wrap: wrap;
+      min-width: 0;
     }
 
-    .header-meta-divider {
+    .owner-name {
+      color: var(--color-ink);
+      font-weight: 500;
+    }
+
+    .owner-id {
+      color: var(--color-muted);
+      font-family: var(--font-code);
+    }
+
+    .meta-divider {
       color: var(--color-hairline);
     }
 
@@ -282,16 +309,16 @@
     <header>
       <div class="header-rule"></div>
       <h1 class="header-title type-display-lg">抢劫</h1>
-      <div class="header-meta type-body-sm">
-        <span>抢劫者 <span class="meta-value" id="meta-robber-name"></span></span>
-        <span class="header-meta-divider">·</span>
-        <span>QQ <span class="meta-value" id="meta-robber-qq"></span></span>
-        <span class="header-meta-divider">·</span>
-        <span>目标 <span class="meta-value" id="meta-victim-name"></span></span>
-        <span class="header-meta-divider">·</span>
-        <span>QQ <span class="meta-value" id="meta-victim-qq"></span></span>
-        <span class="header-meta-divider">·</span>
-        <span id="generated-at"></span>
+      <div class="owner-bar">
+        <img id="rob-avatar" class="avatar" alt="avatar" />
+        <div class="owner-meta type-body-sm">
+          <span class="owner-name" id="rob-owner-name"></span>
+          <span class="owner-id" id="rob-owner-id"></span>
+          <span class="meta-divider">·</span>
+          <span>→ 目标 <span class="meta-value" id="rob-victim-text"></span></span>
+          <span class="meta-divider">·</span>
+          <span id="generated-at"></span>
+        </div>
       </div>
     </header>
 
@@ -368,10 +395,12 @@
       const generatedAt = String(data.generated_at || "");
 
       // ── Header meta ────────────────────────────────────────
-      document.getElementById("meta-robber-name").textContent = robberName;
-      document.getElementById("meta-robber-qq").textContent = robberQq;
-      document.getElementById("meta-victim-name").textContent = victimName;
-      document.getElementById("meta-victim-qq").textContent = victimQq;
+      document.getElementById("rob-avatar").src =
+        `https://q1.qlogo.cn/g?b=qq&nk=${encodeURIComponent(robberQq)}&s=100`;
+      document.getElementById("rob-owner-name").textContent = robberName || "未知玩家";
+      document.getElementById("rob-owner-id").textContent = robberQq ? `(${robberQq})` : "";
+      const victimText = victimQq ? `${victimName} (${victimQq})` : (victimName || "未知玩家");
+      document.getElementById("rob-victim-text").textContent = victimText;
       document.getElementById("generated-at").textContent = generatedAt;
 
       // ── Stats tiles ────────────────────────────────────────

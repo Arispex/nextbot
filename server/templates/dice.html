@@ -46,15 +46,42 @@
       margin: 0 0 var(--space-md) 0;
     }
 
-    .header-meta {
+    .owner-bar {
+      display: flex;
+      align-items: center;
+      gap: var(--space-md);
       color: var(--color-muted-soft);
+    }
+
+    .avatar {
+      width: 48px;
+      height: 48px;
+      border-radius: var(--radius-pill);
+      background-color: var(--color-surface-card);
+      border: 1px solid var(--color-hairline);
+      object-fit: cover;
+      flex-shrink: 0;
+    }
+
+    .owner-meta {
       display: flex;
       gap: var(--space-md);
       align-items: baseline;
       flex-wrap: wrap;
+      min-width: 0;
     }
 
-    .header-meta-divider {
+    .owner-name {
+      color: var(--color-ink);
+      font-weight: 500;
+    }
+
+    .owner-id {
+      color: var(--color-muted);
+      font-family: var(--font-code);
+    }
+
+    .meta-divider {
       color: var(--color-hairline);
     }
 
@@ -222,16 +249,18 @@
     <header>
       <div class="header-rule"></div>
       <h1 class="header-title type-display-lg">掷骰子</h1>
-      <div class="header-meta type-body-sm">
-        <span>玩家 <span class="meta-value" id="meta-player-name"></span></span>
-        <span class="header-meta-divider">·</span>
-        <span>QQ <span class="meta-value" id="meta-player-qq"></span></span>
-        <span class="header-meta-divider">·</span>
-        <span>选择 <span class="meta-value" id="meta-choice"></span></span>
-        <span class="header-meta-divider">·</span>
-        <span>投入 <span class="meta-value" id="meta-cost"></span></span>
-        <span class="header-meta-divider">·</span>
-        <span id="generated-at"></span>
+      <div class="owner-bar">
+        <img id="dice-avatar" class="avatar" alt="avatar" />
+        <div class="owner-meta type-body-sm">
+          <span class="owner-name" id="dice-owner-name"></span>
+          <span class="owner-id" id="dice-owner-id"></span>
+          <span class="meta-divider">·</span>
+          <span>选择 <span class="meta-value" id="meta-choice"></span></span>
+          <span class="meta-divider">·</span>
+          <span>投入 <span class="meta-value" id="meta-cost"></span></span>
+          <span class="meta-divider">·</span>
+          <span id="generated-at"></span>
+        </div>
       </div>
     </header>
 
@@ -299,8 +328,10 @@
       const generatedAt = String(data.generated_at || "");
 
       // ── Header meta ────────────────────────────────────────
-      document.getElementById("meta-player-name").textContent = playerName;
-      document.getElementById("meta-player-qq").textContent = playerQq;
+      document.getElementById("dice-avatar").src =
+        `https://q1.qlogo.cn/g?b=qq&nk=${encodeURIComponent(playerQq)}&s=100`;
+      document.getElementById("dice-owner-name").textContent = playerName || "未知玩家";
+      document.getElementById("dice-owner-id").textContent = playerQq ? `(${playerQq})` : "";
       document.getElementById("meta-choice").textContent = choice;
       document.getElementById("meta-cost").textContent = String(cost);
       document.getElementById("generated-at").textContent = generatedAt;
