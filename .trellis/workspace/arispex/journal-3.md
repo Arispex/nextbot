@@ -1784,3 +1784,36 @@ permission_manager.py 从 1065 行精简到 555 行：删除 add_user_perm / rem
 ### Next Steps
 
 - None - task complete
+
+
+## Session 149: 注册账号文案优化（已注册提示更直白 + 成功加白名单提示）
+
+**Date**: 2026-05-16
+**Task**: 注册账号文案优化（已注册提示更直白 + 成功加白名单提示）
+**Branch**: `main`
+
+### Summary
+
+user_manager.py handle_add_user 两处文案：已注册分支由 ❌ 注册失败，该账号已注册 改为 ⚠️ 你已经注册过了，请勿重复注册（用 reply_warning，不是操作失败语义）；注册成功的 reply_block 末尾加 💡 hint「如果进入服务器提示不在白名单中，群里发送『同步白名单』即可」引导新用户走通完整流程。其它失败分支不动。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `afde5c0` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
