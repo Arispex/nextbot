@@ -1817,3 +1817,36 @@ user_manager.py handle_add_user 两处文案：已注册分支由 ❌ 注册失�
 ### Next Steps
 
 - None - task complete
+
+
+## Session 150: 掷骰子改为图片渲染（DESIGN.md 风格）
+
+**Date**: 2026-05-16
+**Task**: 掷骰子改为图片渲染（DESIGN.md 风格）
+**Branch**: `main`
+
+### Summary
+
+掷骰子命令成功路径由多行文字改为渲染图片返回，样式参照 DESIGN.md（cream canvas + coral + Tiempos/Garamond serif + 编辑器感卡片）。新增 server/pages/dice_page.py（mtime template cache + build_payload + render）和 server/templates/dice.html（640px 单卡片：header + 3 SVG 骰子面 + 求和 + 5-state result band + 触顶警告 + footer，复用 render-tokens.css/render-fonts.css；JSON.parse fallback + [hidden] 守卫）。web_server.py 加 create_dice_page helper。dice.py 成功路径替换为 page_url + render_and_send_screenshot + _dice_semaphore(4)；失败路径保留 reply_failure 文字；user.name 提前 cache 避免 detached ORM。业务逻辑（概率/派奖/cap/stats/cooldown）不变。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f3f229e` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

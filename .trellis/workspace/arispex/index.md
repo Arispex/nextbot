@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-3.md`
-- **Total Sessions**: 149
+- **Total Sessions**: 150
 - **Last Active**: 2026-05-16
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-3.md` | ~1819 | Active |
+| `journal-3.md` | ~1852 | Active |
 | `journal-2.md` | ~1973 | Archived |
 | `journal-1.md` | ~1999 | Archived |
 <!-- @@@/auto:active-documents -->
@@ -31,6 +31,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 150 | 2026-05-16 | 掷骰子改为图片渲染（DESIGN.md 风格） | `f3f229e` | `main` |
 | 149 | 2026-05-16 | 注册账号文案优化（已注册提示更直白 + 成功加白名单提示） | `afde5c0` | `main` |
 | 148 | 2026-05-16 | permission_manager 下线 3 条 admin 用户权限命令 | `2bb9770` | `main` |
 | 147 | 2026-05-16 | server_manager 仅保留「服务器列表」（admin 3 条下线） | `a8b2a74` | `main` |
