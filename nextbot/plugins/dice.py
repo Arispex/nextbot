@@ -1,3 +1,4 @@
+import asyncio
 import random
 from datetime import datetime, timedelta
 
@@ -12,21 +13,23 @@ from nextbot.db import User, execute_rowcount, get_session
 from nextbot.message_parser import parse_command_args_with_fallback
 from nextbot.permissions import require_permission
 from nextbot.plugins.economy import MAX_COINS_AMOUNT, add_coins_with_cap
+from nextbot.screenshot_render import render_and_send_screenshot
 from nextbot.time_utils import db_now_utc_naive
 from nextbot.text_utils import (
-    EMOJI_COIN,
-    EMOJI_FIRE,
-    EMOJI_GAME,
-    reply_block,
     reply_failure,
     safe_at_segment_or_empty,
 )
+from server.screenshot import ScreenshotOptions
+from server.web_server import create_dice_page
 
 dice_matcher = on_command("掷骰子")
 
 _cooldown_map: dict[str, datetime] = {}
 
 _VALID_CHOICES = {"大", "小", "豹子"}
+
+# 限制 dice 同时渲染数量，避免 Playwright 浏览器并发过高。
+_dice_semaphore = asyncio.Semaphore(4)
 
 
 def _safe_param_int(key: str, default: int, min_value: int = 0) -> int:
@@ -155,6 +158,10 @@ async def handle_dice(bot: Bot, event: Event, arg: Message = CommandArg()) -> No
             await bot.send(event, at + " " + reply_failure("掷骰子", "请先注册账号"))
             return
 
+        # session.close() 后 ORM 属性不可访问；在事务内 cache 出局部变量给
+        # 后续渲染用，避免 detached instance 上读 .name。
+        user_name = str(user.name)
+
         # 原子条件 UPDATE：扣押金。并发时第二条 rowcount=0 → 金币不足。
         rowcount = execute_rowcount(
             session,
@@ -256,39 +263,56 @@ async def handle_dice(bot: Bot, event: Event, arg: Message = CommandArg()) -> No
 
     _cooldown_map[user_id] = now
 
-    # 结果描述
-    if is_triple:
-        result_label = "豹子！"
-        head_emoji = EMOJI_FIRE
-    elif total >= 11:
-        result_label = "大"
-        head_emoji = EMOJI_GAME
-    else:
-        result_label = "小"
-        head_emoji = EMOJI_GAME
-
-    lines = [f"{head_emoji} 骰子：{d1} + {d2} + {d3} = {total}（{result_label}）"]
-
-    # PC-8.1：reply 中显示 applied_payout（实际入账）而非 payout（理论派奖）。
-    # 触顶时另起一行展示原始派奖与触顶差额，避免"获得 X 金币"与 final_coins 对不上。
-    if choice == "豹子" and not is_triple:
-        lines.append(f"❌ 不是豹子！投入 {cost} 金币，全部损失")
+    # result_kind 分类：与模板 5 种 result band 状态对齐
+    # - triple_win：猜豹子 + 摇到豹子
+    # - lose（猜豹子未中）：猜豹子但非豹子
+    # - triple_kill：猜大/小但摇到豹子（被豹子通杀）
+    # - win / tie / lose：常规分支按 net 判定
+    if choice == "豹子" and is_triple:
+        result_kind = "triple_win"
+    elif choice == "豹子" and not is_triple:
+        result_kind = "lose"
     elif choice != "豹子" and is_triple:
-        lines.append(f"❌ 豹子通杀！投入 {cost} 金币，全部损失")
+        result_kind = "triple_kill"
     elif net > 0:
-        lines.append(f"{EMOJI_COIN} 猜对了！投入 {cost}，获得 {applied_payout}，净赚 {applied_net} 金币")
+        result_kind = "win"
     elif net == 0:
-        lines.append(f"⚖️ 刚好持平！投入 {cost} 金币")
+        result_kind = "tie"
     else:
-        lines.append(f"❌ 猜错了！投入 {cost} 金币，全部损失")
-
-    lines.append(f"{EMOJI_COIN} 当前金币：{final_coins}")
-    if capped and applied_payout < payout:
-        lines.append(f"⚠️ 已触账户上限，理论派奖 {payout}，{payout - applied_payout} 金币未入账")
+        result_kind = "lose"
 
     logger.info(
         f"掷骰子结果：user_id={user_id} choice={choice} dice={d1},{d2},{d3} total={total} "
         f"triple={is_triple} cost={cost} payout={payout} applied_payout={applied_payout} "
-        f"capped={capped} net={net}"
+        f"capped={capped} net={net} result_kind={result_kind}"
     )
-    await bot.send(event, at + "\n" + reply_block(f"{EMOJI_GAME} 掷骰子", lines))
+
+    page_url = create_dice_page(
+        player_name=user_name,
+        player_qq=user_id,
+        choice=choice,
+        cost=cost,
+        dice=(d1, d2, d3),
+        total=total,
+        is_triple=is_triple,
+        result_kind=result_kind,
+        payout=payout,
+        applied_payout=applied_payout,
+        net=net,
+        applied_net=applied_net,
+        final_coins=final_coins,
+        capped=capped,
+    )
+    await render_and_send_screenshot(
+        bot,
+        event,
+        page_url=page_url,
+        options=ScreenshotOptions(
+            viewport_width=720,
+            viewport_height=720,
+            fit_content_height=True,
+        ),
+        file_prefix="dice",
+        semaphore=_dice_semaphore,
+        failure_action="掷骰子",
+    )

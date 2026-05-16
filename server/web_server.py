@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from nonebot.log import logger
 
 from server.page_store import create_page
-from server.pages import about_page, admin_list_page, ban_list_page, inventory_page, leaderboard_page, lottery_list_page, lottery_result_page, lottery_view_page, menu_page, progress_page, red_packet_all_page, red_packet_own_page, shop_list_page, shop_view_page, tutorial_page, user_info_page, warehouse_page
+from server.pages import about_page, admin_list_page, ban_list_page, dice_page, inventory_page, leaderboard_page, lottery_list_page, lottery_result_page, lottery_view_page, menu_page, progress_page, red_packet_all_page, red_packet_own_page, shop_list_page, shop_view_page, tutorial_page, user_info_page, warehouse_page
 from server.routes.render import router as render_router
 from server.routes.webui_commands import router as webui_commands_router
 from server.routes.webui_dashboard import router as webui_dashboard_router
@@ -225,6 +225,42 @@ def create_red_packet_all_page(
         page=page, total_pages=total_pages, entries=entries,
     )
     return _make_page_url("red_packet_all", payload)
+
+
+def create_dice_page(
+    *,
+    player_name: str,
+    player_qq: str,
+    choice: str,
+    cost: int,
+    dice: tuple[int, int, int],
+    total: int,
+    is_triple: bool,
+    result_kind: str,
+    payout: int,
+    applied_payout: int,
+    net: int,
+    applied_net: int,
+    final_coins: int,
+    capped: bool,
+) -> str:
+    payload = dice_page.build_payload(
+        player_name=player_name,
+        player_qq=player_qq,
+        choice=choice,
+        cost=cost,
+        dice=dice,
+        total=total,
+        is_triple=is_triple,
+        result_kind=result_kind,
+        payout=payout,
+        applied_payout=applied_payout,
+        net=net,
+        applied_net=applied_net,
+        final_coins=final_coins,
+        capped=capped,
+    )
+    return _make_page_url("dice", payload)
 
 
 def create_tutorial_page(
