@@ -78,11 +78,15 @@ def get_dashboard_metrics() -> dict[str, int | str | list[str]]:
         user_count = int(session.query(func.count(User.id)).scalar() or 0)
         group_count = int(session.query(func.count(Group.name)).scalar() or 0)
         command_total = int(
-            session.query(func.count(CommandConfig.command_key)).scalar() or 0
+            session.query(func.count(CommandConfig.command_key))
+            .filter(CommandConfig.is_registered.is_(True))
+            .scalar()
+            or 0
         )
         command_enabled_count = int(
             session.query(func.count(CommandConfig.command_key))
             .filter(CommandConfig.enabled.is_(True))
+            .filter(CommandConfig.is_registered.is_(True))
             .scalar()
             or 0
         )
