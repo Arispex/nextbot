@@ -765,3 +765,36 @@ stats.py 给 command_total / command_enabled_count 两处 query 加 .filter(Comm
 ### Next Steps
 
 - None - task complete
+
+
+## Session 178: refactor: Web UI Token 启动日志去脱敏
+
+**Date**: 2026-05-16
+**Task**: refactor: Web UI Token 启动日志去脱敏
+**Branch**: `main`
+
+### Summary
+
+撤销 H-1 mask：server/web_server.py 直接 logger.warning("Web UI Token：xxx") 打明文 token，方便运维终端复制；删 _mask_token dead helper；更新注释。webui_settings.py / webui_servers.py 同名 helper（不同 token 域）未受影响。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `e8cc5f3` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

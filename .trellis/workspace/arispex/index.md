@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-4.md`
-- **Total Sessions**: 177
+- **Total Sessions**: 178
 - **Last Active**: 2026-05-16
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-4.md` | ~767 | Active |
+| `journal-4.md` | ~800 | Active |
 | `journal-3.md` | ~1984 | Archived |
 | `journal-2.md` | ~1973 | Archived |
 | `journal-1.md` | ~1999 | Archived |
@@ -32,6 +32,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 178 | 2026-05-16 | refactor: Web UI Token 启动日志去脱敏 | `e8cc5f3` | `main` |
 | 177 | 2026-05-16 | fix: 仪表盘命令计数过滤已下线命令 | `7361a74` | `main` |
 | 176 | 2026-05-16 | rename: 全亮地图 → 查看全亮地图 | `e190f60` | `main` |
 | 175 | 2026-05-16 | users per_page=0 全表通道补全校验器侧 | `4b0d734` | `main` |
