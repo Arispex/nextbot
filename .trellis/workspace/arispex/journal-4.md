@@ -600,3 +600,36 @@ inventory.html / progress.html 顶部 header-eyebrow 由「玩家查询」改「
 ### Next Steps
 
 - None - task complete
+
+
+## Session 173: 修复命令别名 + @用户 解析失败
+
+**Date**: 2026-05-16
+**Task**: 修复命令别名 + @用户 解析失败
+**Branch**: `main`
+
+### Summary
+
+_extract_args_text 之前只按 canonical command_name 匹配前缀，用户用 alias（如 用户背包→背包）时正则失配返 None，parse_command_args 走 arg.extract_plain_text 兜底丢 at 段导致 user 参数缺失。引入 _get_actual_command 读 matcher.state['_prefix']['raw_command']（同 command_config）， _extract_args_text 加 actual_command 参数优先匹配实际输入。ImportError 降级保非 nonebot 环境兼容。公共 API 签名不变。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `4cddfe2` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
