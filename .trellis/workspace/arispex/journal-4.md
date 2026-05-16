@@ -930,3 +930,36 @@ security.py 把'全失败'三个子分支（_all_no_pending / 单台 / 多台 re
 ### Next Steps
 
 - None - task complete
+
+
+## Session 183: refactor: 4 个图片模板 header 统一玩家 avatar bar
+
+**Date**: 2026-05-17
+**Task**: refactor: 4 个图片模板 header 统一玩家 avatar bar
+**Branch**: `main`
+
+### Summary
+
+dice / guess_number / rob / lottery_result 4 个模板 header 从旧 '玩家 X · QQ Y · ...' 文本模式迁移到 [avatar 48px] X (Y) · ... 的 warehouse/signin 模式。各自独立 prefix（dice/gn/rob/lr）避免 id 冲突。rob 有 2 玩家 → 抢劫者头像前置，目标 '→ 目标 W (Z)' 文本后接。lottery_result 重排：玩家头像 → 奖池(#ID) → 其他。signin/warehouse/inventory 已是 avatar 不动；其他 14 个 templates 无 player 上下文不动。+181 / -59，6 项 check 全 PASS。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `c52d97d` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

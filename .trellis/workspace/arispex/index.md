@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-4.md`
-- **Total Sessions**: 182
-- **Last Active**: 2026-05-16
+- **Total Sessions**: 183
+- **Last Active**: 2026-05-17
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-4.md` | ~932 | Active |
+| `journal-4.md` | ~965 | Active |
 | `journal-3.md` | ~1984 | Archived |
 | `journal-2.md` | ~1973 | Archived |
 | `journal-1.md` | ~1999 | Archived |
@@ -32,6 +32,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 183 | 2026-05-17 | refactor: 4 个图片模板 header 统一玩家 avatar bar | `c52d97d` | `main` |
 | 182 | 2026-05-16 | refactor: 删除所有图片模板的 header-eyebrow | `2874512` | `main` |
 | 181 | 2026-05-16 | feat: 签到改图片渲染（DESIGN.md + frontend-design skill） | `e14f19e` | `main` |
 | 180 | 2026-05-16 | fix: 允许/拒绝登入 全失败统一返回'没有待处理的登入请求' | `cfc5f39` | `main` |
