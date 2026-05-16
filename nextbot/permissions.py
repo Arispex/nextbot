@@ -38,7 +38,7 @@ def _get_effective_permissions_in_session(session, user_id: str) -> set[str]:
     层级护栏校验），避免 BEGIN IMMEDIATE 下嵌套 get_session() 死锁。
     """
     # R8-P-1.16：runtime 守卫，防止 caller 误传 None / closed session。
-    # 当前 2 个 caller（permission_manager / group_manager）都在 `get_session()`
+    # 当前 1 个 caller（permission_manager）在 `get_session()`
     # 上下文内调用，但未来重构 / 新 caller 误用时这里 fail-hard 让错误点更清晰。
     if session is None:
         raise ValueError(

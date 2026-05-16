@@ -560,7 +560,7 @@
     setDeleteModalAlert("");
     // M-U-6: 进入新的 delete 流程时清空顶部 status，避免上次失败错误叠加在新弹窗上。
     setStatus("");
-    // H-3: 与 bot 端 group_manager.py:302 对齐，提示用户删除会把 N 个成员回退到 default 组。
+    // H-3: 提示用户删除会把 N 个成员回退到 default 组。
     // user_count 从 list 接口已返回的 group 数据直接读取，避免额外请求。
     const userCount = Number(group?.user_count || 0);
     const baseText = `确定删除身份组「${group.name}」吗？`;

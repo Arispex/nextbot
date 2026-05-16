@@ -88,7 +88,7 @@ _admin_list_semaphore = asyncio.Semaphore(2)
 # 避免 N 个 owner × per-call timeout 累积阻塞 handler。
 _NICKNAME_FETCH_TIMEOUT = 5.0
 
-# 重试次数（与 group_manager 保持一致）
+# 重试次数（沿用既有上限）
 _CSV_UPDATE_RETRY = 5
 
 

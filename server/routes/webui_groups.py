@@ -520,8 +520,8 @@ async def webui_groups_delete(group_name: str, request: Request) -> JSONResponse
         session.delete(group)
         session.flush()
 
-        # H-3：与 bot 端 group_manager.py:302 行为对齐，删除组前实际受影响的用户
-        # 会被回退到 GROUP_DELETE_FALLBACK（default）。这里 update().rowcount 给前端
+        # H-3：删除组前先采样实际受影响用户数 → 写日志（便于事后审计回滚估算）。
+        # 实际受影响的用户会被回退到 GROUP_DELETE_FALLBACK（default）。这里 update().rowcount 给前端
         # toast / 日志一个可观测的"影响 N 人"指标。
         affected_user_count = (
             session.query(User)
