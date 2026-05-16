@@ -1046,7 +1046,8 @@ def command_control(
                 bot, event = _resolve_bot_event(resolved_signature, args, kwargs)
                 if bot is not None and event is not None:
                     actual_cmd = _get_raw_command()
-                    await bot.send(event, _build_usage_message(state.usage, actual_command=actual_cmd))
+                    at = safe_at_segment_or_empty(event.get_user_id())
+                    await bot.send(event, at + " " + _build_usage_message(state.usage, actual_command=actual_cmd))
                 return None
             finally:
                 _current_command_context.reset(context_token)
