@@ -666,3 +666,36 @@ _extract_args_text 之前只按 canonical command_name 匹配前缀，用户用 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 175: users per_page=0 全表通道补全校验器侧
+
+**Date**: 2026-05-16
+**Task**: users per_page=0 全表通道补全校验器侧
+**Branch**: `main`
+
+### Summary
+
+补全 commit 8d9546c 未完成的回退：read_pagination_query 加 allow_zero_per_page 参数（默认 False，向后兼容），webui_users.py caller 传 True 打通校验器。修复 GET /webui/api/users?per_page=0 仍被 400 拒的回退残留。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `4b0d734` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
