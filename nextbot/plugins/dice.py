@@ -28,6 +28,32 @@ _cooldown_map: dict[str, datetime] = {}
 
 _VALID_CHOICES = {"大", "小", "豹子"}
 
+# 预计算 3 骰子合法组合集合，用于 win_rate 算法按结果反向采样
+# Sanity：总数 6^3 = 216；WIN_BIG=105，LOSE_BIG=111，WIN_SMALL=105，LOSE_SMALL=111
+_ALL_DICE_COMBOS: tuple[tuple[int, int, int], ...] = tuple(
+    (a, b, c) for a in range(1, 7) for b in range(1, 7) for c in range(1, 7)
+)
+
+
+def _is_triple_combo(d: tuple[int, int, int]) -> bool:
+    return d[0] == d[1] == d[2]
+
+
+_WIN_BIG_SET: tuple[tuple[int, int, int], ...] = tuple(
+    d for d in _ALL_DICE_COMBOS if not _is_triple_combo(d) and sum(d) >= 11
+)
+_LOSE_BIG_SET: tuple[tuple[int, int, int], ...] = tuple(
+    d for d in _ALL_DICE_COMBOS
+    if _is_triple_combo(d) or (not _is_triple_combo(d) and sum(d) <= 10)
+)
+_WIN_SMALL_SET: tuple[tuple[int, int, int], ...] = tuple(
+    d for d in _ALL_DICE_COMBOS if not _is_triple_combo(d) and sum(d) <= 10
+)
+_LOSE_SMALL_SET: tuple[tuple[int, int, int], ...] = tuple(
+    d for d in _ALL_DICE_COMBOS
+    if _is_triple_combo(d) or (not _is_triple_combo(d) and sum(d) >= 11)
+)
+
 # 限制 dice 同时渲染数量，避免 Playwright 浏览器并发过高。
 _dice_semaphore = asyncio.Semaphore(4)
 
@@ -95,6 +121,15 @@ def _safe_param_int(key: str, default: int, min_value: int = 0) -> int:
             "required": False,
             "default": 30,
             "min": 0,
+        },
+        "win_rate": {
+            "type": "int",
+            "label": "大/小 命中率",
+            "description": "选大/小时命中的概率（百分比，0-100），不影响豹子",
+            "required": False,
+            "default": 50,
+            "min": 0,
+            "max": 100,
         },
     },
     category="小游戏系统",
@@ -176,10 +211,20 @@ async def handle_dice(bot: Bot, event: Event, arg: Message = CommandArg()) -> No
             await bot.send(event, at + " " + reply_failure("掷骰子", f"金币不足（当前 {coins_now}）"))
             return
 
-        # 掷骰子
-        d1 = random.randint(1, 6)
-        d2 = random.randint(1, 6)
-        d3 = random.randint(1, 6)
+        # 掷骰子（豹子保留自然概率；大/小按 win_rate 算法控制）
+        if choice == "豹子":
+            d1 = random.randint(1, 6)
+            d2 = random.randint(1, 6)
+            d3 = random.randint(1, 6)
+        else:
+            win_rate_pct = max(0, min(100, _safe_param_int("win_rate", 50, min_value=0)))
+            win_rate = win_rate_pct / 100.0
+            if choice == "大":
+                win_set, lose_set = _WIN_BIG_SET, _LOSE_BIG_SET
+            else:  # "小"
+                win_set, lose_set = _WIN_SMALL_SET, _LOSE_SMALL_SET
+            target_set = win_set if random.random() < win_rate else lose_set
+            d1, d2, d3 = random.choice(target_set)
         total = d1 + d2 + d3
         is_triple = d1 == d2 == d3
 
