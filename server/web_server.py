@@ -460,15 +460,6 @@ def create_shop_view_page(
     return _make_page_url("shop_view", payload)
 
 
-def _mask_token(token: str) -> str:
-    """H-1：日志中只暴露 token 前 4 + 后 4 字符，中间替换为 ``...``。"""
-    if not token:
-        return "<empty>"
-    if len(token) <= 8:
-        return "*" * len(token)
-    return f"{token[:4]}...{token[-4:]}"
-
-
 def create_app(settings: WebServerSettings | None = None) -> FastAPI:
     runtime_settings = settings or get_server_settings()
 
@@ -556,18 +547,16 @@ def _run_server() -> None:
     settings = get_server_settings()
     app = create_app(settings)
 
-    # L-4 / H-1：日志合并；监听地址打 settings.host，loopback URL 单独提示。
-    # token 一律 mask；首次启动写入 auth 文件时单独提示用户去文件取 full token。
+    # L-4：日志合并；监听地址打 settings.host，loopback URL 单独提示。
+    # token 用 warning 级别打明文，便于运维直接从终端复制；运维需保证日志权限。
     logger.info(
         f"Web Server 已启动，监听 {settings.host}:{settings.port}（loopback 访问：http://127.0.0.1:{settings.port}/webui）"
     )
     if settings.auth_file_created:
         logger.info(
-            f"已生成 Web UI 认证文件，请从该文件读取 token：{settings.auth_file_path}"
+            f"已生成 Web UI 认证文件：{settings.auth_file_path}"
         )
-    logger.info(
-        f"Web UI Token 已写入：{settings.auth_file_path}（脱敏：{_mask_token(settings.webui_token)}）"
-    )
+    logger.warning(f"Web UI Token：{settings.webui_token}")
 
     config = uvicorn.Config(
         app,
