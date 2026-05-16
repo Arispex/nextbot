@@ -357,6 +357,7 @@ async def _render_and_send_user_info(
         file_prefix=f"user-info-{user_data['user_id']}",
         semaphore=_user_info_screenshot_semaphore,
         failure_action="查询",
+        at_user_id=event.get_user_id(),
     )
 
 
