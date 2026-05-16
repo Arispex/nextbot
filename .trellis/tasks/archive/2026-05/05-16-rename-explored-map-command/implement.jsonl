@@ -1,0 +1,1 @@
+{"file": ".trellis/tasks/archive/2026-05/05-07-rename-map-image-command/prd.md", "reason": "Prior-art PRD: same shape rename (查看地图 → 全亮地图). Confirms scope = string replace only, command_key / permission must NOT change."}
