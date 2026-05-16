@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import json
+import threading
 from pathlib import Path
 from typing import Any
+
+from nonebot.log import logger
 
 from nextbot.time_utils import beijing_now_text
 
@@ -12,25 +15,29 @@ TEMPLATE_PATH = BASE_DIR / "server" / "templates" / "dice.html"
 _VALID_RESULT_KINDS = {"win", "lose", "triple_win", "triple_kill", "tie"}
 
 _template_cache: tuple[float, str] | None = None
+# defense-in-depth：截图链路理论上单事件循环串行，但若未来出现并发 import / 多线程渲染，
+# 这把锁防止 stat + read + 写 cache 三段非原子操作产生撕裂状态。
+_template_lock = threading.Lock()
 
 
 def _load_template() -> str:
     global _template_cache
-    mtime = TEMPLATE_PATH.stat().st_mtime
-    if _template_cache is None or _template_cache[0] != mtime:
-        _template_cache = (mtime, TEMPLATE_PATH.read_text(encoding="utf-8"))
-    return _template_cache[1]
+    with _template_lock:
+        mtime = TEMPLATE_PATH.stat().st_mtime
+        if _template_cache is None or _template_cache[0] != mtime:
+            _template_cache = (mtime, TEMPLATE_PATH.read_text(encoding="utf-8"))
+        return _template_cache[1]
 
 
 def _clamp_die(value: Any) -> int:
     try:
         n = int(value)
     except (TypeError, ValueError):
+        logger.warning(f"dice_page: die value 无法解析为整数，value={value!r}，已 clamp 为 1")
         return 1
-    if n < 1:
-        return 1
-    if n > 6:
-        return 6
+    if n < 1 or n > 6:
+        logger.warning(f"dice_page: die value 越界，value={value!r}，已 clamp 到 [1,6]")
+        n = max(1, min(6, n))
     return n
 
 
@@ -61,7 +68,8 @@ def build_payload(
         kind = "lose"
 
     return {
-        "player_name": str(player_name).strip(),
+        # 32 与 User.name 注册路径 max 长度对齐；defense-in-depth 防极长昵称破版。
+        "player_name": str(player_name).strip()[:32],
         "player_qq": str(player_qq).strip(),
         "choice": str(choice).strip(),
         "cost": int(cost),

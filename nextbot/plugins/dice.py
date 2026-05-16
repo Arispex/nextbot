@@ -55,6 +55,8 @@ _LOSE_SMALL_SET: tuple[tuple[int, int, int], ...] = tuple(
 )
 
 # 限制 dice 同时渲染数量，避免 Playwright 浏览器并发过高。
+# dice 单页 720×720 轻量，相比项目其它截图业务（Semaphore(2)）放宽到 4。
+# 单玩家 30s cooldown 已限并发，群多人同时玩的峰值需更大缓冲。
 _dice_semaphore = asyncio.Semaphore(4)
 
 
@@ -212,6 +214,9 @@ async def handle_dice(bot: Bot, event: Event, arg: Message = CommandArg()) -> No
             return
 
         # 掷骰子（豹子保留自然概率；大/小按 win_rate 算法控制）
+        # 豹子保留自然概率 ~2.78%（受 6 个三连组合 / 216 总组合约束）。
+        # 不接入 win_rate：10× 派奖 + 50% 命中 → bot 长期暴亏（EV 5×）。
+        # 如需运营干预豹子命中，新增 triple_win_rate 参数走 lottery / 概率派奖路径。
         if choice == "豹子":
             d1 = random.randint(1, 6)
             d2 = random.randint(1, 6)
@@ -300,8 +305,8 @@ async def handle_dice(bot: Bot, event: Event, arg: Message = CommandArg()) -> No
         logger.exception(f"掷骰子处理异常：user_id={user_id}")
         try:
             await bot.send(event, at + " " + reply_failure("掷骰子", "处理失败，请稍后重试"))
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as inner:  # noqa: BLE001
+            logger.warning(f"掷骰子失败兜底回复异常：reason={inner!r}")
         return
     finally:
         session.close()
@@ -348,7 +353,7 @@ async def handle_dice(bot: Bot, event: Event, arg: Message = CommandArg()) -> No
         final_coins=final_coins,
         capped=capped,
     )
-    await render_and_send_screenshot(
+    ok = await render_and_send_screenshot(
         bot,
         event,
         page_url=page_url,
@@ -362,3 +367,7 @@ async def handle_dice(bot: Bot, event: Event, arg: Message = CommandArg()) -> No
         failure_action="掷骰子",
         at_user_id=user_id,
     )
+    if not ok:
+        logger.warning(
+            f"掷骰子截图发送失败：user_id={user_id} dice={d1},{d2},{d3}"
+        )

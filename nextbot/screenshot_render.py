@@ -30,6 +30,24 @@ from nextbot.text_utils import reply_block, reply_failure, reply_success
 from server.screenshot import RenderScreenshotError, ScreenshotOptions, screenshot_url
 
 
+def _sanitize_at_user_id(raw: str | None) -> str | None:
+    """与 ``text_utils.safe_at_segment`` 行为对齐：仅接受可转 int 的数字字符串，否则返回 None。
+
+    防御点：避免不可控字符串（含 @ / 空格 / CQ 码等）拼接进 OneBot V11 ``at`` 段
+    或 fallback 路径的 ``f"@{at_user_id} "`` 文案，造成消息注入 / 渲染错位。
+    """
+    if raw is None:
+        return None
+    s = str(raw).strip()
+    if not s:
+        return None
+    try:
+        int(s)
+    except ValueError:
+        return None
+    return s
+
+
 async def render_and_send_screenshot(
     bot: Bot,
     event: Event,
@@ -71,6 +89,8 @@ async def render_and_send_screenshot(
         - read_bytes / b64encode OSError → reply_failure(action, "读取截图文件失败")
         - base64 编码后再次超阈 → reply_failure(action, "截图过大")
     """
+    # 公开入口对 at_user_id 做一次性净化；下游 _inner 信任已净化值。
+    at_user_id = _sanitize_at_user_id(at_user_id)
     if semaphore is None:
         return await _render_and_send_inner(
             bot, event, page_url=page_url, options=options,
