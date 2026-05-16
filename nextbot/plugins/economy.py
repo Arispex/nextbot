@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import random
 from dataclasses import dataclass
 from datetime import date, timedelta
@@ -20,6 +21,7 @@ from nextbot.command_config import (
 from nextbot.db import User, UserSignRecord, execute_rowcount, get_session
 from nextbot.message_parser import parse_command_args_with_fallback, resolve_user_id_arg_with_fallback
 from nextbot.permissions import require_permission
+from nextbot.screenshot_render import render_and_send_screenshot
 from nextbot.text_utils import (
     EMOJI_CHART,
     EMOJI_COIN,
@@ -31,6 +33,8 @@ from nextbot.text_utils import (
     safe_at_segment_or_empty,
 )
 from nextbot.time_utils import beijing_today_text
+from server.screenshot import ScreenshotOptions
+from server.web_server import create_signin_page
 
 sign_matcher = on_command("签到")
 transfer_matcher = on_command("转账")
@@ -50,6 +54,11 @@ remove_coins_matcher = on_command("扣除金币")
 # (max 9.2e18)，远未达到 schema 上限，无需 schema 调整。所有 cap 防御
 # 逻辑保留，仅放宽阈值。
 MAX_COINS_AMOUNT = 10_000_000_000
+
+# 限制 签到 同时渲染数量，避免 Playwright 浏览器并发过高。
+# 签到单页轻量（静态点链 + 几行文字），与 dice 同档放宽到 4，
+# 群多人同时签到时高峰仍能并行处理。
+_signin_semaphore = asyncio.Semaphore(4)
 
 
 def _parse_positive_int(text: str) -> int | None:
@@ -314,15 +323,31 @@ async def handle_sign(bot: Bot, event: Event, arg: Message = CommandArg()) -> No
             return
 
         base_reward = random.randint(min_coins, max_coins)
+        previous_streak = int(user.sign_streak or 0)
         streak_result = _resolve_streak_reward(
             last_sign_date=last_sign_date,
-            current_streak=int(user.sign_streak or 0),
+            current_streak=previous_streak,
             enable_streak=enable_streak,
             streak_bonus_per_day=streak_bonus_per_day,
             max_streak_bonus=max_streak_bonus,
             today_text=today_text,
         )
         total_reward = base_reward + streak_result.streak_reward
+        # requested_reward 保留 cap 前的理论奖励，用于截图模板展示 cap 损耗对账。
+        # streak_broken：开启连续签到的前提下，原本 streak>0 而本次被重置为 1，
+        # 视为"连续中断"；首次签到（previous_streak=0 → next_streak=1）不算中断。
+        requested_reward = total_reward
+        streak_broken = bool(
+            enable_streak
+            and previous_streak > 0
+            and streak_result.next_streak == 1
+        )
+
+        # capped：是否走 partial cap 分支（金币入账触顶 MAX_COINS_AMOUNT），
+        # 默认 False；仅在下方 rowcount==0 → partial cap 分支被置 True。
+        # 与模板 cap warning 横条对账。
+        capped = False
+        applied_reward = total_reward
 
         # 原子条件 UPDATE：仅当 last_sign_date != today 时才写入。
         # 并发同时签到时，第二条 rowcount=0，被 schema/SQL 层拦下。
@@ -380,6 +405,7 @@ async def handle_sign(bot: Bot, event: Event, arg: Message = CommandArg()) -> No
                     f"签到金币触顶 cap：user_id={user_id} "
                     f"requested={total_reward} applied={applied_reward}"
                 )
+                capped = True
             total_reward = applied_reward
 
         # 写 UserSignRecord —— UniqueConstraint(user_id, sign_date) 兜底并发。
@@ -403,9 +429,31 @@ async def handle_sign(bot: Bot, event: Event, arg: Message = CommandArg()) -> No
         coins_after = int(
             session.query(User.coins).filter(User.user_id == user_id).scalar() or 0
         )
+        sign_total = int(
+            session.query(User.sign_total).filter(User.user_id == user_id).scalar() or 0
+        )
         user_name = str(
             session.query(User.name).filter(User.user_id == user_id).scalar() or ""
         )
+
+        # 截图模板 hybrid streak chain：查询过去 30 天的真实签到记录，
+        # 构建 recent_signs[30] bool 数组（index 0 = 29 天前，index 29 = 今天）。
+        # 本次签到已 commit 进 UserSignRecord，所以 recent_signs[29] 一定为 True。
+        today_dt = date.fromisoformat(today_text)
+        date_list = [
+            (today_dt - timedelta(days=29 - i)).isoformat()
+            for i in range(30)
+        ]
+        signed_rows = (
+            session.query(UserSignRecord.sign_date)
+            .filter(
+                UserSignRecord.user_id == user_id,
+                UserSignRecord.sign_date.in_(date_list),
+            )
+            .all()
+        )
+        signed_set = {str(row.sign_date) for row in signed_rows}
+        recent_signs = [d in signed_set for d in date_list]
 
         before_coins = coins_after - total_reward
         logger.info(
@@ -413,29 +461,6 @@ async def handle_sign(bot: Bot, event: Event, arg: Message = CommandArg()) -> No
             f"name={user_name} base_reward={base_reward} streak_reward={streak_result.streak_reward} "
             f"amount={total_reward} before={before_coins} after={coins_after} "
             f"streak={streak_result.next_streak} today_order={today_order} reason=daily_sign"
-        )
-        lines = [
-            f"{EMOJI_CHART} 签到排名：第 {today_order} 位",
-            f"{EMOJI_COIN} 基础奖励：{base_reward}",
-            f"{EMOJI_FIRE} 连续签到：{streak_result.next_streak} 天",
-        ]
-        if enable_streak:
-            lines.append(f"{EMOJI_COIN} 连续签到奖励：{streak_result.streak_reward}")
-        else:
-            lines.append(f"{EMOJI_COIN} 连续签到奖励：未开启")
-        lines.extend(
-            [
-                f"{EMOJI_COIN} 本次总获得：{total_reward}",
-                f"{EMOJI_COIN} 当前金币：{coins_after}",
-            ]
-        )
-        await bot.send(
-            event,
-            at + "\n" + reply_block(
-                reply_success("签到"),
-                lines,
-                hint="明日继续签到可获得连续奖励",
-            ),
         )
     except Exception:  # noqa: BLE001
         # R4R-2.1：commit 前任意路径抛异常时显式 rollback，避免依赖 session.close()
@@ -449,6 +474,84 @@ async def handle_sign(bot: Bot, event: Event, arg: Message = CommandArg()) -> No
         return
     finally:
         session.close()
+
+    # 成功落库；走截图渲染。所有截图链路异常 → 降级为原 7 行纯文本回复，
+    # 保证用户即便渲染挂掉也能看到完整反馈（且金币已落库不会被回滚）。
+    next_streak = streak_result.next_streak
+    streak_reward_value = streak_result.streak_reward
+    try:
+        page_url = create_signin_page(
+            player_name=user_name,
+            player_qq=user_id,
+            today_order=today_order,
+            base_reward=base_reward,
+            streak_reward=streak_reward_value,
+            total_reward=total_reward,
+            current_streak=next_streak,
+            streak_enabled=enable_streak,
+            streak_broken=streak_broken,
+            recent_signs=recent_signs,
+            coins_after=coins_after,
+            sign_total=sign_total,
+            capped=capped,
+            requested_reward=requested_reward,
+            applied_reward=applied_reward,
+        )
+        ok = await render_and_send_screenshot(
+            bot,
+            event,
+            page_url=page_url,
+            options=ScreenshotOptions(
+                viewport_width=720,
+                viewport_height=720,
+                fit_content_height=True,
+            ),
+            file_prefix="signin",
+            semaphore=_signin_semaphore,
+            failure_action="签到",
+            at_user_id=user_id,
+        )
+        if ok:
+            return
+        # render_and_send_screenshot 在内部 failure 路径已经 reply_failure 给
+        # 用户；此处不再降级到纯文本，避免一次签到收到两条消息。仅日志告警。
+        logger.warning(
+            f"签到截图发送失败：user_id={user_id} streak={next_streak} order={today_order}"
+        )
+        return
+    except Exception as exc:  # noqa: BLE001
+        # 渲染链路本身抛异常（create_signin_page / Playwright 启动 / 模板缺失等
+        # render_and_send_screenshot 未捕获到的异常）：金币已入账，必须给出文本
+        # 反馈，避免用户以为签到失败。
+        logger.warning(
+            f"签到截图渲染异常，降级为文本回复：user_id={user_id} reason={exc!r}"
+        )
+        lines = [
+            f"{EMOJI_CHART} 签到排名：第 {today_order} 位",
+            f"{EMOJI_COIN} 基础奖励：{base_reward}",
+            f"{EMOJI_FIRE} 连续签到：{next_streak} 天",
+        ]
+        if enable_streak:
+            lines.append(f"{EMOJI_COIN} 连续签到奖励：{streak_reward_value}")
+        else:
+            lines.append(f"{EMOJI_COIN} 连续签到奖励：未开启")
+        lines.extend(
+            [
+                f"{EMOJI_COIN} 本次总获得：{total_reward}",
+                f"{EMOJI_COIN} 当前金币：{coins_after}",
+            ]
+        )
+        try:
+            await bot.send(
+                event,
+                at + "\n" + reply_block(
+                    reply_success("签到"),
+                    lines,
+                    hint="明日继续签到可获得连续奖励",
+                ),
+            )
+        except Exception:  # noqa: BLE001
+            pass
 
 
 @transfer_matcher.handle()

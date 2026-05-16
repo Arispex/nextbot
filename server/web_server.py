@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from nonebot.log import logger
 
 from server.page_store import create_page
-from server.pages import about_page, admin_list_page, ban_list_page, dice_page, guess_number_page, inventory_page, leaderboard_page, lottery_list_page, lottery_result_page, lottery_view_page, menu_page, progress_page, red_packet_all_page, red_packet_own_page, rob_page, shop_list_page, shop_view_page, tutorial_page, user_info_page, warehouse_page
+from server.pages import about_page, admin_list_page, ban_list_page, dice_page, guess_number_page, inventory_page, leaderboard_page, lottery_list_page, lottery_result_page, lottery_view_page, menu_page, progress_page, red_packet_all_page, red_packet_own_page, rob_page, shop_list_page, shop_view_page, signin_page, tutorial_page, user_info_page, warehouse_page
 from server.routes.render import router as render_router
 from server.routes.webui_commands import router as webui_commands_router
 from server.routes.webui_dashboard import router as webui_dashboard_router
@@ -299,6 +299,44 @@ def create_guess_number_page(
         capped=capped,
     )
     return _make_page_url("guess_number", payload)
+
+
+def create_signin_page(
+    *,
+    player_name: str,
+    player_qq: str,
+    today_order: int,
+    base_reward: int,
+    streak_reward: int,
+    total_reward: int,
+    current_streak: int,
+    streak_enabled: bool,
+    streak_broken: bool,
+    recent_signs: list[bool],
+    coins_after: int,
+    sign_total: int,
+    capped: bool,
+    requested_reward: int,
+    applied_reward: int,
+) -> str:
+    payload = signin_page.build_payload(
+        player_name=player_name,
+        player_qq=player_qq,
+        today_order=today_order,
+        base_reward=base_reward,
+        streak_reward=streak_reward,
+        total_reward=total_reward,
+        current_streak=current_streak,
+        streak_enabled=streak_enabled,
+        streak_broken=streak_broken,
+        recent_signs=recent_signs,
+        coins_after=coins_after,
+        sign_total=sign_total,
+        capped=capped,
+        requested_reward=requested_reward,
+        applied_reward=applied_reward,
+    )
+    return _make_page_url("signin", payload)
 
 
 def create_rob_page(

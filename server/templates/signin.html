@@ -1,0 +1,521 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NextBot 签到结果</title>
+  <link rel="stylesheet" href="/assets/css/render-fonts.css" />
+  <link rel="stylesheet" href="/assets/css/render-tokens.css" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    /* class selectors with display:flex/grid override the UA [hidden]
+     * default; restore it explicitly so hidden sections truly disappear. */
+    [hidden] { display: none !important; }
+
+    body {
+      background-color: var(--color-canvas);
+      color: var(--color-ink);
+      font-family: var(--font-body);
+      font-size: var(--type-body-md-size);
+      line-height: 1.55;
+      padding: var(--space-xxl) var(--space-xxl);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    .page {
+      max-width: 920px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-xl);
+    }
+
+    /* ── Header (text-hero — coral rule + eyebrow + serif title). */
+    .header-rule {
+      width: 64px;
+      height: 4px;
+      background-color: var(--color-primary);
+      border-radius: var(--radius-pill);
+      margin-bottom: var(--space-md);
+    }
+
+    .header-eyebrow {
+      color: var(--color-muted);
+      margin-bottom: var(--space-xs);
+    }
+
+    .header-title {
+      color: var(--color-ink);
+      margin: 0 0 var(--space-md) 0;
+    }
+
+    .owner-bar {
+      display: flex;
+      align-items: center;
+      gap: var(--space-md);
+      color: var(--color-muted-soft);
+    }
+
+    .avatar {
+      width: 48px;
+      height: 48px;
+      border-radius: var(--radius-pill);
+      background-color: var(--color-surface-card);
+      border: 1px solid var(--color-hairline);
+      object-fit: cover;
+      flex-shrink: 0;
+    }
+
+    .owner-meta {
+      display: flex;
+      gap: var(--space-md);
+      align-items: baseline;
+      flex-wrap: wrap;
+      min-width: 0;
+    }
+
+    .owner-name {
+      color: var(--color-ink);
+      font-weight: 500;
+    }
+
+    .owner-id {
+      color: var(--color-muted);
+      font-family: var(--font-code);
+    }
+
+    .meta-divider {
+      color: var(--color-hairline);
+    }
+
+    /* ── Streak-broken notice (amber bar above chain). ─────────── */
+    .streak-broken-bar {
+      background-color: var(--color-accent-amber);
+      color: var(--color-on-primary);
+      text-align: center;
+      padding: var(--space-xs) var(--space-md);
+      border-radius: var(--radius-md);
+    }
+
+    /* ── Reward hero (sits directly on canvas, no card wrap). ── */
+    .reward-display {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: var(--space-sm);
+    }
+
+    .reward-amount {
+      font-family: var(--font-code);
+      font-weight: 400;
+      font-size: 88px;
+      line-height: 1.0;
+      letter-spacing: -1px;
+      color: var(--color-accent-teal);
+      font-feature-settings: "tnum";
+      margin: 0;
+    }
+
+    .reward-amount-sign {
+      margin-right: var(--space-xs);
+    }
+
+    .reward-amount-unit {
+      font-family: var(--font-body);
+      font-weight: 500;
+      font-size: 22px;
+      letter-spacing: 0;
+      color: var(--color-accent-teal);
+      margin-left: var(--space-sm);
+      vertical-align: 12px;
+    }
+
+    .reward-breakdown {
+      display: flex;
+      gap: var(--space-sm);
+      flex-wrap: wrap;
+      justify-content: center;
+      margin-top: var(--space-sm);
+    }
+
+    .reward-breakdown-chip {
+      display: inline-flex;
+      align-items: baseline;
+      gap: var(--space-xs);
+      padding: 6px 12px;
+      background-color: var(--color-surface-cream-strong);
+      border: 1px solid var(--color-hairline);
+      border-radius: var(--radius-pill, 999px);
+      white-space: nowrap;
+    }
+
+    .reward-breakdown-label {
+      font-family: var(--font-body);
+      font-size: 12px;
+      font-weight: 500;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--color-muted);
+    }
+
+    .reward-breakdown-value {
+      font-family: var(--font-code);
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--color-ink);
+      font-feature-settings: "tnum";
+    }
+
+    .reward-breakdown-value.is-bonus {
+      color: var(--color-accent-teal);
+    }
+
+    .reward-breakdown-value.is-off {
+      color: var(--color-muted-soft);
+      font-family: var(--font-body);
+      font-weight: 500;
+      text-transform: none;
+    }
+
+    /* ── Streak dot-chain ──────────────────────────────────────── */
+    .streak-chain-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: var(--space-md);
+    }
+
+    .streak-chain-row {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+    }
+
+    .streak-chain-overflow {
+      color: var(--color-muted);
+      font-feature-settings: "tnum";
+    }
+
+    .streak-chain-svg {
+      display: block;
+    }
+
+    .streak-day-label {
+      color: var(--color-ink);
+      margin: 0;
+      font-feature-settings: "tnum";
+    }
+
+    .streak-day-label .streak-day-number {
+      font-family: var(--font-code);
+      color: var(--color-accent-amber);
+      font-feature-settings: "tnum";
+    }
+
+    .streak-day-label.disabled {
+      color: var(--color-muted);
+    }
+
+    .streak-day-label.disabled .streak-day-number {
+      color: var(--color-muted);
+    }
+
+    /* ── Stats tiles (3 across — deliberately not 4). ─────────── */
+    .stats-tiles {
+      display: grid;
+      gap: var(--space-sm);
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .stat-tile {
+      background-color: var(--color-surface-card);
+      border: 1px solid var(--color-hairline);
+      border-radius: var(--radius-md);
+      padding: var(--space-sm) var(--space-md);
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
+    }
+
+    .stat-label {
+      color: var(--color-muted);
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .stat-value {
+      color: var(--color-ink);
+      font-family: var(--font-body);
+      font-size: 18px;
+      font-weight: 600;
+      line-height: 1.15;
+      letter-spacing: -0.01em;
+      font-feature-settings: "tnum";
+      overflow-wrap: break-word;
+      word-break: break-all;
+    }
+
+    /* ── Cap warning ───────────────────────────────────────────── */
+    .cap-warning {
+      background-color: var(--color-accent-amber);
+      color: var(--color-on-primary);
+      text-align: center;
+      padding: var(--space-xs) var(--space-md);
+      border-radius: var(--radius-md);
+    }
+
+    /* ── Footer ────────────────────────────────────────────────── */
+    .footer {
+      text-align: right;
+      color: var(--color-muted-soft);
+      margin-top: var(--space-md);
+    }
+
+    /* Fallback state when JSON payload fails to parse. */
+    body.fallback .page {
+      opacity: 0.5;
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+
+    <header>
+      <div class="header-rule"></div>
+      <div class="header-eyebrow type-caption-uppercase">经济系统</div>
+      <h1 class="header-title type-display-lg">签到</h1>
+      <div class="owner-bar">
+        <img id="signin-avatar" class="avatar" alt="avatar" />
+        <div class="owner-meta type-body-sm">
+          <span class="owner-name" id="signin-owner-name"></span>
+          <span class="owner-id" id="signin-owner-id"></span>
+          <span class="meta-divider">·</span>
+          <span id="generated-at"></span>
+        </div>
+      </div>
+    </header>
+
+    <div id="streak-broken-bar" class="streak-broken-bar type-caption" hidden>
+      连续中断，今日重新开始
+    </div>
+
+    <section class="reward-display">
+      <div class="reward-amount" id="reward-amount">
+        <span class="reward-amount-sign">+</span><span id="reward-amount-value">0</span><span class="reward-amount-unit">金币</span>
+      </div>
+      <div class="reward-breakdown" id="reward-breakdown"></div>
+    </section>
+
+    <section class="streak-chain-wrap">
+      <div class="streak-chain-row">
+        <span id="streak-chain-overflow" class="streak-chain-overflow type-caption" hidden></span>
+        <svg id="streak-chain-svg" class="streak-chain-svg" xmlns="http://www.w3.org/2000/svg"></svg>
+      </div>
+      <div class="streak-day-label type-display-md" id="streak-day-label">
+        连续签到第 <span class="streak-day-number" id="streak-day-number">0</span> 天
+      </div>
+    </section>
+
+    <section class="stats-tiles">
+      <div class="stat-tile">
+        <span class="stat-label">累计签到</span>
+        <span class="stat-value" id="sum-sign-total"></span>
+      </div>
+      <div class="stat-tile">
+        <span class="stat-label">当前金币</span>
+        <span class="stat-value" id="sum-coins"></span>
+      </div>
+      <div class="stat-tile">
+        <span class="stat-label">今日签到位次</span>
+        <span class="stat-value" id="sum-today-order"></span>
+      </div>
+    </section>
+
+    <div id="cap-warning" class="cap-warning type-caption" hidden></div>
+
+    <footer class="footer type-caption">Powered by NextBot</footer>
+  </main>
+
+  <script id="signin-data" type="application/json">__SIGNIN_DATA_JSON__</script>
+  <script>
+    (function () {
+      let data;
+      try {
+        data = JSON.parse(document.getElementById("signin-data").textContent);
+      } catch (err) {
+        console.warn("[signin] page data unavailable", err);
+        document.body.classList.add("fallback");
+        return;
+      }
+
+      const playerName = String(data.player_name || "").trim() || "—";
+      const playerQq = String(data.player_qq || "").trim() || "—";
+      const todayOrder = Number(data.today_order || 0);
+      const baseReward = Number(data.base_reward || 0);
+      const streakReward = Number(data.streak_reward || 0);
+      const totalReward = Number(data.total_reward || 0);
+      const currentStreak = Math.max(0, Number(data.current_streak || 0));
+      const streakEnabled = Boolean(data.streak_enabled);
+      const streakBroken = Boolean(data.streak_broken);
+      const maxStreakChain = Math.max(1, Number(data.max_streak_chain || 30));
+      const coinsAfter = Number(data.coins_after || 0);
+      const signTotal = Number(data.sign_total || 0);
+      const capped = Boolean(data.capped);
+      const requestedReward = Number(data.requested_reward || 0);
+      const appliedReward = Number(data.applied_reward || 0);
+      const generatedAt = String(data.generated_at || "");
+
+      // ── Header meta ────────────────────────────────────────
+      document.getElementById("signin-avatar").src =
+        `https://q1.qlogo.cn/g?b=qq&nk=${encodeURIComponent(playerQq)}&s=100`;
+      document.getElementById("signin-owner-name").textContent = playerName || "未知玩家";
+      document.getElementById("signin-owner-id").textContent = playerQq ? `(${playerQq})` : "";
+      document.getElementById("generated-at").textContent = generatedAt;
+
+      // ── Streak broken notice ───────────────────────────────
+      if (streakBroken) {
+        document.getElementById("streak-broken-bar").hidden = false;
+      }
+
+      // ── Reward hero ────────────────────────────────────────
+      document.getElementById("reward-amount-value").textContent = String(totalReward);
+
+      const breakdownEl = document.getElementById("reward-breakdown");
+      while (breakdownEl.firstChild) {
+        breakdownEl.removeChild(breakdownEl.firstChild);
+      }
+
+      function buildChip(label, value, modifierClass) {
+        const chip = document.createElement("div");
+        chip.className = "reward-breakdown-chip";
+        const labelEl = document.createElement("span");
+        labelEl.className = "reward-breakdown-label";
+        labelEl.textContent = label;
+        const valueEl = document.createElement("span");
+        valueEl.className = "reward-breakdown-value";
+        if (modifierClass) valueEl.classList.add(modifierClass);
+        valueEl.textContent = value;
+        chip.appendChild(labelEl);
+        chip.appendChild(valueEl);
+        return chip;
+      }
+
+      breakdownEl.appendChild(buildChip("基础签到奖励", String(baseReward)));
+      if (streakEnabled) {
+        breakdownEl.appendChild(
+          buildChip("连续签到奖励", `+${streakReward}`, "is-bonus")
+        );
+      } else {
+        breakdownEl.appendChild(buildChip("连续签到奖励", "未开启", "is-off"));
+      }
+
+      // ── Streak dot-chain ───────────────────────────────────
+      // 30 dots, left to right (oldest → today). Today sits at the right edge.
+      // Hybrid mode: each dot reflects actual sign history (recent_signs[i]).
+      // An amber underline bar joins the trailing consecutive lit run (visible
+      // portion of current streak) — giving the user one quick read of "your
+      // streak is N days long" without needing to count dots.
+      const SVG_NS = "http://www.w3.org/2000/svg";
+      const DOT_RADIUS = 7;
+      const DOT_GAP = 6;
+      const DOT_DIAMETER = DOT_RADIUS * 2;
+      const STROKE = 1;
+      const UNDERLINE_GAP = 4;
+      const UNDERLINE_THICKNESS = 3;
+      const chainCount = maxStreakChain;
+      const svgWidth = chainCount * DOT_DIAMETER + (chainCount - 1) * DOT_GAP + STROKE * 2;
+      const svgHeight = DOT_DIAMETER + STROKE * 2 + UNDERLINE_GAP + UNDERLINE_THICKNESS;
+
+      const svg = document.getElementById("streak-chain-svg");
+      svg.setAttribute("width", String(svgWidth));
+      svg.setAttribute("height", String(svgHeight));
+      svg.setAttribute("viewBox", `0 0 ${svgWidth} ${svgHeight}`);
+
+      // recent_signs: bool[chainCount], index 0 = (chainCount-1) days ago,
+      // last index = today. Defensive: ensure exactly chainCount entries,
+      // right-aligned (keep the most recent chainCount days; pad earlier
+      // days with false). Builder already normalizes, but guard again so
+      // a hand-crafted payload doesn't break the loop.
+      let recentSigns = Array.isArray(data.recent_signs) ? data.recent_signs.slice() : [];
+      if (recentSigns.length > chainCount) {
+        recentSigns = recentSigns.slice(recentSigns.length - chainCount);
+      }
+      while (recentSigns.length < chainCount) {
+        recentSigns.unshift(false);
+      }
+
+      for (let idx = 0; idx < chainCount; idx++) {
+        const cx = STROKE + DOT_RADIUS + idx * (DOT_DIAMETER + DOT_GAP);
+        const cy = STROKE + DOT_RADIUS;
+        const dot = document.createElementNS(SVG_NS, "circle");
+        dot.setAttribute("cx", String(cx));
+        dot.setAttribute("cy", String(cy));
+        dot.setAttribute("r", String(DOT_RADIUS));
+        dot.setAttribute(
+          "fill",
+          recentSigns[idx] ? "var(--color-accent-amber)" : "var(--color-hairline)"
+        );
+        svg.appendChild(dot);
+      }
+
+      // Trailing consecutive lit run (current streak within visible chain).
+      // Walks from the right; stops at the first un-lit dot. Server's
+      // authoritative currentStreak may exceed this when streak > chainCount;
+      // the overflow label still surfaces that via "+M 天".
+      let trailingConsecutive = 0;
+      for (let idx = chainCount - 1; idx >= 0; idx--) {
+        if (recentSigns[idx]) trailingConsecutive++;
+        else break;
+      }
+
+      // Amber underline pill below the trailing run.
+      if (trailingConsecutive > 0) {
+        const startIdx = chainCount - trailingConsecutive;
+        const startCx = STROKE + DOT_RADIUS + startIdx * (DOT_DIAMETER + DOT_GAP);
+        const leftEdge = startCx - DOT_RADIUS;
+        const width = trailingConsecutive * DOT_DIAMETER + (trailingConsecutive - 1) * DOT_GAP;
+        const y = STROKE + DOT_DIAMETER + UNDERLINE_GAP;
+        const bar = document.createElementNS(SVG_NS, "rect");
+        bar.setAttribute("x", String(leftEdge));
+        bar.setAttribute("y", String(y));
+        bar.setAttribute("width", String(width));
+        bar.setAttribute("height", String(UNDERLINE_THICKNESS));
+        bar.setAttribute("rx", String(UNDERLINE_THICKNESS / 2));
+        bar.setAttribute("fill", "var(--color-accent-amber)");
+        svg.appendChild(bar);
+      }
+
+      // Overflow label when streak exceeds chain length.
+      if (currentStreak > chainCount) {
+        const overflow = document.getElementById("streak-chain-overflow");
+        overflow.textContent = `+${currentStreak - chainCount} 天`;
+        overflow.hidden = false;
+      }
+
+      // ── Streak day label ───────────────────────────────────
+      document.getElementById("streak-day-number").textContent = String(currentStreak);
+      if (!streakEnabled) {
+        document.getElementById("streak-day-label").classList.add("disabled");
+      }
+
+      // ── Stats tiles ────────────────────────────────────────
+      document.getElementById("sum-sign-total").textContent = String(signTotal);
+      document.getElementById("sum-coins").textContent = String(coinsAfter);
+      document.getElementById("sum-today-order").textContent = `第 ${todayOrder} 位`;
+
+      // ── Cap warning ────────────────────────────────────────
+      if (capped && appliedReward < requestedReward) {
+        const capEl = document.getElementById("cap-warning");
+        const missing = requestedReward - appliedReward;
+        capEl.textContent = `⚠️ 已触账户上限，理论奖励 ${requestedReward}，${missing} 金币未入账`;
+        capEl.hidden = false;
+      }
+    })();
+  </script>
+</body>
+</html>
