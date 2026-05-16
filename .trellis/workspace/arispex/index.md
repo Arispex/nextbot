@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-4.md`
-- **Total Sessions**: 164
+- **Total Sessions**: 165
 - **Last Active**: 2026-05-16
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-4.md` | ~338 | Active |
+| `journal-4.md` | ~371 | Active |
 | `journal-3.md` | ~1984 | Archived |
 | `journal-2.md` | ~1973 | Archived |
 | `journal-1.md` | ~1999 | Archived |
@@ -32,6 +32,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 165 | 2026-05-16 | shop_list 移除底部 hint + 每商店右侧加查看商店命令 | `eef701f` | `main` |
 | 164 | 2026-05-16 | 我的红包截图加 @ 调用者 | `34f013c` | `main` |
 | 163 | 2026-05-16 | 抢劫图片加 QQ 头像 + 中央流向增强 | `dff4eb5` | `main` |
 | 162 | 2026-05-16 | 抢劫改图片渲染 + 警察→地牢守卫 | `472c2a9` | `main` |

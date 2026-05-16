@@ -336,3 +336,36 @@ _send_red_packet_image 加可选 at_user_id，handle_list_own（我的红包）�
 ### Next Steps
 
 - None - task complete
+
+
+## Session 165: shop_list 移除底部 hint + 每商店右侧加查看商店命令
+
+**Date**: 2026-05-16
+**Task**: shop_list 移除底部 hint + 每商店右侧加查看商店命令
+**Branch**: `main`
+
+### Summary
+
+shop_list.html 删底部 hint-line（HTML/CSS/JS 整段）；每个 entry-top 末尾加 .entry-cmd（mono small muted-soft，margin-left:auto 右浮）显示『查看商店 <shop_id>』。仅模板内改动。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `eef701f` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
