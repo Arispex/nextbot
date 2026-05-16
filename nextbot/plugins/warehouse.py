@@ -354,16 +354,19 @@ async def handle_list_self(bot: Bot, event: Event, arg: Message = CommandArg()) 
 )
 @require_permission("warehouse.list_user")
 async def handle_list_user(bot: Bot, event: Event, arg: Message = CommandArg()) -> None:
+    caller_user_id = event.get_user_id()
+    at = safe_at_segment_or_empty(caller_user_id)
+
     target_user_id, parse_error = resolve_user_id_arg_with_fallback(
         event, arg, "用户仓库", arg_index=0,
     )
     if parse_error == "missing":
         raise_command_usage()
     if parse_error == "name_not_found":
-        await bot.send(event, reply_failure("查询", "未找到该用户"))
+        await bot.send(event, at + " " + reply_failure("查询", "未找到该用户"))
         return
     if parse_error == "name_ambiguous":
-        await bot.send(event, reply_failure("查询", "用户名存在重复，请使用 QQ 或 @用户"))
+        await bot.send(event, at + " " + reply_failure("查询", "用户名存在重复，请使用 QQ 或 @用户"))
         return
     if parse_error or target_user_id is None:
         raise_command_usage()
@@ -372,11 +375,10 @@ async def handle_list_user(bot: Bot, event: Event, arg: Message = CommandArg()) 
     if len(args) != 1:
         raise_command_usage()
 
-    caller_user_id = event.get_user_id()
     try:
         user = _load_user(target_user_id)
         if user is None:
-            await bot.send(event, reply_failure("查询", "未找到该用户"))
+            await bot.send(event, at + " " + reply_failure("查询", "未找到该用户"))
             return
 
         slots = _load_warehouse_slots(target_user_id)
@@ -396,7 +398,7 @@ async def handle_list_user(bot: Bot, event: Event, arg: Message = CommandArg()) 
             f"用户仓库处理异常：caller_id={caller_user_id} target_id={target_user_id}"
         )
         try:
-            await bot.send(event, reply_failure("查询", "处理失败，请稍后重试"))
+            await bot.send(event, at + " " + reply_failure("查询", "处理失败，请稍后重试"))
         except Exception:
             pass
         return

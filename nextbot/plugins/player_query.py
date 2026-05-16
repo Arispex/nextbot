@@ -39,7 +39,7 @@ from nextbot.tshock_api import (
     is_success,
     request_server_api,
 )
-from nextbot.text_utils import reply_block, reply_failure, reply_success, safe_at_segment
+from nextbot.text_utils import reply_block, reply_failure, reply_success, safe_at_segment, safe_at_segment_or_empty
 
 online_matcher = on_command("在线")
 self_kick_matcher = on_command("自踢")
@@ -400,6 +400,8 @@ async def handle_user_inventory(
     if len(args) != 2:
         raise_command_usage()
 
+    at = safe_at_segment_or_empty(event.get_user_id())
+
     try:
         server_id = int(args[0])
     except ValueError:
@@ -413,13 +415,13 @@ async def handle_user_inventory(
     if parse_error == "missing":
         raise_command_usage()
     if parse_error == "name_not_found":
-        await bot.send(event, reply_failure("查询", "用户名称不存在"))
+        await bot.send(event, at + " " + reply_failure("查询", "用户名称不存在"))
         return
     if parse_error == "name_ambiguous":
-        await bot.send(event, reply_failure("查询", "用户名称不唯一，请使用用户 QQ 或 @用户"))
+        await bot.send(event, at + " " + reply_failure("查询", "用户名称不唯一，请使用用户 QQ 或 @用户"))
         return
     if target_user_id is None:
-        await bot.send(event, reply_failure("查询", "用户参数解析失败"))
+        await bot.send(event, at + " " + reply_failure("查询", "用户参数解析失败"))
         return
 
     session = get_session()
@@ -431,10 +433,10 @@ async def handle_user_inventory(
         session.close()
 
     if server is None:
-        await bot.send(event, reply_failure("查询", "服务器不存在"))
+        await bot.send(event, at + " " + reply_failure("查询", "服务器不存在"))
         return
     if target_user is None:
-        await bot.send(event, reply_failure("查询", "用户不存在"))
+        await bot.send(event, at + " " + reply_failure("查询", "用户不存在"))
         return
 
     # PQA-3.2：per-server 并发上限（背包是 Playwright 截图，PNG 较小，max=2 比地图宽松）
@@ -454,14 +456,14 @@ async def handle_user_inventory(
                 inv_task, stats_task, return_exceptions=True
             )
         except Exception:
-            await bot.send(event, reply_failure("查询", "无法连接服务器"))
+            await bot.send(event, at + " " + reply_failure("查询", "无法连接服务器"))
             return
 
         # 任一连接级异常 → 统一回 "无法连接服务器"
         if isinstance(inv_result, TShockRequestError) or isinstance(
             stats_result, TShockRequestError
         ):
-            await bot.send(event, reply_failure("查询", "无法连接服务器"))
+            await bot.send(event, at + " " + reply_failure("查询", "无法连接服务器"))
             return
         # 其它未预期异常按 raise 处理（通常是开发期 bug，应该 surface）
         if isinstance(inv_result, BaseException):
@@ -473,21 +475,21 @@ async def handle_user_inventory(
         info_response: TShockResponse = stats_result
 
         if not is_success(response):
-            await bot.send(event, reply_failure("查询", get_error_reason(response)))
+            await bot.send(event, at + " " + reply_failure("查询", get_error_reason(response)))
             return
 
         inventory = response.payload.get("items")
         if not isinstance(inventory, list):
-            await bot.send(event, reply_failure("查询", "返回数据格式错误"))
+            await bot.send(event, at + " " + reply_failure("查询", "返回数据格式错误"))
             return
 
         if not is_success(info_response):
-            await bot.send(event, reply_failure("查询", get_error_reason(info_response)))
+            await bot.send(event, at + " " + reply_failure("查询", get_error_reason(info_response)))
             return
 
         info_texts = _parse_user_info_texts(info_response.payload)
         if info_texts is None:
-            await bot.send(event, reply_failure("查询", "返回数据格式错误"))
+            await bot.send(event, at + " " + reply_failure("查询", "返回数据格式错误"))
             return
 
         page_url = create_inventory_page(
@@ -572,6 +574,7 @@ async def handle_my_inventory(
         raise_command_usage()
 
     user_id = event.get_user_id()
+    at = safe_at_segment_or_empty(user_id)
     session = get_session()
     try:
         server = session.query(Server).filter(Server.id == server_id).first()
@@ -581,10 +584,10 @@ async def handle_my_inventory(
         session.close()
 
     if server is None:
-        await bot.send(event, reply_failure("查询", "服务器不存在"))
+        await bot.send(event, at + " " + reply_failure("查询", "服务器不存在"))
         return
     if user is None:
-        await bot.send(event, reply_failure("查询", "用户不存在"))
+        await bot.send(event, at + " " + reply_failure("查询", "用户不存在"))
         return
 
     # PQA-4.2：与 handle_user_inventory 共享同一组 per-server semaphore，防止 OOM
@@ -604,13 +607,13 @@ async def handle_my_inventory(
                 inv_task, stats_task, return_exceptions=True
             )
         except Exception:
-            await bot.send(event, reply_failure("查询", "无法连接服务器"))
+            await bot.send(event, at + " " + reply_failure("查询", "无法连接服务器"))
             return
 
         if isinstance(inv_result, TShockRequestError) or isinstance(
             stats_result, TShockRequestError
         ):
-            await bot.send(event, reply_failure("查询", "无法连接服务器"))
+            await bot.send(event, at + " " + reply_failure("查询", "无法连接服务器"))
             return
         if isinstance(inv_result, BaseException):
             raise inv_result
@@ -621,21 +624,21 @@ async def handle_my_inventory(
         info_response: TShockResponse = stats_result
 
         if not is_success(response):
-            await bot.send(event, reply_failure("查询", get_error_reason(response)))
+            await bot.send(event, at + " " + reply_failure("查询", get_error_reason(response)))
             return
 
         inventory = response.payload.get("items")
         if not isinstance(inventory, list):
-            await bot.send(event, reply_failure("查询", "返回数据格式错误"))
+            await bot.send(event, at + " " + reply_failure("查询", "返回数据格式错误"))
             return
 
         if not is_success(info_response):
-            await bot.send(event, reply_failure("查询", get_error_reason(info_response)))
+            await bot.send(event, at + " " + reply_failure("查询", get_error_reason(info_response)))
             return
 
         info_texts = _parse_user_info_texts(info_response.payload)
         if info_texts is None:
-            await bot.send(event, reply_failure("查询", "返回数据格式错误"))
+            await bot.send(event, at + " " + reply_failure("查询", "返回数据格式错误"))
             return
 
         page_url = create_inventory_page(
@@ -696,6 +699,7 @@ async def handle_my_map(bot: Bot, event: Event, arg: Message = CommandArg()):
         raise_command_usage()
 
     user_id = event.get_user_id()
+    at = safe_at_segment_or_empty(user_id)
     session = get_session()
     try:
         server = session.query(Server).filter(Server.id == server_id).first()
@@ -705,10 +709,10 @@ async def handle_my_map(bot: Bot, event: Event, arg: Message = CommandArg()):
         session.close()
 
     if server is None:
-        await bot.send(event, reply_failure("查询", "服务器不存在"))
+        await bot.send(event, at + " " + reply_failure("查询", "服务器不存在"))
         return
     if user is None:
-        await bot.send(event, reply_failure("查询", "用户不存在"))
+        await bot.send(event, at + " " + reply_failure("查询", "用户不存在"))
         return
 
     logger.info(
@@ -727,16 +731,16 @@ async def handle_my_map(bot: Bot, event: Event, arg: Message = CommandArg()):
                 timeout=_LONG_READ_TIMEOUT,
             )
         except TShockRequestError:
-            await bot.send(event, reply_failure("查询", "无法连接服务器"))
+            await bot.send(event, at + " " + reply_failure("查询", "无法连接服务器"))
             return
 
         if not is_success(response):
-            await bot.send(event, reply_failure("查询", get_error_reason(response)))
+            await bot.send(event, at + " " + reply_failure("查询", get_error_reason(response)))
             return
 
         b64_string = str(response.payload.get("base64") or "").strip()
         if not b64_string:
-            await bot.send(event, reply_failure("查询", "返回数据格式错误"))
+            await bot.send(event, at + " " + reply_failure("查询", "返回数据格式错误"))
             return
 
         # PQB-1.1：硬上限，超过即拒绝
@@ -744,7 +748,7 @@ async def handle_my_map(bot: Bot, event: Event, arg: Message = CommandArg()):
             logger.warning(
                 f"我的地图返回数据过大：server_id={server.id} user_id={user.user_id} size_bytes={len(b64_string)}"
             )
-            await bot.send(event, reply_failure("查询", "返回数据过大"))
+            await bot.send(event, at + " " + reply_failure("查询", "返回数据过大"))
             return
 
         if bot.adapter.get_name() == "OneBot V11":
@@ -770,7 +774,7 @@ async def handle_my_map(bot: Bot, event: Event, arg: Message = CommandArg()):
         try:
             png_bytes = base64.b64decode(b64_string, validate=True)
         except (binascii.Error, ValueError):
-            await bot.send(event, reply_failure("查询", "返回数据格式错误"))
+            await bot.send(event, at + " " + reply_failure("查询", "返回数据格式错误"))
             return
         size_kb = len(png_bytes) // 1024
         del b64_string
@@ -782,7 +786,7 @@ async def handle_my_map(bot: Bot, event: Event, arg: Message = CommandArg()):
             try:
                 screenshot_path.write_bytes(png_bytes)
             except OSError:
-                await bot.send(event, reply_failure("查询", "保存图片失败"))
+                await bot.send(event, at + " " + reply_failure("查询", "保存图片失败"))
                 return
             del png_bytes
 
@@ -818,6 +822,8 @@ async def handle_user_map(bot: Bot, event: Event, arg: Message = CommandArg()):
     if len(args) != 2:
         raise_command_usage()
 
+    at = safe_at_segment_or_empty(event.get_user_id())
+
     try:
         server_id = int(args[0])
     except ValueError:
@@ -832,13 +838,13 @@ async def handle_user_map(bot: Bot, event: Event, arg: Message = CommandArg()):
     if parse_error == "missing":
         raise_command_usage()
     if parse_error == "name_not_found":
-        await bot.send(event, reply_failure("查询", "用户名称不存在"))
+        await bot.send(event, at + " " + reply_failure("查询", "用户名称不存在"))
         return
     if parse_error == "name_ambiguous":
-        await bot.send(event, reply_failure("查询", "用户名称不唯一，请使用用户 QQ 或 @用户"))
+        await bot.send(event, at + " " + reply_failure("查询", "用户名称不唯一，请使用用户 QQ 或 @用户"))
         return
     if target_user_id is None:
-        await bot.send(event, reply_failure("查询", "用户参数解析失败"))
+        await bot.send(event, at + " " + reply_failure("查询", "用户参数解析失败"))
         return
 
     requester_user_id = event.get_user_id()
@@ -853,10 +859,10 @@ async def handle_user_map(bot: Bot, event: Event, arg: Message = CommandArg()):
         session.close()
 
     if server is None:
-        await bot.send(event, reply_failure("查询", "服务器不存在"))
+        await bot.send(event, at + " " + reply_failure("查询", "服务器不存在"))
         return
     if target_user is None:
-        await bot.send(event, reply_failure("查询", "用户不存在"))
+        await bot.send(event, at + " " + reply_failure("查询", "用户不存在"))
         return
 
     logger.info(
@@ -876,16 +882,16 @@ async def handle_user_map(bot: Bot, event: Event, arg: Message = CommandArg()):
                 timeout=_LONG_READ_TIMEOUT,
             )
         except TShockRequestError:
-            await bot.send(event, reply_failure("查询", "无法连接服务器"))
+            await bot.send(event, at + " " + reply_failure("查询", "无法连接服务器"))
             return
 
         if not is_success(response):
-            await bot.send(event, reply_failure("查询", get_error_reason(response)))
+            await bot.send(event, at + " " + reply_failure("查询", get_error_reason(response)))
             return
 
         b64_string = str(response.payload.get("base64") or "").strip()
         if not b64_string:
-            await bot.send(event, reply_failure("查询", "返回数据格式错误"))
+            await bot.send(event, at + " " + reply_failure("查询", "返回数据格式错误"))
             return
 
         # PQB-2.1：硬上限
@@ -893,7 +899,7 @@ async def handle_user_map(bot: Bot, event: Event, arg: Message = CommandArg()):
             logger.warning(
                 f"用户地图返回数据过大：server_id={server.id} target_user_id={target_user.user_id} size_bytes={len(b64_string)}"
             )
-            await bot.send(event, reply_failure("查询", "返回数据过大"))
+            await bot.send(event, at + " " + reply_failure("查询", "返回数据过大"))
             return
 
         if bot.adapter.get_name() == "OneBot V11":
@@ -919,7 +925,7 @@ async def handle_user_map(bot: Bot, event: Event, arg: Message = CommandArg()):
         try:
             png_bytes = base64.b64decode(b64_string, validate=True)
         except (binascii.Error, ValueError):
-            await bot.send(event, reply_failure("查询", "返回数据格式错误"))
+            await bot.send(event, at + " " + reply_failure("查询", "返回数据格式错误"))
             return
         size_kb = len(png_bytes) // 1024
         del b64_string
@@ -931,7 +937,7 @@ async def handle_user_map(bot: Bot, event: Event, arg: Message = CommandArg()):
             try:
                 screenshot_path.write_bytes(png_bytes)
             except OSError:
-                await bot.send(event, reply_failure("查询", "保存图片失败"))
+                await bot.send(event, at + " " + reply_failure("查询", "保存图片失败"))
                 return
             del png_bytes
 
@@ -974,6 +980,7 @@ async def handle_explored_map(bot: Bot, event: Event, arg: Message = CommandArg(
         raise_command_usage()
 
     requester_user_id = event.get_user_id()
+    at = safe_at_segment_or_empty(requester_user_id)
     session = get_session()
     try:
         server = session.query(Server).filter(Server.id == server_id).first()
@@ -981,7 +988,7 @@ async def handle_explored_map(bot: Bot, event: Event, arg: Message = CommandArg(
         session.close()
 
     if server is None:
-        await bot.send(event, reply_failure("查询", "服务器不存在"))
+        await bot.send(event, at + " " + reply_failure("查询", "服务器不存在"))
         return
 
     logger.info(
@@ -1000,16 +1007,16 @@ async def handle_explored_map(bot: Bot, event: Event, arg: Message = CommandArg(
                 timeout=_LONG_READ_TIMEOUT,
             )
         except TShockRequestError:
-            await bot.send(event, reply_failure("查询", "无法连接服务器"))
+            await bot.send(event, at + " " + reply_failure("查询", "无法连接服务器"))
             return
 
         if not is_success(response):
-            await bot.send(event, reply_failure("查询", get_error_reason(response)))
+            await bot.send(event, at + " " + reply_failure("查询", get_error_reason(response)))
             return
 
         b64_string = str(response.payload.get("base64") or "").strip()
         if not b64_string:
-            await bot.send(event, reply_failure("查询", "返回数据格式错误"))
+            await bot.send(event, at + " " + reply_failure("查询", "返回数据格式错误"))
             return
 
         # PQB-3.1：硬上限
@@ -1017,7 +1024,7 @@ async def handle_explored_map(bot: Bot, event: Event, arg: Message = CommandArg(
             logger.warning(
                 f"查看地图返回数据过大：server_id={server.id} requester_user_id={requester_user_id} size_bytes={len(b64_string)}"
             )
-            await bot.send(event, reply_failure("查询", "返回数据过大"))
+            await bot.send(event, at + " " + reply_failure("查询", "返回数据过大"))
             return
 
         if bot.adapter.get_name() == "OneBot V11":
@@ -1042,7 +1049,7 @@ async def handle_explored_map(bot: Bot, event: Event, arg: Message = CommandArg(
         try:
             png_bytes = base64.b64decode(b64_string, validate=True)
         except (binascii.Error, ValueError):
-            await bot.send(event, reply_failure("查询", "返回数据格式错误"))
+            await bot.send(event, at + " " + reply_failure("查询", "返回数据格式错误"))
             return
         size_kb = len(png_bytes) // 1024
         del b64_string
@@ -1054,7 +1061,7 @@ async def handle_explored_map(bot: Bot, event: Event, arg: Message = CommandArg(
             try:
                 screenshot_path.write_bytes(png_bytes)
             except OSError:
-                await bot.send(event, reply_failure("查询", "保存图片失败"))
+                await bot.send(event, at + " " + reply_failure("查询", "保存图片失败"))
                 return
             del png_bytes
 
@@ -1097,6 +1104,7 @@ async def handle_world_progress(
         raise_command_usage()
 
     user_id = event.get_user_id()
+    at = safe_at_segment_or_empty(user_id)
     session = get_session()
     try:
         server = session.query(Server).filter(Server.id == server_id).first()
@@ -1104,7 +1112,7 @@ async def handle_world_progress(
         session.close()
 
     if server is None:
-        await bot.send(event, reply_failure("查询", "服务器不存在"))
+        await bot.send(event, at + " " + reply_failure("查询", "服务器不存在"))
         return
 
     try:
@@ -1115,11 +1123,11 @@ async def handle_world_progress(
             timeout=15.0,
         )
     except TShockRequestError:
-        await bot.send(event, reply_failure("查询", "无法连接服务器"))
+        await bot.send(event, at + " " + reply_failure("查询", "无法连接服务器"))
         return
 
     if not is_success(response):
-        await bot.send(event, reply_failure("查询", get_error_reason(response)))
+        await bot.send(event, at + " " + reply_failure("查询", get_error_reason(response)))
         return
 
     # PQB-4.4：丢弃非 bool 字段时记一条 warning，便于发现 TShock 端字段类型变更
@@ -1139,7 +1147,7 @@ async def handle_world_progress(
             f"世界进度返回非 bool 字段：server_id={server.id} dropped={','.join(dropped)}"
         )
     if not progress:
-        await bot.send(event, reply_failure("查询", "返回数据格式错误"))
+        await bot.send(event, at + " " + reply_failure("查询", "返回数据格式错误"))
         return
 
     page_url = create_progress_page(

@@ -31,6 +31,7 @@ from nextbot.text_utils import (
     EMOJI_WAREHOUSE,
     reply_failure,
     reply_list,
+    safe_at_segment_or_empty,
 )
 from server.screenshot import ScreenshotOptions
 from server.web_server import create_menu_page
@@ -141,11 +142,12 @@ def _group_by_category(items: list[dict]) -> tuple[list[str], dict[str, list[dic
 @require_permission("menu.root")
 async def handle_menu(bot: Bot, event: Event, arg: Message = CommandArg()) -> None:
     args = parse_command_args_with_fallback(event, arg, "菜单")
+    at = safe_at_segment_or_empty(event.get_user_id())
 
     cat_names, by_cat = _group_by_category(list_command_configs())
 
     if not cat_names:
-        await bot.send(event, reply_failure("查看菜单", "暂无可用命令"))
+        await bot.send(event, at + " " + reply_failure("查看菜单", "暂无可用命令"))
         return
 
     if not args:
@@ -179,7 +181,7 @@ async def handle_menu(bot: Bot, event: Event, arg: Message = CommandArg()) -> No
         target_cat = selector
 
     if target_cat is None:
-        await bot.send(event, reply_failure("查看菜单", f"未找到分类「{selector}」"))
+        await bot.send(event, at + " " + reply_failure("查看菜单", f"未找到分类「{selector}」"))
         return
 
     render_commands = [
@@ -217,6 +219,8 @@ async def handle_search_command(
     if len(args) != 1:
         raise_command_usage()
 
+    at = safe_at_segment_or_empty(event.get_user_id())
+
     keyword = args[0].strip()
     if not keyword:
         raise_command_usage()
@@ -228,7 +232,7 @@ async def handle_search_command(
     ]
 
     if not matched:
-        await bot.send(event, reply_failure("搜索命令", f"未找到包含「{keyword}」的命令"))
+        await bot.send(event, at + " " + reply_failure("搜索命令", f"未找到包含「{keyword}」的命令"))
         return
 
     items = [str(item.get("display_name") or "") for item in matched]

@@ -139,10 +139,12 @@ async def handle_admin_list(bot: Bot, event: Event, arg: Message = CommandArg())
     if args:
         raise_command_usage()
 
+    at = _at_segment(event)
+
     keep_order = bool(get_current_param("keep_order", True))
     owner_ids = get_owner_ids_ordered() if keep_order else sorted(get_owner_ids_ordered())
     if not owner_ids:
-        await bot.send(event, reply_failure("查询", "未配置管理员（owner_id）"))
+        await bot.send(event, at + " " + reply_failure("查询", "未配置管理员（owner_id）"))
         return
 
     logger.info(f"管理员列表查询：owner_count={len(owner_ids)}")

@@ -243,7 +243,7 @@ async def handle_map_image(
         session.close()
 
     if server is None:
-        await bot.send(event, reply_failure("查询", "服务器不存在"))
+        await bot.send(event, at_prefix(event, reply_failure("查询", "服务器不存在")))
         return
 
     # ST-2.1：per-server 单并发，避免同一服务器多人同时取地图导致 N×几十 MB 驻留
@@ -257,16 +257,16 @@ async def handle_map_image(
                 timeout=_LONG_READ_TIMEOUT,
             )
         except TShockRequestError:
-            await bot.send(event, reply_failure("查询", "无法连接服务器"))
+            await bot.send(event, at_prefix(event, reply_failure("查询", "无法连接服务器")))
             return
 
         if not is_success(response):
-            await bot.send(event, reply_failure("查询", get_error_reason(response)))
+            await bot.send(event, at_prefix(event, reply_failure("查询", get_error_reason(response))))
             return
 
         b64 = response.payload.get("base64")
         if not isinstance(b64, str) or not b64:
-            await bot.send(event, reply_failure("查询", "返回数据格式错误"))
+            await bot.send(event, at_prefix(event, reply_failure("查询", "返回数据格式错误")))
             return
 
         # ST-2.3：base64 串硬上限，超过就拒绝，避免被打爆
@@ -274,7 +274,7 @@ async def handle_map_image(
             logger.warning(
                 f"全亮地图返回数据过大：server_id={server.id} size_bytes={len(b64)}"
             )
-            await bot.send(event, reply_failure("查询", "返回数据过大"))
+            await bot.send(event, at_prefix(event, reply_failure("查询", "返回数据过大")))
             return
 
         logger.info(f"世界地图获取成功：server_id={server.id} size_kb={len(b64) // 1024}")
@@ -327,7 +327,7 @@ async def handle_download_map(
         session.close()
 
     if server is None:
-        await bot.send(event, reply_failure("下载", "服务器不存在"))
+        await bot.send(event, at_prefix(event, reply_failure("下载", "服务器不存在")))
         return
 
     user_id = event.get_user_id()
@@ -344,17 +344,17 @@ async def handle_download_map(
                 timeout=_LONG_READ_TIMEOUT,
             )
         except TShockRequestError:
-            await bot.send(event, reply_failure("下载", "无法连接服务器"))
+            await bot.send(event, at_prefix(event, reply_failure("下载", "无法连接服务器")))
             return
 
         if not is_success(response):
-            await bot.send(event, reply_failure("下载", get_error_reason(response)))
+            await bot.send(event, at_prefix(event, reply_failure("下载", get_error_reason(response))))
             return
 
         b64 = response.payload.get("base64")
         raw_file_name = response.payload.get("fileName")
         if not isinstance(b64, str) or not b64:
-            await bot.send(event, reply_failure("下载", "返回数据格式错误"))
+            await bot.send(event, at_prefix(event, reply_failure("下载", "返回数据格式错误")))
             return
 
         # ST-2.3 / 大小上限
@@ -362,7 +362,7 @@ async def handle_download_map(
             logger.warning(
                 f"下载地图返回数据过大：server_id={server.id} size_bytes={len(b64)}"
             )
-            await bot.send(event, reply_failure("下载", "文件过大"))
+            await bot.send(event, at_prefix(event, reply_failure("下载", "文件过大")))
             return
 
         # ST-3.1 / ST-3.5：safe_name 在 OneBot upload 与 fallback 写盘两条路径上都使用

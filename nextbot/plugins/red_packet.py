@@ -587,19 +587,21 @@ async def handle_list_own(bot: Bot, event: Event, arg: Message = CommandArg()) -
     if len(args) > 1:
         raise_command_usage()
 
+    user_id = event.get_user_id()
+    at = safe_at_segment_or_empty(user_id)
+
     page = 1
     if args:
         try:
             page = int(args[0])
         except ValueError:
-            await bot.send(event, reply_failure("查询", "页数必须为正整数"))
+            await bot.send(event, at + " " + reply_failure("查询", "页数必须为正整数"))
             return
         if page <= 0:
-            await bot.send(event, reply_failure("查询", "页数必须为正整数"))
+            await bot.send(event, at + " " + reply_failure("查询", "页数必须为正整数"))
             return
 
     limit = max(1, min(int(get_current_param("limit", 10)), 50))
-    user_id = event.get_user_id()
 
     try:
         session = get_session()
@@ -611,7 +613,7 @@ async def handle_list_own(bot: Bot, event: Event, arg: Message = CommandArg()) -
             )
             total_pages = max(1, math.ceil(total / limit)) if total > 0 else 1
             if total > 0 and page > total_pages:
-                await bot.send(event, reply_failure("查询", f"超出总页数（共 {total_pages} 页）"))
+                await bot.send(event, at + " " + reply_failure("查询", f"超出总页数（共 {total_pages} 页）"))
                 return
             offset = (page - 1) * limit
             packets = (
@@ -656,7 +658,7 @@ async def handle_list_own(bot: Bot, event: Event, arg: Message = CommandArg()) -
     except Exception:  # noqa: BLE001
         logger.exception(f"我的红包处理异常：user_id={user_id}")
         try:
-            await bot.send(event, reply_failure("查询", "处理失败，请稍后重试"))
+            await bot.send(event, at + " " + reply_failure("查询", "处理失败，请稍后重试"))
         except Exception:  # noqa: BLE001
             pass
         return
@@ -688,19 +690,21 @@ async def handle_list_all(bot: Bot, event: Event, arg: Message = CommandArg()) -
     if len(args) > 1:
         raise_command_usage()
 
+    user_id = event.get_user_id()
+    at = safe_at_segment_or_empty(user_id)
+
     page = 1
     if args:
         try:
             page = int(args[0])
         except ValueError:
-            await bot.send(event, reply_failure("查询", "页数必须为正整数"))
+            await bot.send(event, at + " " + reply_failure("查询", "页数必须为正整数"))
             return
         if page <= 0:
-            await bot.send(event, reply_failure("查询", "页数必须为正整数"))
+            await bot.send(event, at + " " + reply_failure("查询", "页数必须为正整数"))
             return
 
     limit = max(1, min(int(get_current_param("limit", 10)), 50))
-    user_id = event.get_user_id()
 
     try:
         session = get_session()
@@ -712,7 +716,7 @@ async def handle_list_all(bot: Bot, event: Event, arg: Message = CommandArg()) -
             )
             total_pages = max(1, math.ceil(total / limit)) if total > 0 else 1
             if total > 0 and page > total_pages:
-                await bot.send(event, reply_failure("查询", f"超出总页数（共 {total_pages} 页）"))
+                await bot.send(event, at + " " + reply_failure("查询", f"超出总页数（共 {total_pages} 页）"))
                 return
             offset = (page - 1) * limit
             packets = (
@@ -760,7 +764,7 @@ async def handle_list_all(bot: Bot, event: Event, arg: Message = CommandArg()) -
     except Exception:  # noqa: BLE001
         logger.exception(f"红包列表处理异常：user_id={user_id}")
         try:
-            await bot.send(event, reply_failure("查询", "处理失败，请稍后重试"))
+            await bot.send(event, at + " " + reply_failure("查询", "处理失败，请稍后重试"))
         except Exception:  # noqa: BLE001
             pass
         return

@@ -192,6 +192,7 @@ def _find_first_empty_slot(session, user_id: str) -> int | None:
 @require_permission("shop.list")
 async def handle_shop_list(bot: Bot, event: Event, arg: Message = CommandArg()) -> None:
     user_id = event.get_user_id()
+    at = safe_at_segment_or_empty(user_id)
     try:
         args = parse_command_args_with_fallback(event, arg, "商店列表")
         if len(args) > 1:
@@ -202,10 +203,10 @@ async def handle_shop_list(bot: Bot, event: Event, arg: Message = CommandArg()) 
             try:
                 page = int(args[0])
             except ValueError:
-                await bot.send(event, reply_failure("查询", "页数必须为正整数"))
+                await bot.send(event, at + " " + reply_failure("查询", "页数必须为正整数"))
                 return
             if page <= 0:
-                await bot.send(event, reply_failure("查询", "页数必须为正整数"))
+                await bot.send(event, at + " " + reply_failure("查询", "页数必须为正整数"))
                 return
 
         # S-Common.4：_safe_param_int 替代 int(get_current_param(...))
@@ -220,13 +221,13 @@ async def handle_shop_list(bot: Bot, event: Event, arg: Message = CommandArg()) 
                 .count()
             )
             if total == 0:
-                await bot.send(event, reply_failure("查询", "暂无可用商店"))
+                await bot.send(event, at + " " + reply_failure("查询", "暂无可用商店"))
                 return
 
             total_pages = max(1, math.ceil(total / limit))
             if page > total_pages:
                 await bot.send(
-                    event, reply_failure("查询", f"超出总页数（共 {total_pages} 页）"),
+                    event, at + " " + reply_failure("查询", f"超出总页数（共 {total_pages} 页）"),
                 )
                 return
             offset = (page - 1) * limit
@@ -286,7 +287,7 @@ async def handle_shop_list(bot: Bot, event: Event, arg: Message = CommandArg()) 
     except Exception:  # noqa: BLE001
         logger.exception(f"商店列表处理异常：user_id={user_id}")
         try:
-            await bot.send(event, reply_failure("查询", "处理失败，请稍后重试"))
+            await bot.send(event, at + " " + reply_failure("查询", "处理失败，请稍后重试"))
         except Exception:  # noqa: BLE001
             pass
         return
@@ -315,6 +316,7 @@ async def handle_shop_list(bot: Bot, event: Event, arg: Message = CommandArg()) 
 @require_permission("shop.view")
 async def handle_shop_view(bot: Bot, event: Event, arg: Message = CommandArg()) -> None:
     user_id = event.get_user_id()
+    at = safe_at_segment_or_empty(user_id)
     try:
         args = parse_command_args_with_fallback(event, arg, "查看商店")
         if not (1 <= len(args) <= 2):
@@ -328,10 +330,10 @@ async def handle_shop_view(bot: Bot, event: Event, arg: Message = CommandArg()) 
             try:
                 page = int(args[1])
             except ValueError:
-                await bot.send(event, reply_failure("查询", "页数必须为正整数"))
+                await bot.send(event, at + " " + reply_failure("查询", "页数必须为正整数"))
                 return
             if page <= 0:
-                await bot.send(event, reply_failure("查询", "页数必须为正整数"))
+                await bot.send(event, at + " " + reply_failure("查询", "页数必须为正整数"))
                 return
 
         # S-Common.4：_safe_param_int 替代 int(get_current_param(...))
@@ -341,10 +343,10 @@ async def handle_shop_view(bot: Bot, event: Event, arg: Message = CommandArg()) 
         try:
             shop = _load_shop_by_selector(session, selector)
             if shop is None:
-                await bot.send(event, reply_failure("查询", f"未找到商店「{selector}」"))
+                await bot.send(event, at + " " + reply_failure("查询", f"未找到商店「{selector}」"))
                 return
             if not shop.enabled:
-                await bot.send(event, reply_failure("查询", "该商店未上架"))
+                await bot.send(event, at + " " + reply_failure("查询", "该商店未上架"))
                 return
             shop_id = int(shop.id)
             shop_name = str(shop.name)
@@ -363,7 +365,7 @@ async def handle_shop_view(bot: Bot, event: Event, arg: Message = CommandArg()) 
             total_pages = max(1, math.ceil(total / limit)) if total > 0 else 1
             if total > 0 and page > total_pages:
                 await bot.send(
-                    event, reply_failure("查询", f"超出总页数（共 {total_pages} 页）"),
+                    event, at + " " + reply_failure("查询", f"超出总页数（共 {total_pages} 页）"),
                 )
                 return
             offset = (page - 1) * limit
@@ -443,7 +445,7 @@ async def handle_shop_view(bot: Bot, event: Event, arg: Message = CommandArg()) 
     except Exception:  # noqa: BLE001
         logger.exception(f"查看商店处理异常：user_id={user_id}")
         try:
-            await bot.send(event, reply_failure("查询", "处理失败，请稍后重试"))
+            await bot.send(event, at + " " + reply_failure("查询", "处理失败，请稍后重试"))
         except Exception:  # noqa: BLE001
             pass
         return

@@ -12,7 +12,7 @@ from nextbot.message_parser import parse_command_args_with_fallback
 from nextbot.permissions import require_permission
 from nextbot.plugins.tutorial_data import get_tutorial, list_tutorials
 from nextbot.screenshot_render import render_and_send_screenshot
-from nextbot.text_utils import EMOJI_GUIDE, reply_failure, reply_list
+from nextbot.text_utils import EMOJI_GUIDE, reply_failure, reply_list, safe_at_segment_or_empty
 from server.screenshot import ScreenshotOptions
 from server.web_server import create_tutorial_page
 
@@ -41,10 +41,11 @@ _tutorial_semaphore = asyncio.Semaphore(2)
 @require_permission("system.tutorial")
 async def handle_tutorial(bot: Bot, event: Event, arg: Message = CommandArg()) -> None:
     args = parse_command_args_with_fallback(event, arg, "使用教程")
+    at = safe_at_segment_or_empty(event.get_user_id())
     tutorials = list_tutorials()
 
     if not tutorials:
-        await bot.send(event, reply_failure("查询", "暂无可用教程"))
+        await bot.send(event, at + " " + reply_failure("查询", "暂无可用教程"))
         return
 
     if not args:
@@ -78,7 +79,7 @@ async def handle_tutorial(bot: Bot, event: Event, arg: Message = CommandArg()) -
     if target is None:
         await bot.send(
             event,
-            reply_failure("查询", "未找到该教程，发送「使用教程」查看所有教程"),
+            at + " " + reply_failure("查询", "未找到该教程，发送「使用教程」查看所有教程"),
         )
         return
 

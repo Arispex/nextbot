@@ -159,15 +159,17 @@ async def handle_ban_list(bot: Bot, event: Event, arg: Message = CommandArg()) -
     if len(args) > 1:
         raise_command_usage()
 
+    at = safe_at_segment_or_empty(event.get_user_id())
+
     page = 1
     if args:
         try:
             page = int(args[0])
         except ValueError:
-            await bot.send(event, reply_failure("查询", "页数必须为正整数"))
+            await bot.send(event, at + " " + reply_failure("查询", "页数必须为正整数"))
             return
         if page <= 0:
-            await bot.send(event, reply_failure("查询", "页数必须为正整数"))
+            await bot.send(event, at + " " + reply_failure("查询", "页数必须为正整数"))
             return
 
     limit = max(1, min(int(get_current_param("limit", 10)), 50))
@@ -181,7 +183,7 @@ async def handle_ban_list(bot: Bot, event: Event, arg: Message = CommandArg()) -
         total_pages = max(1, math.ceil(total / limit))
 
         if total > 0 and page > total_pages:
-            await bot.send(event, reply_failure("查询", f"超出总页数（共 {total_pages} 页）"))
+            await bot.send(event, at + " " + reply_failure("查询", f"超出总页数（共 {total_pages} 页）"))
             return
 
         offset = (page - 1) * limit

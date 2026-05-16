@@ -230,6 +230,7 @@ def _find_empty_slots(session, user_id: str, needed: int) -> list[int]:
 @require_permission("lottery.list")
 async def handle_lottery_list(bot: Bot, event: Event, arg: Message = CommandArg()) -> None:
     user_id = event.get_user_id()
+    at = safe_at_segment_or_empty(user_id)
     try:
         args = parse_command_args_with_fallback(event, arg, "奖池列表")
         if len(args) > 1:
@@ -240,10 +241,10 @@ async def handle_lottery_list(bot: Bot, event: Event, arg: Message = CommandArg(
             try:
                 page = int(args[0])
             except ValueError:
-                await bot.send(event, reply_failure("查询", "页数必须为正整数"))
+                await bot.send(event, at + " " + reply_failure("查询", "页数必须为正整数"))
                 return
             if page <= 0:
-                await bot.send(event, reply_failure("查询", "页数必须为正整数"))
+                await bot.send(event, at + " " + reply_failure("查询", "页数必须为正整数"))
                 return
 
         limit = max(1, min(int(get_current_param("limit", 10)), 50))
@@ -257,12 +258,12 @@ async def handle_lottery_list(bot: Bot, event: Event, arg: Message = CommandArg(
                 .count()
             )
             if total == 0:
-                await bot.send(event, reply_failure("查询", "暂无可用奖池"))
+                await bot.send(event, at + " " + reply_failure("查询", "暂无可用奖池"))
                 return
 
             total_pages = max(1, math.ceil(total / limit))
             if page > total_pages:
-                await bot.send(event, reply_failure("查询", f"超出总页数（共 {total_pages} 页）"))
+                await bot.send(event, at + " " + reply_failure("查询", f"超出总页数（共 {total_pages} 页）"))
                 return
             offset = (page - 1) * limit
 
@@ -319,7 +320,7 @@ async def handle_lottery_list(bot: Bot, event: Event, arg: Message = CommandArg(
         # LO-1.2：handler 外层 try/except，统一兜底
         logger.exception(f"奖池列表处理异常：user_id={user_id}")
         try:
-            await bot.send(event, reply_failure("查询", "处理失败，请稍后重试"))
+            await bot.send(event, at + " " + reply_failure("查询", "处理失败，请稍后重试"))
         except Exception:  # noqa: BLE001
             pass
 
@@ -345,6 +346,7 @@ async def handle_lottery_list(bot: Bot, event: Event, arg: Message = CommandArg(
 @require_permission("lottery.view")
 async def handle_lottery_view(bot: Bot, event: Event, arg: Message = CommandArg()) -> None:
     user_id = event.get_user_id()
+    at = safe_at_segment_or_empty(user_id)
     try:
         args = parse_command_args_with_fallback(event, arg, "查看奖池")
         if not (1 <= len(args) <= 2):
@@ -358,10 +360,10 @@ async def handle_lottery_view(bot: Bot, event: Event, arg: Message = CommandArg(
             try:
                 page = int(args[1])
             except ValueError:
-                await bot.send(event, reply_failure("查询", "页数必须为正整数"))
+                await bot.send(event, at + " " + reply_failure("查询", "页数必须为正整数"))
                 return
             if page <= 0:
-                await bot.send(event, reply_failure("查询", "页数必须为正整数"))
+                await bot.send(event, at + " " + reply_failure("查询", "页数必须为正整数"))
                 return
 
         limit = max(1, min(int(get_current_param("limit", 20)), 100))
@@ -370,10 +372,10 @@ async def handle_lottery_view(bot: Bot, event: Event, arg: Message = CommandArg(
         try:
             pool = _load_pool_by_selector(session, selector)
             if pool is None:
-                await bot.send(event, reply_failure("查询", f"未找到奖池「{selector}」"))
+                await bot.send(event, at + " " + reply_failure("查询", f"未找到奖池「{selector}」"))
                 return
             if not pool.enabled:
-                await bot.send(event, reply_failure("查询", "该奖池未上架"))
+                await bot.send(event, at + " " + reply_failure("查询", "该奖池未上架"))
                 return
             prizes = _list_active_prizes(session, int(pool.id))
             pool_id = int(pool.id)
@@ -430,7 +432,7 @@ async def handle_lottery_view(bot: Bot, event: Event, arg: Message = CommandArg(
         total = len(all_entries)
         total_pages = max(1, math.ceil(total / limit)) if total > 0 else 1
         if total > 0 and page > total_pages:
-            await bot.send(event, reply_failure("查询", f"超出总页数（共 {total_pages} 页）"))
+            await bot.send(event, at + " " + reply_failure("查询", f"超出总页数（共 {total_pages} 页）"))
             return
         offset = (page - 1) * limit
         render_prizes = all_entries[offset:offset + limit]
@@ -457,7 +459,7 @@ async def handle_lottery_view(bot: Bot, event: Event, arg: Message = CommandArg(
     except Exception:  # noqa: BLE001
         logger.exception(f"查看奖池处理异常：user_id={user_id}")
         try:
-            await bot.send(event, reply_failure("查询", "处理失败，请稍后重试"))
+            await bot.send(event, at + " " + reply_failure("查询", "处理失败，请稍后重试"))
         except Exception:  # noqa: BLE001
             pass
 

@@ -29,7 +29,7 @@ from nextbot.time_utils import (
     format_online_seconds,
     utc_naive_to_beijing,
 )
-from nextbot.text_utils import reply_failure, reply_info
+from nextbot.text_utils import reply_failure, reply_info, safe_at_segment_or_empty
 from server.screenshot import ScreenshotOptions
 from server.web_server import create_leaderboard_page
 
@@ -243,9 +243,10 @@ async def handle_coins_leaderboard(
     if len(args) > 1:
         raise_command_usage()
 
+    at = safe_at_segment_or_empty(event.get_user_id())
     page = _parse_page_arg(args)
     if page is None:
-        await bot.send(event, reply_failure("查询", "页数必须为正整数"))
+        await bot.send(event, at + " " + reply_failure("查询", "页数必须为正整数"))
         return
 
     limit = max(1, min(int(get_current_param("limit", 10)), 50))
@@ -256,7 +257,7 @@ async def handle_coins_leaderboard(
         total_count = session.query(User).count()
         total_pages = max(1, math.ceil(total_count / limit))
         if page > total_pages:
-            await bot.send(event, reply_failure("查询", f"超出总页数（共 {total_pages} 页）"))
+            await bot.send(event, at + " " + reply_failure("查询", f"超出总页数（共 {total_pages} 页）"))
             return
         offset = (page - 1) * limit
         users = (
@@ -322,9 +323,10 @@ async def handle_streak_leaderboard(
     if len(args) > 1:
         raise_command_usage()
 
+    at = safe_at_segment_or_empty(event.get_user_id())
     page = _parse_page_arg(args)
     if page is None:
-        await bot.send(event, reply_failure("查询", "页数必须为正整数"))
+        await bot.send(event, at + " " + reply_failure("查询", "页数必须为正整数"))
         return
 
     limit = max(1, min(int(get_current_param("limit", 10)), 50))
@@ -335,7 +337,7 @@ async def handle_streak_leaderboard(
         total_count = session.query(User).count()
         total_pages = max(1, math.ceil(total_count / limit))
         if page > total_pages:
-            await bot.send(event, reply_failure("查询", f"超出总页数（共 {total_pages} 页）"))
+            await bot.send(event, at + " " + reply_failure("查询", f"超出总页数（共 {total_pages} 页）"))
             return
         offset = (page - 1) * limit
         users = (
@@ -401,9 +403,10 @@ async def handle_signin_leaderboard(
     if len(args) > 1:
         raise_command_usage()
 
+    at = safe_at_segment_or_empty(event.get_user_id())
     page = _parse_page_arg(args)
     if page is None:
-        await bot.send(event, reply_failure("查询", "页数必须为正整数"))
+        await bot.send(event, at + " " + reply_failure("查询", "页数必须为正整数"))
         return
 
     limit = max(1, min(int(get_current_param("limit", 10)), 50))
@@ -414,7 +417,7 @@ async def handle_signin_leaderboard(
         total_count = session.query(User).count()
         total_pages = max(1, math.ceil(total_count / limit))
         if page > total_pages:
-            await bot.send(event, reply_failure("查询", f"超出总页数（共 {total_pages} 页）"))
+            await bot.send(event, at + " " + reply_failure("查询", f"超出总页数（共 {total_pages} 页）"))
             return
         offset = (page - 1) * limit
         users = (
@@ -477,6 +480,8 @@ async def _server_side_leaderboard(
     if len(args) < 1 or len(args) > 2:
         raise_command_usage()
 
+    at = safe_at_segment_or_empty(event.get_user_id())
+
     try:
         server_id = int(args[0])
     except ValueError:
@@ -489,7 +494,7 @@ async def _server_side_leaderboard(
 
     page = _parse_page_arg(args[1:])
     if page is None:
-        await bot.send(event, reply_failure("查询", "页数必须为正整数"))
+        await bot.send(event, at + " " + reply_failure("查询", "页数必须为正整数"))
         return
 
     limit = max(1, min(int(get_current_param("limit", 10)), 50))
@@ -504,23 +509,23 @@ async def _server_side_leaderboard(
         session.close()
 
     if server is None:
-        await bot.send(event, reply_failure("查询", "服务器不存在"))
+        await bot.send(event, at + " " + reply_failure("查询", "服务器不存在"))
         return
 
     try:
         # LB-2.1：榜单查询给 10s timeout
         response = await request_server_api(server, endpoint, timeout=LEADERBOARD_FETCH_TIMEOUT)
     except TShockRequestError:
-        await bot.send(event, reply_failure("查询", "无法连接服务器"))
+        await bot.send(event, at + " " + reply_failure("查询", "无法连接服务器"))
         return
 
     if not is_success(response):
-        await bot.send(event, reply_failure("查询", _format_remote_failure(get_error_reason(response))))
+        await bot.send(event, at + " " + reply_failure("查询", _format_remote_failure(get_error_reason(response))))
         return
 
     raw_entries = response.payload.get("entries")
     if not isinstance(raw_entries, list):
-        await bot.send(event, reply_failure("查询", "返回数据格式错误"))
+        await bot.send(event, at + " " + reply_failure("查询", "返回数据格式错误"))
         return
 
     all_entries = [
@@ -539,7 +544,7 @@ async def _server_side_leaderboard(
     total_count = len(all_entries)
     total_pages = max(1, math.ceil(total_count / limit))
     if total_count > 0 and page > total_pages:
-        await bot.send(event, reply_failure("查询", f"超出总页数（共 {total_pages} 页）"))
+        await bot.send(event, at + " " + reply_failure("查询", f"超出总页数（共 {total_pages} 页）"))
         return
 
     offset = (page - 1) * limit
@@ -747,9 +752,10 @@ async def handle_total_online_time_leaderboard(
     if len(args) > 1:
         raise_command_usage()
 
+    at = safe_at_segment_or_empty(event.get_user_id())
     page = _parse_page_arg(args)
     if page is None:
-        await bot.send(event, reply_failure("查询", "页数必须为正整数"))
+        await bot.send(event, at + " " + reply_failure("查询", "页数必须为正整数"))
         return
 
     limit = max(1, min(int(get_current_param("limit", 10)), 50))
@@ -833,7 +839,7 @@ async def handle_total_online_time_leaderboard(
     if not totals:
         await bot.send(
             event,
-            reply_failure("查询", f"所有服务器均无法获取数据（共 {len(servers)} 台）"),
+            at + " " + reply_failure("查询", f"所有服务器均无法获取数据（共 {len(servers)} 台）"),
         )
         return
 
@@ -841,7 +847,7 @@ async def handle_total_online_time_leaderboard(
     total_count = len(all_entries)
     total_pages = max(1, math.ceil(total_count / limit))
     if page > total_pages:
-        await bot.send(event, reply_failure("查询", f"超出总页数（共 {total_pages} 页）"))
+        await bot.send(event, at + " " + reply_failure("查询", f"超出总页数（共 {total_pages} 页）"))
         return
 
     offset = (page - 1) * limit
@@ -909,9 +915,10 @@ async def handle_daily_sign_leaderboard(
     if len(args) > 1:
         raise_command_usage()
 
+    at = safe_at_segment_or_empty(event.get_user_id())
     page = _parse_page_arg(args)
     if page is None:
-        await bot.send(event, reply_failure("查询", "页数必须为正整数"))
+        await bot.send(event, at + " " + reply_failure("查询", "页数必须为正整数"))
         return
 
     limit = max(1, min(int(get_current_param("limit", 10)), 50))
@@ -927,7 +934,7 @@ async def handle_daily_sign_leaderboard(
         )
         total_pages = max(1, math.ceil(total_count / limit))
         if page > total_pages:
-            await bot.send(event, reply_failure("查询", f"超出总页数（共 {total_pages} 页）"))
+            await bot.send(event, at + " " + reply_failure("查询", f"超出总页数（共 {total_pages} 页）"))
             return
         offset = (page - 1) * limit
         records = (
@@ -1017,9 +1024,10 @@ async def handle_rob_income_leaderboard(
     if len(args) > 1:
         raise_command_usage()
 
+    at = safe_at_segment_or_empty(event.get_user_id())
     page = _parse_page_arg(args)
     if page is None:
-        await bot.send(event, reply_failure("查询", "页数必须为正整数"))
+        await bot.send(event, at + " " + reply_failure("查询", "页数必须为正整数"))
         return
 
     limit = max(1, min(int(get_current_param("limit", 10)), 50))
@@ -1051,7 +1059,7 @@ async def handle_rob_income_leaderboard(
         self_entry_value_fn=lambda u: int(u.rob_total_gain or 0) - int(u.rob_total_penalty or 0),
     )
     if entries is None:
-        await bot.send(event, reply_failure("查询", f"超出总页数（共 {total_pages} 页）"))
+        await bot.send(event, at + " " + reply_failure("查询", f"超出总页数（共 {total_pages} 页）"))
         return
 
     await _render_and_send(
@@ -1093,9 +1101,10 @@ async def handle_rob_loss_leaderboard(
     if len(args) > 1:
         raise_command_usage()
 
+    at = safe_at_segment_or_empty(event.get_user_id())
     page = _parse_page_arg(args)
     if page is None:
-        await bot.send(event, reply_failure("查询", "页数必须为正整数"))
+        await bot.send(event, at + " " + reply_failure("查询", "页数必须为正整数"))
         return
 
     limit = max(1, min(int(get_current_param("limit", 10)), 50))
@@ -1106,7 +1115,7 @@ async def handle_rob_loss_leaderboard(
         total_count = session.query(User).filter(User.rob_total_loss > 0).count()
         total_pages = max(1, math.ceil(total_count / limit))
         if page > total_pages:
-            await bot.send(event, reply_failure("查询", f"超出总页数（共 {total_pages} 页）"))
+            await bot.send(event, at + " " + reply_failure("查询", f"超出总页数（共 {total_pages} 页）"))
             return
         offset = (page - 1) * limit
         users = (
@@ -1169,9 +1178,10 @@ async def handle_rob_penalty_leaderboard(
     if len(args) > 1:
         raise_command_usage()
 
+    at = safe_at_segment_or_empty(event.get_user_id())
     page = _parse_page_arg(args)
     if page is None:
-        await bot.send(event, reply_failure("查询", "页数必须为正整数"))
+        await bot.send(event, at + " " + reply_failure("查询", "页数必须为正整数"))
         return
 
     limit = max(1, min(int(get_current_param("limit", 10)), 50))
@@ -1182,7 +1192,7 @@ async def handle_rob_penalty_leaderboard(
         total_count = session.query(User).filter(User.rob_total_penalty > 0).count()
         total_pages = max(1, math.ceil(total_count / limit))
         if page > total_pages:
-            await bot.send(event, reply_failure("查询", f"超出总页数（共 {total_pages} 页）"))
+            await bot.send(event, at + " " + reply_failure("查询", f"超出总页数（共 {total_pages} 页）"))
             return
         offset = (page - 1) * limit
         users = (
@@ -1255,9 +1265,10 @@ async def handle_rob_success_rate_leaderboard(
     if len(args) > 1:
         raise_command_usage()
 
+    at = safe_at_segment_or_empty(event.get_user_id())
     page = _parse_page_arg(args)
     if page is None:
-        await bot.send(event, reply_failure("查询", "页数必须为正整数"))
+        await bot.send(event, at + " " + reply_failure("查询", "页数必须为正整数"))
         return
 
     limit = max(1, min(int(get_current_param("limit", 10)), 50))
@@ -1280,7 +1291,7 @@ async def handle_rob_success_rate_leaderboard(
         )
         total_pages = max(1, math.ceil(total_count / limit))
         if page > total_pages:
-            await bot.send(event, reply_failure("查询", f"超出总页数（共 {total_pages} 页）"))
+            await bot.send(event, at + " " + reply_failure("查询", f"超出总页数（共 {total_pages} 页）"))
             return
         offset = (page - 1) * limit
         page_users = (
@@ -1368,9 +1379,10 @@ async def handle_guess_income_leaderboard(
     if len(args) > 1:
         raise_command_usage()
 
+    at = safe_at_segment_or_empty(event.get_user_id())
     page = _parse_page_arg(args)
     if page is None:
-        await bot.send(event, reply_failure("查询", "页数必须为正整数"))
+        await bot.send(event, at + " " + reply_failure("查询", "页数必须为正整数"))
         return
 
     limit = max(1, min(int(get_current_param("limit", 10)), 50))
@@ -1401,7 +1413,7 @@ async def handle_guess_income_leaderboard(
         self_entry_value_fn=lambda u: int(u.guess_total_gain or 0) - int(u.guess_total_loss or 0),
     )
     if entries is None:
-        await bot.send(event, reply_failure("查询", f"超出总页数（共 {total_pages} 页）"))
+        await bot.send(event, at + " " + reply_failure("查询", f"超出总页数（共 {total_pages} 页）"))
         return
 
     await _render_and_send(
@@ -1452,9 +1464,10 @@ async def handle_guess_win_rate_leaderboard(
     if len(args) > 1:
         raise_command_usage()
 
+    at = safe_at_segment_or_empty(event.get_user_id())
     page = _parse_page_arg(args)
     if page is None:
-        await bot.send(event, reply_failure("查询", "页数必须为正整数"))
+        await bot.send(event, at + " " + reply_failure("查询", "页数必须为正整数"))
         return
 
     limit = max(1, min(int(get_current_param("limit", 10)), 50))
@@ -1475,7 +1488,7 @@ async def handle_guess_win_rate_leaderboard(
         )
         total_pages = max(1, math.ceil(total_count / limit))
         if page > total_pages:
-            await bot.send(event, reply_failure("查询", f"超出总页数（共 {total_pages} 页）"))
+            await bot.send(event, at + " " + reply_failure("查询", f"超出总页数（共 {total_pages} 页）"))
             return
         offset = (page - 1) * limit
         page_users = (
@@ -1562,9 +1575,10 @@ async def handle_dice_income_leaderboard(
     if len(args) > 1:
         raise_command_usage()
 
+    at = safe_at_segment_or_empty(event.get_user_id())
     page = _parse_page_arg(args)
     if page is None:
-        await bot.send(event, reply_failure("查询", "页数必须为正整数"))
+        await bot.send(event, at + " " + reply_failure("查询", "页数必须为正整数"))
         return
 
     limit = max(1, min(int(get_current_param("limit", 10)), 50))
@@ -1595,7 +1609,7 @@ async def handle_dice_income_leaderboard(
         self_entry_value_fn=lambda u: int(u.dice_total_gain or 0) - int(u.dice_total_loss or 0),
     )
     if entries is None:
-        await bot.send(event, reply_failure("查询", f"超出总页数（共 {total_pages} 页）"))
+        await bot.send(event, at + " " + reply_failure("查询", f"超出总页数（共 {total_pages} 页）"))
         return
 
     await _render_and_send(
@@ -1646,9 +1660,10 @@ async def handle_dice_win_rate_leaderboard(
     if len(args) > 1:
         raise_command_usage()
 
+    at = safe_at_segment_or_empty(event.get_user_id())
     page = _parse_page_arg(args)
     if page is None:
-        await bot.send(event, reply_failure("查询", "页数必须为正整数"))
+        await bot.send(event, at + " " + reply_failure("查询", "页数必须为正整数"))
         return
 
     limit = max(1, min(int(get_current_param("limit", 10)), 50))
@@ -1669,7 +1684,7 @@ async def handle_dice_win_rate_leaderboard(
         )
         total_pages = max(1, math.ceil(total_count / limit))
         if page > total_pages:
-            await bot.send(event, reply_failure("查询", f"超出总页数（共 {total_pages} 页）"))
+            await bot.send(event, at + " " + reply_failure("查询", f"超出总页数（共 {total_pages} 页）"))
             return
         offset = (page - 1) * limit
         page_users = (
