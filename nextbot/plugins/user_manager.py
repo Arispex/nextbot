@@ -30,7 +30,15 @@ from nextbot.tshock_api import (
     is_success,
     request_server_api,
 )
-from nextbot.text_utils import EMOJI_USER, reply_block, reply_failure, reply_success, safe_at_segment_or_empty
+from nextbot.text_utils import (
+    EMOJI_USER,
+    STATUS_HINT,
+    reply_block,
+    reply_failure,
+    reply_success,
+    reply_warning,
+    safe_at_segment_or_empty,
+)
 
 
 USER_INFO_SCREENSHOT_OPTIONS = ScreenshotOptions(
@@ -221,7 +229,7 @@ async def handle_add_whitelist(
         exists = session.query(User).filter(User.user_id == user_id).first()
         if exists is not None:
             logger.info(f"账号已注册：user_id={user_id} name={exists.name}")
-            await bot.send(event, at + " " + reply_failure("注册", "该账号已注册"))
+            await bot.send(event, at + " " + reply_warning("你已经注册过了，请勿重复注册"))
             return
         name_exists = session.query(User).filter(func.lower(User.name) == name.lower()).first()
         if name_exists is not None:
@@ -251,6 +259,7 @@ async def handle_add_whitelist(
             [
                 f"{EMOJI_USER} 用户名称：{name}",
                 f"🆔 QQ：{user_id}",
+                f"{STATUS_HINT} 如果进入服务器提示不在白名单中，群里发送「同步白名单」即可",
             ],
         ),
     )
