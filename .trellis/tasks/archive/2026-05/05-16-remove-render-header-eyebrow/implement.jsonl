@@ -1,0 +1,1 @@
+{"file": ".trellis/tasks/05-16-remove-render-header-eyebrow/prd.md", "reason": "Full scope: 21 templates, 3 deletion patterns (CSS rule + DOM line + JS textContent for dynamic), acceptance criteria, verification loop."}
