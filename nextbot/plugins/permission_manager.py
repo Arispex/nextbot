@@ -1,15 +1,16 @@
 """用户权限 / 身份组管理命令。
 
-5 个命令 + 2 个新增命令位于"权限管理"分类：
+3 个保留命令位于"权限管理"分类：
 
-- ``添加用户权限`` / ``删除用户权限`` / ``修改用户身份组``：受 POLA / 危险
-  key blocklist / 层级护栏（target group ⊆ operator perms）约束
 - ``管理员列表``：并行获取昵称（asyncio.gather + wait_for），截图统一走
   ``render_and_send_screenshot`` helper（内置 base64 size cap + per-handler
   semaphore + V11 / 非 V11 分支）
 - ``同步访客权限``：保留两步确认（已正确）
-- ``重置访客权限``（新增）：reset 到 DEFAULT_GUEST_PERMISSIONS（清掉额外
+- ``重置访客权限``：reset 到 DEFAULT_GUEST_PERMISSIONS（清掉额外
   权限），二次确认 + 列出将移除 / 新增的 key
+
+历史上的「添加用户权限 / 删除用户权限 / 修改用户身份组」已迁至 WebUI
+（``/webui/users``），命令已下线。
 """
 from __future__ import annotations
 
@@ -21,7 +22,7 @@ from nonebot.adapters.onebot.v11 import MessageSegment as OBV11MessageSegment
 from nonebot.log import logger
 from nonebot.matcher import Matcher
 from nonebot.params import Arg, CommandArg
-from sqlalchemy import func, update
+from sqlalchemy import update
 
 from nextbot.access_control import get_owner_ids_ordered
 from nextbot.audit import audit_permission_change
@@ -29,34 +30,20 @@ from nextbot.command_config import command_control, get_current_param, raise_com
 from nextbot.db import (
     DEFAULT_GUEST_PERMISSIONS,
     Group,
-    User,
     execute_rowcount,
     get_session,
 )
-from nextbot.message_parser import (
-    parse_command_args_with_fallback,
-    resolve_user_id_arg_with_fallback,
-)
+from nextbot.message_parser import parse_command_args_with_fallback
 from nextbot.permissions import (
-    _get_effective_permissions_in_session,
-    _get_group_permissions,
-    add_permission,
-    has_permission,
-    is_dangerous_permission,
-    is_owner,
     join_csv_values,
-    remove_permission,
     require_permission,
     split_csv_values,
-    suggest_permission_keys,
-    validate_permission_key,
 )
 from nextbot.screenshot_render import render_and_send_screenshot
 from nextbot.text_utils import (
     EMOJI_CHART,
     EMOJI_GROUP,
     EMOJI_LOCK,
-    EMOJI_USER,
     reply_block,
     reply_failure,
     reply_info,
@@ -66,9 +53,6 @@ from nextbot.text_utils import (
 from server.screenshot import ScreenshotOptions
 from server.web_server import create_admin_list_page
 
-add_user_perm_matcher = on_command("添加用户权限")
-remove_user_perm_matcher = on_command("删除用户权限")
-set_user_group_matcher = on_command("修改用户身份组")
 admin_list_matcher = on_command("管理员列表")
 sync_guest_perms_matcher = on_command("同步访客权限")
 reset_guest_perms_matcher = on_command("重置访客权限")
@@ -124,500 +108,6 @@ async def _fetch_nickname_with_timeout(bot: Bot, qq: str) -> tuple[str, str]:
         logger.warning(f"获取管理员昵称失败：qq={qq} reason={exc!r}")
         nickname = "（获取失败）"
     return qq, nickname
-
-
-def _check_user_perm_mutation_pola(
-    *,
-    operator_id: str,
-    target_user_id: str,
-    permission: str,
-    action_label: str,
-    audit_action_denied: str,
-    is_grant: bool,
-) -> tuple[bool, str | None]:
-    """共用的 add / remove user-perm POLA 校验。
-
-    Args:
-        is_grant: True 表示授权（添加），False 表示撤销（删除）。
-            自授禁止仅在授权路径生效（PMB-1.1）；自撤是无害的。
-
-    返回 ``(ok, failure_message)``。owner 调用方短路放行。
-    """
-    if is_owner(operator_id):
-        return True, None
-    # PMB-1.1：仅禁止自授；自撤是无害的（用户随时可主动放弃自己的权限）
-    if is_grant and target_user_id == operator_id:
-        # SS-3.1：尝试自我提权也走 denied audit，便于安全监测
-        audit_permission_change(
-            actor_user_id=operator_id,
-            action=audit_action_denied,
-            target=target_user_id,
-            context={"permission": permission, "reason": "self_grant"},
-        )
-        return False, reply_failure(action_label, "不能为自己添加权限")
-    # PMB-1.3：registry validate（仅 grant 路径校验；
-    # remove 路径需要支持清理 legacy / typo 历史 key，绕过 registry 即可）
-    if is_grant and not validate_permission_key(permission):
-        suggestions = suggest_permission_keys(permission)
-        hint = f"。是否想说：{', '.join(suggestions)}" if suggestions else ""
-        # SS-3.1：尝试授予未知 key 也走 denied audit（"是否在试探权限模型"信号）
-        audit_permission_change(
-            actor_user_id=operator_id,
-            action=audit_action_denied,
-            target=target_user_id,
-            context={"permission": permission, "reason": "unknown_key"},
-        )
-        return False, reply_failure(action_label, f"权限名称不存在{hint}")
-    # PMB-1.1 dangerous-key blocklist
-    if is_dangerous_permission(permission):
-        audit_permission_change(
-            actor_user_id=operator_id,
-            action=audit_action_denied,
-            target=target_user_id,
-            context={"permission": permission, "reason": "dangerous_key"},
-        )
-        return False, reply_failure(action_label, "该权限不可委派")
-    # PMB-1.1 POLA：actor 自身需先持有该权限
-    if not has_permission(operator_id, permission):
-        audit_permission_change(
-            actor_user_id=operator_id,
-            action=audit_action_denied,
-            target=target_user_id,
-            context={"permission": permission, "reason": "pola"},
-        )
-        verb = "授予" if is_grant else "撤销"
-        return False, reply_failure(action_label, f"无法{verb}自己未持有的权限")
-    return True, None
-
-
-# ---------------------------------------------------------------------------
-# 添加用户权限
-# ---------------------------------------------------------------------------
-
-
-@add_user_perm_matcher.handle()
-@command_control(
-    command_key="permission.user.add",
-    display_name="添加用户权限",
-    permission="permission.user.add",
-    description="为用户增加单独权限（受 POLA / 危险 key blocklist / 禁止自授约束）",
-    usage="添加用户权限 <用户 QQ/@用户/用户名称> <权限名称>",
-    category="权限管理",
-)
-@require_permission("permission.user.add")
-async def handle_add_user_perm(
-    bot: Bot, event: Event, arg: Message = CommandArg()
-):
-    # PMB-1.6：缓存 args，避免双 parse
-    args = parse_command_args_with_fallback(event, arg, "添加用户权限")
-    if len(args) != 2:
-        raise_command_usage()
-
-    at = _at_segment(event)
-    operator_id = _operator_id(event)
-    user_id, parse_error = resolve_user_id_arg_with_fallback(
-        event,
-        arg,
-        "添加用户权限",
-    )
-    if parse_error == "missing":
-        raise_command_usage()
-    if parse_error == "name_not_found":
-        await bot.send(event, at + " " + reply_failure("添加", "用户名称不存在"))
-        return
-    if parse_error == "name_ambiguous":
-        await bot.send(event, at + " " + reply_failure("添加", "用户名称不唯一，请使用用户 QQ 或 @用户"))
-        return
-    if user_id is None:
-        await bot.send(event, at + " " + reply_failure("添加", "用户参数解析失败"))
-        return
-
-    # PMB-1.5：args[1] 是 whitespace-split 单 token，多 token 已在 len(args)==2
-    # 校验中拒绝。文档化以便后续若放宽 token 数限制能注意到。
-    permission = args[1]
-
-    ok, failure_msg = _check_user_perm_mutation_pola(
-        operator_id=operator_id,
-        target_user_id=user_id,
-        permission=permission,
-        action_label="添加",
-        audit_action_denied="user.permission.add.denied",
-        is_grant=True,
-    )
-    if not ok:
-        await bot.send(event, at + " " + (failure_msg or ""))
-        return
-
-    session = get_session()
-    target_name = ""
-    old_csv = ""
-    new_csv = ""
-    try:
-        user = session.query(User).filter(User.user_id == user_id).first()
-        if user is None:
-            await bot.send(event, at + " " + reply_failure("添加", "用户不存在"))
-            return
-
-        target_name = str(user.name)
-        old_csv = str(user.permissions or "")
-        new_csv = add_permission(old_csv, permission)
-        if new_csv == old_csv:
-            await bot.send(event, at + " " + reply_info("该用户已持有此权限"))
-            return
-
-        # PMB-1.2 / XC-3：条件 UPDATE 防 lost-update + ORM 跨列覆盖
-        for _ in range(_CSV_UPDATE_RETRY):
-            rowcount = execute_rowcount(
-                session,
-                update(User)
-                .where(User.user_id == user_id, User.permissions == old_csv)
-                .values(permissions=new_csv),
-            )
-            if rowcount == 1:
-                session.commit()
-                break
-            session.rollback()
-            current = (
-                session.query(User).filter(User.user_id == user_id).first()
-            )
-            if current is None:
-                await bot.send(event, at + " " + reply_failure("添加", "用户不存在"))
-                return
-            old_csv = str(current.permissions or "")
-            new_csv = add_permission(old_csv, permission)
-            if new_csv == old_csv:
-                await bot.send(event, at + " " + reply_info("该用户已持有此权限"))
-                return
-            target_name = str(current.name)
-        else:
-            await bot.send(event, at + " " + reply_failure("添加", "并发冲突，请稍后重试"))
-            return
-    finally:
-        session.close()
-
-    audit_permission_change(
-        actor_user_id=operator_id,
-        action="user.permission.add",
-        target=user_id,
-        before={"permissions": old_csv},
-        after={"permissions": new_csv},
-        context={"permission": permission, "target_name": target_name},
-    )
-    await bot.send(
-        event,
-        at + "\n" + reply_block(
-            reply_success("添加"),
-            [
-                f"{EMOJI_USER} 用户：{target_name}（{user_id}）",
-                f"{EMOJI_LOCK} 权限：{permission}",
-            ],
-        ),
-    )
-
-
-# ---------------------------------------------------------------------------
-# 删除用户权限
-# ---------------------------------------------------------------------------
-
-
-@remove_user_perm_matcher.handle()
-@command_control(
-    command_key="permission.user.remove",
-    display_name="删除用户权限",
-    permission="permission.user.remove",
-    description="从用户移除单独权限（受 POLA / 危险 key blocklist 约束）",
-    usage="删除用户权限 <用户 QQ/@用户/用户名称> <权限名称>",
-    category="权限管理",
-)
-@require_permission("permission.user.remove")
-async def handle_remove_user_perm(
-    bot: Bot, event: Event, arg: Message = CommandArg()
-):
-    args = parse_command_args_with_fallback(event, arg, "删除用户权限")
-    if len(args) != 2:
-        raise_command_usage()
-
-    at = _at_segment(event)
-    operator_id = _operator_id(event)
-    user_id, parse_error = resolve_user_id_arg_with_fallback(
-        event,
-        arg,
-        "删除用户权限",
-    )
-    if parse_error == "missing":
-        raise_command_usage()
-    if parse_error == "name_not_found":
-        await bot.send(event, at + " " + reply_failure("删除", "用户名称不存在"))
-        return
-    if parse_error == "name_ambiguous":
-        await bot.send(event, at + " " + reply_failure("删除", "用户名称不唯一，请使用用户 QQ 或 @用户"))
-        return
-    if user_id is None:
-        await bot.send(event, at + " " + reply_failure("删除", "用户参数解析失败"))
-        return
-
-    permission = args[1]
-
-    ok, failure_msg = _check_user_perm_mutation_pola(
-        operator_id=operator_id,
-        target_user_id=user_id,
-        permission=permission,
-        action_label="删除",
-        audit_action_denied="user.permission.remove.denied",
-        is_grant=False,
-    )
-    if not ok:
-        await bot.send(event, at + " " + (failure_msg or ""))
-        return
-
-    session = get_session()
-    target_name = ""
-    old_csv = ""
-    new_csv = ""
-    try:
-        user = session.query(User).filter(User.user_id == user_id).first()
-        if user is None:
-            await bot.send(event, at + " " + reply_failure("删除", "用户不存在"))
-            return
-
-        target_name = str(user.name)
-        old_csv = str(user.permissions or "")
-        new_csv = remove_permission(old_csv, permission)
-        # PMB-2.3：no-op detect
-        if new_csv == old_csv:
-            # PMB-2.5：检查是否来自身份组继承（用同一 session 避免 BEGIN
-            # IMMEDIATE 死锁）。这里只做精确匹配；通配 .* 不在此提示——
-            # 通配本来就不能"单独删除"，提示统一为"权限来自身份组继承"
-            # 即可。
-            group_name = str(user.group or "guest")
-            group_perms = _get_group_permissions(session, group_name, set())
-            inherited = permission in group_perms or any(
-                granted.endswith(".*") and permission.startswith(granted[:-1])
-                for granted in group_perms
-            )
-            if inherited:
-                await bot.send(
-                    event,
-                    at + " " + reply_info("权限来自身份组继承，不可单独删除"),
-                )
-            else:
-                await bot.send(
-                    event,
-                    at + " " + reply_info("该用户未持有此权限"),
-                )
-            return
-
-        for _ in range(_CSV_UPDATE_RETRY):
-            rowcount = execute_rowcount(
-                session,
-                update(User)
-                .where(User.user_id == user_id, User.permissions == old_csv)
-                .values(permissions=new_csv),
-            )
-            if rowcount == 1:
-                session.commit()
-                break
-            session.rollback()
-            current = (
-                session.query(User).filter(User.user_id == user_id).first()
-            )
-            if current is None:
-                await bot.send(event, at + " " + reply_failure("删除", "用户不存在"))
-                return
-            old_csv = str(current.permissions or "")
-            new_csv = remove_permission(old_csv, permission)
-            if new_csv == old_csv:
-                await bot.send(event, at + " " + reply_info("该用户未持有此权限"))
-                return
-            target_name = str(current.name)
-        else:
-            await bot.send(event, at + " " + reply_failure("删除", "并发冲突，请稍后重试"))
-            return
-    finally:
-        session.close()
-
-    audit_permission_change(
-        actor_user_id=operator_id,
-        action="user.permission.remove",
-        target=user_id,
-        before={"permissions": old_csv},
-        after={"permissions": new_csv},
-        context={"permission": permission, "target_name": target_name},
-    )
-    await bot.send(
-        event,
-        at + "\n" + reply_block(
-            reply_success("删除"),
-            [
-                f"{EMOJI_USER} 用户：{target_name}（{user_id}）",
-                f"{EMOJI_LOCK} 权限：{permission}",
-            ],
-        ),
-    )
-
-
-# ---------------------------------------------------------------------------
-# 修改用户身份组（POLA 层级护栏 + 条件 UPDATE）
-# ---------------------------------------------------------------------------
-
-
-@set_user_group_matcher.handle()
-@command_control(
-    command_key="permission.user.group.set",
-    display_name="修改用户身份组",
-    permission="permission.user.group.set",
-    description="调整用户所属身份组（目标组权限须 ⊆ operator 权限）",
-    usage="修改用户身份组 <用户 QQ/@用户/用户名称> <身份组名称>",
-    category="权限管理",
-)
-@require_permission("permission.user.group.set")
-async def handle_set_user_group(
-    bot: Bot, event: Event, arg: Message = CommandArg()
-):
-    args = parse_command_args_with_fallback(event, arg, "修改用户身份组")
-    if len(args) != 2:
-        raise_command_usage()
-
-    at = _at_segment(event)
-    operator_id = _operator_id(event)
-    target_user_id, parse_error = resolve_user_id_arg_with_fallback(
-        event,
-        arg,
-        "修改用户身份组",
-    )
-    if parse_error == "missing":
-        raise_command_usage()
-    if parse_error == "name_not_found":
-        await bot.send(event, at + " " + reply_failure("修改", "用户名称不存在"))
-        return
-    if parse_error == "name_ambiguous":
-        await bot.send(event, at + " " + reply_failure("修改", "用户名称不唯一，请使用用户 QQ 或 @用户"))
-        return
-    if target_user_id is None:
-        await bot.send(event, at + " " + reply_failure("修改", "用户参数解析失败"))
-        return
-
-    group_name_input = args[1]
-    session = get_session()
-    target_name = ""
-    before_group = ""
-    canonical_group_name = ""
-    try:
-        user = session.query(User).filter(User.user_id == target_user_id).first()
-        if user is None:
-            await bot.send(event, at + " " + reply_failure("修改", "用户不存在"))
-            return
-
-        # PMB-3.5：case-insensitive group name lookup
-        group = (
-            session.query(Group)
-            .filter(func.lower(Group.name) == group_name_input.lower())
-            .first()
-        )
-        if group is None:
-            await bot.send(event, at + " " + reply_failure("修改", "身份组不存在"))
-            return
-        canonical_group_name = str(group.name)
-
-        # PMB-3.1：层级护栏（owner 例外）
-        if not is_owner(operator_id):
-            # 复用 session：BEGIN IMMEDIATE 下嵌套 get_session() 会死锁
-            operator_perms = _get_effective_permissions_in_session(
-                session, operator_id
-            )
-            target_group_perms = _get_group_permissions(
-                session, canonical_group_name, set()
-            )
-            forbidden = target_group_perms - operator_perms
-            if forbidden:
-                forbidden_preview = ",".join(sorted(forbidden)[:5])
-                await bot.send(
-                    event,
-                    at + " " + reply_failure(
-                        "修改",
-                        f"目标身份组包含您不持有的权限：{forbidden_preview}",
-                    ),
-                )
-                # O6：denied audit 补 before 快照（target 当前所在组）
-                audit_permission_change(
-                    actor_user_id=operator_id,
-                    action="user.group.set.denied",
-                    target=target_user_id,
-                    before={"group": str(user.group)},
-                    context={
-                        "attempted_group": canonical_group_name,
-                        "forbidden": sorted(forbidden),
-                        "reason": "hierarchy",
-                    },
-                )
-                return
-
-        target_name = str(user.name)
-        before_group = str(user.group)
-        # PMB-3.4：no-op detect
-        if before_group == canonical_group_name:
-            await bot.send(
-                event,
-                at + " " + reply_info("该用户已在此身份组"),
-            )
-            return
-
-        # PMB-3.2 / XC-3：条件 UPDATE，仅写 group 列避免 ORM 跨列覆盖
-        for _ in range(_CSV_UPDATE_RETRY):
-            rowcount = execute_rowcount(
-                session,
-                update(User)
-                .where(
-                    User.user_id == target_user_id,
-                    User.group == before_group,
-                )
-                .values(group=canonical_group_name),
-            )
-            if rowcount == 1:
-                session.commit()
-                break
-            session.rollback()
-            current = (
-                session.query(User).filter(User.user_id == target_user_id).first()
-            )
-            if current is None:
-                await bot.send(event, at + " " + reply_failure("修改", "用户不存在"))
-                return
-            before_group = str(current.group)
-            if before_group == canonical_group_name:
-                await bot.send(
-                    event,
-                    at + " " + reply_info("该用户已在此身份组"),
-                )
-                return
-            target_name = str(current.name)
-        else:
-            await bot.send(
-                event,
-                at + " " + reply_failure("修改", "并发冲突，请稍后重试"),
-            )
-            return
-    finally:
-        session.close()
-
-    audit_permission_change(
-        actor_user_id=operator_id,
-        action="user.group.set",
-        target=target_user_id,
-        before={"group": before_group},
-        after={"group": canonical_group_name},
-        context={"target_name": target_name},
-    )
-    await bot.send(
-        event,
-        at + "\n" + reply_block(
-            reply_success("修改"),
-            [
-                f"{EMOJI_USER} 用户：{target_name}（{target_user_id}）",
-                f"{EMOJI_GROUP} 身份组：{canonical_group_name}",
-            ],
-        ),
-    )
 
 
 # ---------------------------------------------------------------------------
