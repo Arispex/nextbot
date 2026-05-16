@@ -71,3 +71,36 @@ dice.py 加 win_rate 参数（0-100，默认 50，label「大/小 命中率」�
 ### Next Steps
 
 - None - task complete
+
+
+## Session 157: 我的信息 / 用户信息 截图加 @ 调用者
+
+**Date**: 2026-05-16
+**Task**: 我的信息 / 用户信息 截图加 @ 调用者
+**Branch**: `main`
+
+### Summary
+
+_render_and_send_user_info 调 render_and_send_screenshot 时追加 at_user_id=event.get_user_id()，V11 路径生成 @调用者 [截图] 一条消息，与 dice 同模式。无论查自己/别人都 @ 触发者。依赖 commit aba28e6 的 _sanitize_at_user_id 防御。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `e926c78` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
