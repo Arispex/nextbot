@@ -197,6 +197,8 @@ async def handle_online(
     if args:
         raise_command_usage()
 
+    at = safe_at_segment_or_empty(event.get_user_id())
+
     session = get_session()
     try:
         servers = session.query(Server).order_by(Server.id.asc()).all()
@@ -204,7 +206,7 @@ async def handle_online(
         session.close()
 
     if not servers:
-        await bot.send(event, reply_failure("查询", "暂无服务器"))
+        await bot.send(event, at + " " + reply_failure("查询", "暂无服务器"))
         return
 
     # PQA-1.1：并行 fan-out，避免 N 台服务器串行 connect+read 各 5s 累积 N×10s
