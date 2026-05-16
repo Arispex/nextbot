@@ -1949,3 +1949,36 @@ dice.html 之前用单中央大 card 包所有内容，与其它 render（lotter
 ### Next Steps
 
 - None - task complete
+
+
+## Session 154: dice 标题去「结果」+ render_and_send_screenshot 加 at_user_id
+
+**Date**: 2026-05-16
+**Task**: dice 标题去「结果」+ render_and_send_screenshot 加 at_user_id
+**Branch**: `main`
+
+### Summary
+
+dice.html h1 改「掷骰子」；screenshot_render.py 加可选 at_user_id 参数，V11 路径构造 at + image 一条消息，非 V11 fallback head 前 prepend @<id>；dice.py 调用传 user_id。默认 None 不影响其它 caller。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f340aaa` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

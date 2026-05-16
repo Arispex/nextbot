@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-3.md`
-- **Total Sessions**: 153
+- **Total Sessions**: 154
 - **Last Active**: 2026-05-16
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-3.md` | ~1951 | Active |
+| `journal-3.md` | ~1984 | Active |
 | `journal-2.md` | ~1973 | Archived |
 | `journal-1.md` | ~1999 | Archived |
 <!-- @@@/auto:active-documents -->
@@ -31,6 +31,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 154 | 2026-05-16 | dice 标题去「结果」+ render_and_send_screenshot 加 at_user_id | `f340aaa` | `main` |
 | 153 | 2026-05-16 | dice 求和行 total 字体改 mono 对齐骰子数字 | `c7552bd` | `main` |
 | 152 | 2026-05-16 | dice.html 重排版对齐 lottery_result 风格 | `b1e9c6a` | `main` |
 | 151 | 2026-05-16 | 补注册 /render/dice 路由（修复掷骰子图片 404） | `5b72f5b` | `main` |
