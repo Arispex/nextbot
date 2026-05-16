@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-4.md`
-- **Total Sessions**: 158
+- **Total Sessions**: 159
 - **Last Active**: 2026-05-16
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-4.md` | ~139 | Active |
+| `journal-4.md` | ~173 | Active |
 | `journal-3.md` | ~1984 | Archived |
 | `journal-2.md` | ~1973 | Archived |
 | `journal-1.md` | ~1999 | Archived |
@@ -32,6 +32,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 159 | 2026-05-16 | 全量补齐 plugin 命令失败回复的 @ 调用者（134 处 / 12 文件） | `c2df99b`, `7c7fae5` | `main` |
 | 158 | 2026-05-16 | 我的信息 / 用户信息 失败路径全部加 @ 调用者 | `29dedc1` | `main` |
 | 157 | 2026-05-16 | 我的信息 / 用户信息 截图加 @ 调用者 | `e926c78` | `main` |
 | 156 | 2026-05-16 | dice 改动审计 R1+R2 闭环（20 findings / 8 fixes / 0 new H） | `3e8792c` | `main` |

@@ -137,3 +137,37 @@ handle_user_info / handle_self_info 顶部统一取 at；5 处失败 bot.send（
 ### Next Steps
 
 - None - task complete
+
+
+## Session 159: 全量补齐 plugin 命令失败回复的 @ 调用者（134 处 / 12 文件）
+
+**Date**: 2026-05-16
+**Task**: 全量补齐 plugin 命令失败回复的 @ 调用者（134 处 / 12 文件）
+**Branch**: `main`
+
+### Summary
+
+全量审 22 个 plugin 的失败 bot.send / reply_failure / reply_warning，发现 133 处缺 @ 前缀。统一加 at = safe_at_segment_or_empty(event.get_user_id()) 复用模式。涉及 11 文件（player_query 47 / leaderboard 33 / shop 11 / lottery 11 / server_tools 10 / red_packet 8 / ban 3 / menu 3 / tutorial 2 / warehouse 4 / permission_manager 1）。复审发现 handle_online 暂无服务器 残漏 1 处，已补。最终 grep 全 plugin 0 残留 bare reply_failure/reply_warning。截图失败兜底走 render_and_send_screenshot at_user_id（不在本任务范畴）。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `c2df99b` | (see git log) |
+| `7c7fae5` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
