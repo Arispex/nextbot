@@ -1751,3 +1751,36 @@ server_manager.py 从 330 行精简到 50 行：删除 3 个 admin handler（添
 ### Next Steps
 
 - None - task complete
+
+
+## Session 148: permission_manager 下线 3 条 admin 用户权限命令
+
+**Date**: 2026-05-16
+**Task**: permission_manager 下线 3 条 admin 用户权限命令
+**Branch**: `main`
+
+### Summary
+
+permission_manager.py 从 1065 行精简到 555 行：删除 add_user_perm / remove_user_perm / set_user_group 三条 admin 命令（已被 /webui/users 编辑器覆盖）+ 仅被它们使用的 _check_user_perm_mutation_pola helper + 11 个 imports。保留 admin_list / sync_guest_perms / reset_guest_perms 三条 WebUI 无对应的命令。共享模块、webui_users、tutorial_data 均不动。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `2bb9770` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
