@@ -104,3 +104,36 @@ _render_and_send_user_info 调 render_and_send_screenshot 时追加 at_user_id=e
 ### Next Steps
 
 - None - task complete
+
+
+## Session 158: 我的信息 / 用户信息 失败路径全部加 @ 调用者
+
+**Date**: 2026-05-16
+**Task**: 我的信息 / 用户信息 失败路径全部加 @ 调用者
+**Branch**: `main`
+
+### Summary
+
+handle_user_info / handle_self_info 顶部统一取 at；5 处失败 bot.send（用户名不存在 / 不唯一 / 解析失败 / 用户不存在 / 未注册账号）全部改为 at + reply_failure 形式，与注册命令一致。成功截图路径 commit 32e90a0 已用 at_user_id 处理，不动。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `29dedc1` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
