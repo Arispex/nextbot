@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from nonebot.log import logger
 
 from server.page_store import create_page
-from server.pages import about_page, admin_list_page, ban_list_page, dice_page, guess_number_page, inventory_page, leaderboard_page, lottery_list_page, lottery_result_page, lottery_view_page, menu_page, progress_page, red_packet_all_page, red_packet_own_page, shop_list_page, shop_view_page, tutorial_page, user_info_page, warehouse_page
+from server.pages import about_page, admin_list_page, ban_list_page, dice_page, guess_number_page, inventory_page, leaderboard_page, lottery_list_page, lottery_result_page, lottery_view_page, menu_page, progress_page, red_packet_all_page, red_packet_own_page, rob_page, shop_list_page, shop_view_page, tutorial_page, user_info_page, warehouse_page
 from server.routes.render import router as render_router
 from server.routes.webui_commands import router as webui_commands_router
 from server.routes.webui_dashboard import router as webui_dashboard_router
@@ -299,6 +299,36 @@ def create_guess_number_page(
         capped=capped,
     )
     return _make_page_url("guess_number", payload)
+
+
+def create_rob_page(
+    *,
+    robber_name: str,
+    robber_qq: str,
+    victim_name: str,
+    victim_qq: str,
+    result_kind: str,
+    result_label: str,
+    amount: int,
+    applied_amount: int,
+    capped: bool,
+    cap_subject: str,
+    robber_final_coins: int,
+) -> str:
+    payload = rob_page.build_payload(
+        robber_name=robber_name,
+        robber_qq=robber_qq,
+        victim_name=victim_name,
+        victim_qq=victim_qq,
+        result_kind=result_kind,
+        result_label=result_label,
+        amount=amount,
+        applied_amount=applied_amount,
+        capped=capped,
+        cap_subject=cap_subject,
+        robber_final_coins=robber_final_coins,
+    )
+    return _make_page_url("rob", payload)
 
 
 def create_tutorial_page(

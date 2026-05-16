@@ -1,3 +1,4 @@
+import asyncio
 import random
 from datetime import timedelta
 
@@ -12,10 +13,18 @@ from nextbot.db import User, execute_rowcount, get_session
 from nextbot.message_parser import parse_command_args_with_fallback, resolve_user_id_arg_with_fallback
 from nextbot.permissions import require_permission
 from nextbot.plugins.economy import add_coins_with_cap
+from nextbot.screenshot_render import render_and_send_screenshot
 from nextbot.time_utils import db_now_utc_naive
 from nextbot.text_utils import reply_failure, safe_at_segment_or_empty
+from server.screenshot import ScreenshotOptions
+from server.web_server import create_rob_page
 
 rob_matcher = on_command("抢劫")
+
+# 限制 rob 同时渲染数量，避免 Playwright 浏览器并发过高。
+# 与 dice 一致放宽到 4：单玩家 60 分钟 cooldown 已严格限并发，
+# 但群多人同时玩的峰值需更大缓冲。
+_rob_semaphore = asyncio.Semaphore(4)
 
 
 def _safe_param_int(key: str, default: int, min_value: int = 0) -> int:
@@ -88,8 +97,8 @@ def _safe_param_int(key: str, default: int, min_value: int = 0) -> int:
         },
         "police_penalty_percent": {
             "type": "int",
-            "label": "警察罚款百分比",
-            "description": "被警察抓获时罚款的金币百分比",
+            "label": "地牢守卫罚款百分比",
+            "description": "被地牢守卫抓获时罚款的金币百分比",
             "required": False,
             "default": 20,
             "min": 0,
@@ -124,8 +133,8 @@ def _safe_param_int(key: str, default: int, min_value: int = 0) -> int:
         },
         "police_rate": {
             "type": "int",
-            "label": "警察介入概率",
-            "description": "被警察抓获的概率（百分比）",
+            "label": "地牢守卫介入概率",
+            "description": "被地牢守卫抓获的概率（百分比）",
             "required": False,
             "default": 10,
             "min": 0,
@@ -473,11 +482,16 @@ async def handle_rob(bot: Bot, event: Event, arg: Message = CommandArg()) -> Non
 
         session.commit()
 
+        # session.close() 后 ORM 属性不可访问；在事务内 cache 出局部变量给后续渲染用，
+        # 避免 detached instance 上读 .name / .coins。
         robber_name = str(
             session.query(User.name).filter(User.user_id == robber_id).scalar() or ""
         )
         victim_name = str(
             session.query(User.name).filter(User.user_id == target_user_id).scalar() or ""
+        )
+        robber_final_coins = int(
+            session.query(User.coins).filter(User.user_id == robber_id).scalar() or 0
         )
     except Exception:  # noqa: BLE001
         # R4R-2.1：commit 前任意路径抛异常时显式 rollback。
@@ -491,29 +505,59 @@ async def handle_rob(bot: Bot, event: Event, arg: Message = CommandArg()) -> Non
     finally:
         session.close()
 
-    victim_display = f"{victim_name}（{target_user_id}）"
     # PC-8.1：success / crit / counter 路径中的 "抢走了 X 金币" 显示 applied_amount
     # （实际入账），与 dice / guess_number / red_packet 一致；触顶时另起一行展示
     # 理论数额。police / fail 路径没有派金 helper（attacker 直接扣，无 cap），
     # 仍用原 amount。
-    success_amount = applied_amount if result_type in ("crit", "success", "counter") else amount
-    messages = {
-        "crit": f"🔥 大成功！你趁 {victim_display} 不注意，抢走了 💰 {success_amount} 金币",
-        "success": f"✅ 抢劫成功，从 {victim_display} 手中抢走了 💰 {success_amount} 金币",
-        "counter": f"🚫 {victim_display} 反应迅速，反而从你手中抢走了 💰 {success_amount} 金币",
-        "police": f"🚨 你被巡逻的警察当场抓获，罚款 💰 {amount} 金币",
-        "fail": f"❌ 你被 {victim_display} 发现了，慌忙逃跑时丢失了 💰 {amount} 金币",
-    }
+    applied_for_render = applied_amount if result_type in ("crit", "success", "counter") else amount
 
-    reply_text = messages[result_type]
-    # PC-8.1：派金触顶时附加提示，告知用户理论数额与差额
+    result_labels = {
+        "crit": "大成功",
+        "success": "抢劫成功",
+        "counter": "反被抢",
+        "police": "地牢守卫介入",
+        "fail": "失败",
+    }
     if result_type in ("crit", "success") and capped and applied_amount < amount:
-        reply_text += f"\n⚠️ 已触账户上限，理论抢走 {amount}，{amount - applied_amount} 金币未入账"
+        cap_subject = "robber"
     elif result_type == "counter" and capped and applied_amount < amount:
-        reply_text += f"\n⚠️ 对方账户已触上限，理论 {amount} 金币，{amount - applied_amount} 金币未入账"
+        cap_subject = "victim"
+    else:
+        cap_subject = "none"
 
     logger.info(
         f"抢劫结果：robber={robber_name}({robber_id}) victim={victim_name}({target_user_id}) "
         f"result={result_type} amount={amount} applied_amount={applied_amount} capped={capped}"
     )
-    await bot.send(event, at + " " + reply_text)
+
+    page_url = create_rob_page(
+        robber_name=robber_name,
+        robber_qq=robber_id,
+        victim_name=victim_name,
+        victim_qq=target_user_id,
+        result_kind=result_type,
+        result_label=result_labels[result_type],
+        amount=amount,
+        applied_amount=applied_for_render,
+        capped=capped,
+        cap_subject=cap_subject,
+        robber_final_coins=robber_final_coins,
+    )
+    ok = await render_and_send_screenshot(
+        bot,
+        event,
+        page_url=page_url,
+        options=ScreenshotOptions(
+            viewport_width=720,
+            viewport_height=720,
+            fit_content_height=True,
+        ),
+        file_prefix="rob",
+        semaphore=_rob_semaphore,
+        failure_action="抢劫",
+        at_user_id=robber_id,
+    )
+    if not ok:
+        logger.warning(
+            f"抢劫截图发送失败：robber={robber_id} victim={target_user_id} result={result_type}"
+        )

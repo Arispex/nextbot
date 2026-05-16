@@ -1,0 +1,413 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NextBot 抢劫结果</title>
+  <link rel="stylesheet" href="/assets/css/render-fonts.css" />
+  <link rel="stylesheet" href="/assets/css/render-tokens.css" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    /* class selectors with display:flex/grid override the UA [hidden]
+     * default; restore it explicitly so hidden sections truly disappear. */
+    [hidden] { display: none !important; }
+
+    body {
+      background-color: var(--color-canvas);
+      color: var(--color-ink);
+      font-family: var(--font-body);
+      font-size: var(--type-body-md-size);
+      line-height: 1.55;
+      padding: var(--space-xxl) var(--space-xxl);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    .page {
+      max-width: 920px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-xl);
+    }
+
+    /* ── Header (text-hero — coral rule + eyebrow + serif title). */
+    .header-rule {
+      width: 64px;
+      height: 4px;
+      background-color: var(--color-primary);
+      border-radius: var(--radius-pill);
+      margin-bottom: var(--space-md);
+    }
+
+    .header-eyebrow {
+      color: var(--color-muted);
+      margin-bottom: var(--space-xs);
+    }
+
+    .header-title {
+      color: var(--color-ink);
+      margin: 0 0 var(--space-md) 0;
+    }
+
+    .header-meta {
+      color: var(--color-muted-soft);
+      display: flex;
+      gap: var(--space-md);
+      align-items: baseline;
+      flex-wrap: wrap;
+    }
+
+    .header-meta-divider {
+      color: var(--color-hairline);
+    }
+
+    .meta-value {
+      color: var(--color-ink);
+      font-feature-settings: "tnum";
+    }
+
+    /* ── Stats tiles (4 across, cream-card). ─ */
+    .stats-tiles {
+      display: grid;
+      gap: var(--space-sm);
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .stat-tile {
+      background-color: var(--color-surface-card);
+      border: 1px solid var(--color-hairline);
+      border-radius: var(--radius-md);
+      padding: var(--space-sm) var(--space-md);
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
+    }
+
+    .stat-label {
+      color: var(--color-muted);
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .stat-value {
+      color: var(--color-ink);
+      font-family: var(--font-body);
+      font-size: 18px;
+      font-weight: 600;
+      line-height: 1.15;
+      letter-spacing: -0.01em;
+      font-feature-settings: "tnum";
+      overflow-wrap: break-word;
+      word-break: break-all;
+    }
+
+    .stat-value.gain { color: var(--color-accent-teal); }
+    .stat-value.loss { color: var(--color-primary); }
+
+    /* ── Rob display (sits directly on canvas, no card wrap). ── */
+    .rob-display {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: var(--space-lg);
+    }
+
+    .rob-row {
+      display: flex;
+      gap: var(--space-md);
+      align-items: center;
+      justify-content: center;
+    }
+
+    .player-card {
+      width: 180px;
+      min-height: 140px;
+      background-color: var(--color-surface-cream-strong);
+      border-radius: var(--radius-lg);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: var(--space-xxs);
+      padding: var(--space-md);
+    }
+
+    .player-card-role {
+      color: var(--color-muted);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      margin-bottom: var(--space-xs);
+    }
+
+    .player-card-name {
+      color: var(--color-ink);
+      font-family: var(--font-display);
+      font-size: 22px;
+      font-weight: 400;
+      letter-spacing: -0.3px;
+      line-height: 1.2;
+      text-align: center;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+
+    .player-card-qq {
+      color: var(--color-muted);
+      font-family: var(--font-code);
+      font-size: 13px;
+      font-feature-settings: "tnum";
+      margin-top: 2px;
+    }
+
+    /* ── Arrow / icon between the two cards ─────────────────────── */
+    .rob-arrow {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-xxs);
+      padding: var(--space-xs) var(--space-sm);
+      background-color: var(--color-surface-card);
+      border: 1px solid var(--color-hairline);
+      border-radius: var(--radius-pill);
+      color: var(--color-muted);
+      font-family: var(--font-code);
+      font-size: 14px;
+      font-feature-settings: "tnum";
+    }
+
+    .rob-arrow.rob-arrow-crit { color: var(--color-primary); border-color: var(--color-accent-amber); }
+    .rob-arrow.rob-arrow-success { color: var(--color-primary); }
+    .rob-arrow.rob-arrow-counter { color: var(--color-body-strong); }
+    .rob-arrow.rob-arrow-police { color: var(--color-body-strong); }
+    .rob-arrow.rob-arrow-fail { color: var(--color-muted); }
+
+    /* ── Rob result (text label below the cards, single line). ─── */
+    .rob-result {
+      font-family: var(--font-display);
+      font-size: var(--type-display-sm-size, 28px);
+      font-weight: 400;
+      letter-spacing: -0.3px;
+      line-height: 1.2;
+      text-align: center;
+      color: var(--color-muted);
+      margin: 0;
+    }
+
+    .rob-result.rob-result-crit { color: var(--color-primary); }
+    .rob-result.rob-result-crit .rob-result-dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: var(--radius-pill);
+      background-color: var(--color-accent-amber);
+      margin-right: var(--space-xs);
+      vertical-align: middle;
+    }
+    .rob-result.rob-result-success { color: var(--color-primary); }
+    .rob-result.rob-result-counter { color: var(--color-body-strong); }
+    .rob-result.rob-result-police { color: var(--color-body-strong); }
+    .rob-result.rob-result-fail { color: var(--color-muted); }
+
+    /* ── Cap warning ───────────────────────────────────────────── */
+    .cap-warning {
+      color: var(--color-warning, var(--color-accent-amber));
+      text-align: center;
+    }
+
+    /* ── Footer ────────────────────────────────────────────────── */
+    .footer {
+      text-align: right;
+      color: var(--color-muted-soft);
+      margin-top: var(--space-md);
+    }
+
+    /* Fallback state when JSON payload fails to parse. */
+    body.fallback .page {
+      opacity: 0.5;
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+
+    <header>
+      <div class="header-rule"></div>
+      <div class="header-eyebrow type-caption-uppercase">小游戏系统</div>
+      <h1 class="header-title type-display-lg">抢劫</h1>
+      <div class="header-meta type-body-sm">
+        <span>抢劫者 <span class="meta-value" id="meta-robber-name"></span></span>
+        <span class="header-meta-divider">·</span>
+        <span>QQ <span class="meta-value" id="meta-robber-qq"></span></span>
+        <span class="header-meta-divider">·</span>
+        <span>目标 <span class="meta-value" id="meta-victim-name"></span></span>
+        <span class="header-meta-divider">·</span>
+        <span>QQ <span class="meta-value" id="meta-victim-qq"></span></span>
+        <span class="header-meta-divider">·</span>
+        <span id="generated-at"></span>
+      </div>
+    </header>
+
+    <section class="stats-tiles">
+      <div class="stat-tile">
+        <span class="stat-label">理论金额</span>
+        <span class="stat-value" id="sum-amount"></span>
+      </div>
+      <div class="stat-tile">
+        <span class="stat-label">实际转移</span>
+        <span class="stat-value" id="sum-applied"></span>
+      </div>
+      <div class="stat-tile">
+        <span class="stat-label">抢劫者金币变化</span>
+        <span class="stat-value" id="sum-delta"></span>
+      </div>
+      <div class="stat-tile">
+        <span class="stat-label">当前金币</span>
+        <span class="stat-value" id="sum-coins"></span>
+      </div>
+    </section>
+
+    <section class="rob-display">
+      <div class="rob-row">
+        <div class="player-card">
+          <span class="player-card-role">抢劫者</span>
+          <span class="player-card-name" id="card-robber-name"></span>
+          <span class="player-card-qq" id="card-robber-qq"></span>
+        </div>
+        <div class="rob-arrow" id="rob-arrow"></div>
+        <div class="player-card">
+          <span class="player-card-role">目标</span>
+          <span class="player-card-name" id="card-victim-name"></span>
+          <span class="player-card-qq" id="card-victim-qq"></span>
+        </div>
+      </div>
+      <div class="rob-result" id="rob-result"></div>
+    </section>
+
+    <div id="cap-warning" class="cap-warning type-caption" hidden></div>
+
+    <footer class="footer type-caption">Powered by NextBot</footer>
+  </main>
+
+  <script id="rob-data" type="application/json">__ROB_DATA_JSON__</script>
+  <script>
+    (function () {
+      let data;
+      try {
+        data = JSON.parse(document.getElementById("rob-data").textContent);
+      } catch (err) {
+        console.warn("[rob] page data unavailable", err);
+        document.body.classList.add("fallback");
+        return;
+      }
+
+      const robberName = String(data.robber_name || "").trim() || "—";
+      const robberQq = String(data.robber_qq || "").trim() || "—";
+      const victimName = String(data.victim_name || "").trim() || "—";
+      const victimQq = String(data.victim_qq || "").trim() || "—";
+      const resultKind = String(data.result_kind || "fail");
+      const resultLabelRaw = String(data.result_label || "").trim();
+      const amount = Number(data.amount || 0);
+      const appliedAmount = Number(data.applied_amount || 0);
+      const capped = Boolean(data.capped);
+      const capSubject = String(data.cap_subject || "none");
+      const robberFinalCoins = Number(data.robber_final_coins || 0);
+      const generatedAt = String(data.generated_at || "");
+
+      // ── Header meta ────────────────────────────────────────
+      document.getElementById("meta-robber-name").textContent = robberName;
+      document.getElementById("meta-robber-qq").textContent = robberQq;
+      document.getElementById("meta-victim-name").textContent = victimName;
+      document.getElementById("meta-victim-qq").textContent = victimQq;
+      document.getElementById("generated-at").textContent = generatedAt;
+
+      // ── Stats tiles ────────────────────────────────────────
+      document.getElementById("sum-amount").textContent = String(amount);
+      document.getElementById("sum-applied").textContent = String(appliedAmount);
+
+      // 抢劫者金币变化：crit/success 为正（applied_amount），其它为负（amount）
+      const deltaEl = document.getElementById("sum-delta");
+      deltaEl.classList.remove("gain", "loss");
+      let robberDelta = 0;
+      if (resultKind === "crit" || resultKind === "success") {
+        robberDelta = appliedAmount;
+      } else if (resultKind === "counter") {
+        robberDelta = -amount;
+      } else if (resultKind === "police" || resultKind === "fail") {
+        robberDelta = -amount;
+      }
+      if (robberDelta > 0) {
+        deltaEl.textContent = `+ ${robberDelta}`;
+        deltaEl.classList.add("gain");
+      } else if (robberDelta < 0) {
+        deltaEl.textContent = `− ${Math.abs(robberDelta)}`;
+        deltaEl.classList.add("loss");
+      } else {
+        deltaEl.textContent = "0";
+      }
+
+      document.getElementById("sum-coins").textContent = String(robberFinalCoins);
+
+      // ── Player cards ───────────────────────────────────────
+      document.getElementById("card-robber-name").textContent = robberName;
+      document.getElementById("card-robber-qq").textContent = robberQq;
+      document.getElementById("card-victim-name").textContent = victimName;
+      document.getElementById("card-victim-qq").textContent = victimQq;
+
+      // ── Arrow / icon between the two cards ─────────────────
+      const ARROW_PRESETS = {
+        crit: { cls: "rob-arrow-crit", text: "→ 💰💰" },
+        success: { cls: "rob-arrow-success", text: "→ 💰" },
+        counter: { cls: "rob-arrow-counter", text: "💰 ←" },
+        police: { cls: "rob-arrow-police", text: "🚨" },
+        fail: { cls: "rob-arrow-fail", text: "✕" },
+      };
+      const arrowPreset = ARROW_PRESETS[resultKind] || ARROW_PRESETS.fail;
+      const arrowEl = document.getElementById("rob-arrow");
+      arrowEl.classList.add(arrowPreset.cls);
+      arrowEl.textContent = arrowPreset.text;
+
+      // ── Rob result ─────────────────────────────────────────
+      const resultEl = document.getElementById("rob-result");
+      const RESULT_PRESETS = {
+        crit: { cls: "rob-result-crit", text: "🔥 大成功", dot: true },
+        success: { cls: "rob-result-success", text: "✅ 抢劫成功" },
+        counter: { cls: "rob-result-counter", text: "🚫 反被抢" },
+        police: { cls: "rob-result-police", text: "🚨 地牢守卫介入" },
+        fail: { cls: "rob-result-fail", text: "❌ 失败" },
+      };
+      const preset = RESULT_PRESETS[resultKind] || RESULT_PRESETS.fail;
+      resultEl.classList.add(preset.cls);
+      if (preset.dot) {
+        const dot = document.createElement("span");
+        dot.className = "rob-result-dot";
+        resultEl.appendChild(dot);
+      }
+      const textSpan = document.createElement("span");
+      // 优先使用服务端传过来的 result_label（带本地化文案），否则 fallback preset.text。
+      textSpan.textContent = resultLabelRaw
+        ? `${preset.text.split(" ")[0]} ${resultLabelRaw}`
+        : preset.text;
+      resultEl.appendChild(textSpan);
+
+      // ── Cap warning ────────────────────────────────────────
+      if (capped && appliedAmount < amount) {
+        const capEl = document.getElementById("cap-warning");
+        const missing = amount - appliedAmount;
+        if (capSubject === "robber") {
+          capEl.textContent = `⚠️ 你已触账户上限，理论抢走 ${amount}，${missing} 金币未入账`;
+          capEl.hidden = false;
+        } else if (capSubject === "victim") {
+          capEl.textContent = `⚠️ 对方账户已触上限，理论 ${amount} 金币，${missing} 金币未入账`;
+          capEl.hidden = false;
+        }
+      }
+    })();
+  </script>
+</body>
+</html>
