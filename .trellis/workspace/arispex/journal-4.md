@@ -831,3 +831,36 @@ security.py _handle_login_action 把'完全成功 / 部分成功'两个分支合
 ### Next Steps
 
 - None - task complete
+
+
+## Session 180: fix: 允许/拒绝登入 全失败统一返回'没有待处理的登入请求'
+
+**Date**: 2026-05-16
+**Task**: fix: 允许/拒绝登入 全失败统一返回'没有待处理的登入请求'
+**Branch**: `main`
+
+### Summary
+
+security.py 把'全失败'三个子分支（_all_no_pending / 单台 / 多台 reply_block）合并成单行 reply_failure(action, '没有待处理的登入请求')。删除 dead helpers _NO_PENDING_MARK / _format_failure_lines / _all_no_pending 和 reply_block import；total → _。最终二态：成功 / 失败都是单行简洁文案。审计日志保留 per-server 记录。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `cfc5f39` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
