@@ -303,3 +303,36 @@ rob.html 增强可读性：robber/victim-card 顶部加 64×64 QQ 头像（q1.ql
 ### Next Steps
 
 - None - task complete
+
+
+## Session 164: 我的红包截图加 @ 调用者
+
+**Date**: 2026-05-16
+**Task**: 我的红包截图加 @ 调用者
+**Branch**: `main`
+
+### Summary
+
+_send_red_packet_image 加可选 at_user_id，handle_list_own（我的红包）传 user_id；handle_list_all（红包列表）行为不变。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `34f013c` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
