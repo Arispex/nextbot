@@ -2,8 +2,8 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=720" />
-  <title>NextBot 掷骰子</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NextBot 掷骰子结果</title>
   <link rel="stylesheet" href="/assets/css/render-fonts.css" />
   <link rel="stylesheet" href="/assets/css/render-tokens.css" />
   <style>
@@ -19,104 +19,107 @@
       font-family: var(--font-body);
       font-size: var(--type-body-md-size);
       line-height: 1.55;
-      padding: var(--space-xl) var(--space-xl);
+      padding: var(--space-xxl) var(--space-xxl);
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
     }
 
     .page {
-      width: 640px;
+      max-width: 920px;
       margin: 0 auto;
       display: flex;
       flex-direction: column;
-      gap: var(--space-lg);
+      gap: var(--space-xl);
     }
 
-    .card {
-      background-color: var(--color-surface-card);
-      border-radius: var(--radius-lg);
-      padding: var(--space-xl);
-      display: flex;
-      flex-direction: column;
-      gap: var(--space-lg);
+    /* ── Header (text-hero — coral rule + eyebrow + serif title). */
+    .header-rule {
+      width: 64px;
+      height: 4px;
+      background-color: var(--color-primary);
+      border-radius: var(--radius-pill);
+      margin-bottom: var(--space-md);
     }
 
-    /* ── Header ─────────────────────────────────────────────── */
-    .header {
-      display: flex;
-      flex-direction: column;
-      gap: var(--space-sm);
-    }
-
-    .header-top {
-      display: flex;
-      align-items: baseline;
-      justify-content: space-between;
-      gap: var(--space-md);
+    .header-eyebrow {
+      color: var(--color-muted);
+      margin-bottom: var(--space-xs);
     }
 
     .header-title {
-      margin: 0;
       color: var(--color-ink);
-    }
-
-    .header-generated-at {
-      color: var(--color-muted);
-      font-family: var(--font-code);
-      font-size: 12px;
-    }
-
-    .header-divider {
-      height: 1px;
-      background-color: var(--color-hairline);
-      width: 100%;
+      margin: 0 0 var(--space-md) 0;
     }
 
     .header-meta {
-      display: grid;
-      grid-template-columns: 1fr auto;
-      row-gap: var(--space-xs);
-      column-gap: var(--space-md);
+      color: var(--color-muted-soft);
+      display: flex;
+      gap: var(--space-md);
       align-items: baseline;
+      flex-wrap: wrap;
     }
 
-    .meta-label {
-      color: var(--color-muted);
-      font-size: var(--type-body-sm-size);
+    .header-meta-divider {
+      color: var(--color-hairline);
     }
 
     .meta-value {
       color: var(--color-ink);
-      font-size: var(--type-body-md-size);
-      font-weight: 500;
+      font-feature-settings: "tnum";
     }
 
-    .meta-value.mono {
-      font-family: var(--font-code);
-      font-weight: 400;
+    /* ── Stats tiles (4 across, cream-card). ─ */
+    .stats-tiles {
+      display: grid;
+      gap: var(--space-sm);
+      grid-template-columns: repeat(4, minmax(0, 1fr));
     }
 
-    .meta-row {
+    .stat-tile {
+      background-color: var(--color-surface-card);
+      border: 1px solid var(--color-hairline);
+      border-radius: var(--radius-md);
+      padding: var(--space-sm) var(--space-md);
       display: flex;
-      gap: var(--space-xs);
-      align-items: baseline;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
     }
 
-    .meta-row-right {
-      justify-self: end;
+    .stat-label {
+      color: var(--color-muted);
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
     }
 
-    /* ── Dice center ────────────────────────────────────────── */
-    .dice-center {
+    .stat-value {
+      color: var(--color-ink);
+      font-family: var(--font-body);
+      font-size: 18px;
+      font-weight: 600;
+      line-height: 1.15;
+      letter-spacing: -0.01em;
+      font-feature-settings: "tnum";
+      overflow-wrap: break-word;
+      word-break: break-all;
+    }
+
+    .stat-value.gain { color: var(--color-accent-teal); }
+    .stat-value.loss { color: var(--color-primary); }
+
+    /* ── Dice display (sits directly on canvas, no card wrap). ── */
+    .dice-display {
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: var(--space-md);
+      gap: var(--space-lg);
     }
 
     .dice-row {
       display: flex;
-      gap: var(--space-lg);
+      gap: var(--space-md);
       justify-content: center;
     }
 
@@ -125,223 +128,153 @@
       height: 100px;
       background-color: var(--color-surface-cream-strong);
       border-radius: var(--radius-lg);
-      display: block;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
 
     .dice-face.is-triple {
       box-shadow: inset 0 0 0 2px var(--color-accent-amber);
     }
 
-    .sum-line {
+    .dice-sum {
       display: flex;
       align-items: baseline;
-      gap: var(--space-md);
+      gap: var(--space-sm);
       justify-content: center;
-    }
-
-    .sum-formula {
-      font-family: var(--font-code);
-      font-size: 28px;
       color: var(--color-ink);
-      font-weight: 400;
-    }
-
-    .sum-label {
-      font-family: var(--font-display);
-      font-size: 28px;
-      font-weight: 400;
-      letter-spacing: -0.3px;
-      color: var(--color-ink);
-    }
-
-    .sum-label.is-triple {
-      color: var(--color-primary);
-    }
-
-    /* ── Result band ────────────────────────────────────────── */
-    .result-band {
-      border-radius: var(--radius-lg);
-      padding: var(--space-lg);
-      display: flex;
-      flex-direction: column;
-      gap: var(--space-md);
-      background-color: var(--color-surface-cream-strong);
-      color: var(--color-ink);
-    }
-
-    .result-band.is-win,
-    .result-band.is-triple-win {
-      background-color: var(--color-primary);
-      color: var(--color-on-primary);
-    }
-
-    .result-band.is-triple-win {
-      box-shadow: inset 0 0 0 2px var(--color-accent-amber);
-    }
-
-    .result-headline {
-      display: flex;
-      align-items: baseline;
-      gap: var(--space-xs);
       margin: 0;
+    }
+
+    .dice-sum-numbers {
+      font-family: var(--font-code);
+      font-weight: 400;
+      color: var(--color-body-strong);
+    }
+
+    .dice-sum-equals {
+      font-family: var(--font-code);
+      color: var(--color-muted);
+      font-weight: 400;
+    }
+
+    .dice-sum-total {
       font-family: var(--font-display);
-      font-size: 28px;
       font-weight: 400;
       letter-spacing: -0.3px;
-      line-height: 1.2;
+      color: var(--color-ink);
     }
 
-    .result-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
-      gap: var(--space-md);
-    }
-
-    .result-col {
-      display: flex;
-      flex-direction: column;
-      gap: var(--space-xxs);
-    }
-
-    .result-col-label {
+    .dice-sum-label {
       font-family: var(--font-body);
-      font-size: 11px;
+      font-size: var(--type-body-md-size);
       font-weight: 500;
-      letter-spacing: 1.5px;
-      text-transform: uppercase;
       color: var(--color-muted);
     }
 
-    .result-band.is-win .result-col-label,
-    .result-band.is-triple-win .result-col-label {
-      color: var(--color-on-primary);
-      opacity: 0.85;
-    }
-
-    .result-col-value {
-      font-family: var(--font-code);
-      font-size: 28px;
-      font-weight: 400;
-      color: var(--color-ink);
-      line-height: 1.2;
-    }
-
-    .result-band.is-win .result-col-value,
-    .result-band.is-triple-win .result-col-value {
-      color: var(--color-on-primary);
-    }
-
-    .result-col-value.is-net-positive {
+    .dice-sum-label.is-triple {
       color: var(--color-primary);
     }
 
-    .result-band.is-win .result-col-value.is-net-positive,
-    .result-band.is-triple-win .result-col-value.is-net-positive {
-      color: var(--color-on-primary);
+    /* ── Dice result (text label below the dice, single line). ── */
+    .dice-result {
+      font-family: var(--font-display);
+      font-size: var(--type-display-sm-size, 28px);
+      font-weight: 400;
+      letter-spacing: -0.3px;
+      line-height: 1.2;
+      text-align: center;
+      color: var(--color-muted);
+      margin: 0;
     }
 
-    /* ── Footer ─────────────────────────────────────────────── */
+    .dice-result.dice-result-win { color: var(--color-primary); }
+    .dice-result.dice-result-triple-win { color: var(--color-primary); }
+    .dice-result.dice-result-triple-win .dice-result-dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: var(--radius-pill);
+      background-color: var(--color-accent-amber);
+      margin-right: var(--space-xs);
+      vertical-align: middle;
+    }
+    .dice-result.dice-result-triple-kill { color: var(--color-body-strong); }
+    .dice-result.dice-result-tie { color: var(--color-muted); }
+    .dice-result.dice-result-lose { color: var(--color-muted); }
+
+    /* ── Cap warning ───────────────────────────────────────────── */
+    .cap-warning {
+      color: var(--color-warning, var(--color-accent-amber));
+      text-align: center;
+    }
+
+    /* ── Footer ────────────────────────────────────────────────── */
     .footer {
-      display: flex;
-      flex-direction: column;
-      gap: var(--space-xs);
-    }
-
-    .footer-coins {
-      font-family: var(--font-code);
-      font-size: var(--type-body-md-size);
-      color: var(--color-body-strong);
-      font-weight: 500;
-    }
-
-    .footer-cap-warning {
-      color: var(--color-accent-amber);
-      font-size: var(--type-body-sm-size);
-    }
-
-    .footer-meta {
-      display: flex;
-      justify-content: space-between;
-      align-items: baseline;
-      gap: var(--space-md);
+      text-align: right;
       color: var(--color-muted-soft);
-      font-size: 11px;
-    }
-
-    .footer-meta-watermark {
-      letter-spacing: 1.5px;
-      text-transform: uppercase;
+      margin-top: var(--space-md);
     }
 
     /* Fallback state when JSON payload fails to parse. */
-    body.fallback .card {
+    body.fallback .page {
       opacity: 0.5;
     }
   </style>
 </head>
 <body>
   <main class="page">
-    <section class="card">
-      <header class="header">
-        <div class="header-top">
-          <h1 class="header-title type-display-sm">🎲 掷骰子</h1>
-          <span id="header-generated-at" class="header-generated-at"></span>
-        </div>
-        <div class="header-divider"></div>
-        <div class="header-meta">
-          <div class="meta-row">
-            <span class="meta-label">玩家：</span>
-            <span id="meta-player" class="meta-value"></span>
-          </div>
-          <div class="meta-row meta-row-right">
-            <span class="meta-label">投入：</span>
-            <span id="meta-cost" class="meta-value mono"></span>
-          </div>
-          <div class="meta-row">
-            <span class="meta-label">选择：</span>
-            <span id="meta-choice" class="meta-value"></span>
-          </div>
-          <div class="meta-row meta-row-right"></div>
-        </div>
-      </header>
 
-      <div class="dice-center">
-        <div id="dice-row" class="dice-row"></div>
-        <div class="sum-line">
-          <span id="sum-formula" class="sum-formula"></span>
-          <span id="sum-label" class="sum-label"></span>
-        </div>
+    <header>
+      <div class="header-rule"></div>
+      <div class="header-eyebrow type-caption-uppercase">小游戏系统</div>
+      <h1 class="header-title type-display-lg">掷骰子结果</h1>
+      <div class="header-meta type-body-sm">
+        <span>玩家 <span class="meta-value" id="meta-player-name"></span></span>
+        <span class="header-meta-divider">·</span>
+        <span>QQ <span class="meta-value" id="meta-player-qq"></span></span>
+        <span class="header-meta-divider">·</span>
+        <span>选择 <span class="meta-value" id="meta-choice"></span></span>
+        <span class="header-meta-divider">·</span>
+        <span>投入 <span class="meta-value" id="meta-cost"></span></span>
+        <span class="header-meta-divider">·</span>
+        <span id="generated-at"></span>
       </div>
+    </header>
 
-      <div id="result-band" class="result-band">
-        <h2 id="result-headline" class="result-headline"></h2>
-        <div class="result-grid">
-          <div class="result-col">
-            <span class="result-col-label">投入</span>
-            <span id="result-cost" class="result-col-value"></span>
-          </div>
-          <div class="result-col">
-            <span class="result-col-label">实际获得</span>
-            <span id="result-applied-payout" class="result-col-value"></span>
-          </div>
-          <div class="result-col">
-            <span class="result-col-label">净赚</span>
-            <span id="result-applied-net" class="result-col-value"></span>
-          </div>
-        </div>
+    <section class="stats-tiles">
+      <div class="stat-tile">
+        <span class="stat-label">投入</span>
+        <span class="stat-value loss" id="sum-cost"></span>
       </div>
-
-      <footer class="footer">
-        <div class="footer-coins">
-          <span id="footer-coins"></span>
-        </div>
-        <div id="footer-cap-warning" class="footer-cap-warning" hidden></div>
-        <div class="footer-meta">
-          <span id="footer-generated-at"></span>
-          <span class="footer-meta-watermark">NextBot</span>
-        </div>
-      </footer>
+      <div class="stat-tile">
+        <span class="stat-label">实际获得</span>
+        <span class="stat-value" id="sum-payout"></span>
+      </div>
+      <div class="stat-tile">
+        <span class="stat-label">净赚</span>
+        <span class="stat-value" id="sum-net"></span>
+      </div>
+      <div class="stat-tile">
+        <span class="stat-label">当前金币</span>
+        <span class="stat-value" id="sum-coins"></span>
+      </div>
     </section>
+
+    <section class="dice-display">
+      <div class="dice-row" id="dice-row"></div>
+      <div class="dice-sum type-display-md">
+        <span class="dice-sum-numbers" id="dice-sum-numbers"></span>
+        <span class="dice-sum-equals">=</span>
+        <span class="dice-sum-total" id="dice-sum-total"></span>
+        <span class="dice-sum-label" id="dice-sum-label"></span>
+      </div>
+      <div class="dice-result" id="dice-result"></div>
+    </section>
+
+    <div id="cap-warning" class="cap-warning type-caption" hidden></div>
+
+    <footer class="footer type-caption">Powered by NextBot</footer>
   </main>
 
   <script id="dice-data" type="application/json">__DICE_DATA_JSON__</script>
@@ -357,7 +290,7 @@
       }
 
       const playerName = String(data.player_name || "").trim() || "—";
-      const playerQq = String(data.player_qq || "").trim();
+      const playerQq = String(data.player_qq || "").trim() || "—";
       const choice = String(data.choice || "").trim() || "—";
       const cost = Number(data.cost || 0);
       const diceArr = Array.isArray(data.dice) ? data.dice.slice(0, 3) : [];
@@ -372,15 +305,32 @@
       const capped = Boolean(data.capped);
       const generatedAt = String(data.generated_at || "");
 
-      // ── Header ─────────────────────────────────────────────
-      document.getElementById("header-generated-at").textContent = generatedAt;
-      document.getElementById("meta-player").textContent = playerQq
-        ? `${playerName} · QQ ${playerQq}`
-        : playerName;
-      document.getElementById("meta-cost").textContent = `${cost} 💰`;
+      // ── Header meta ────────────────────────────────────────
+      document.getElementById("meta-player-name").textContent = playerName;
+      document.getElementById("meta-player-qq").textContent = playerQq;
       document.getElementById("meta-choice").textContent = choice;
+      document.getElementById("meta-cost").textContent = String(cost);
+      document.getElementById("generated-at").textContent = generatedAt;
 
-      // ── Dice center ────────────────────────────────────────
+      // ── Stats tiles ────────────────────────────────────────
+      document.getElementById("sum-cost").textContent = `− ${cost}`;
+      document.getElementById("sum-payout").textContent = String(appliedPayout);
+
+      const netEl = document.getElementById("sum-net");
+      netEl.classList.remove("gain", "loss");
+      if (appliedNet > 0) {
+        netEl.textContent = `+ ${appliedNet}`;
+        netEl.classList.add("gain");
+      } else if (appliedNet < 0) {
+        netEl.textContent = `− ${Math.abs(appliedNet)}`;
+        netEl.classList.add("loss");
+      } else {
+        netEl.textContent = "0";
+      }
+
+      document.getElementById("sum-coins").textContent = String(finalCoins);
+
+      // ── Dice display ───────────────────────────────────────
       // 5x5 dot-position grid (cx,cy in 0..4 indices).
       // Maps each face value (1..6) to the dot offsets within the face.
       const DOT_POSITIONS = {
@@ -391,9 +341,9 @@
         5: [[1, 1], [3, 1], [2, 2], [1, 3], [3, 3]],
         6: [[1, 1], [3, 1], [1, 2], [3, 2], [1, 3], [3, 3]],
       };
-      const FACE_SIZE = 100;
-      const CELL = FACE_SIZE / 5; // 20
-      const DOT_RADIUS = 7;
+      const FACE_SIZE = 90;
+      const CELL = FACE_SIZE / 5; // 18
+      const DOT_RADIUS = 6;
       const SVG_NS = "http://www.w3.org/2000/svg";
 
       function renderDiceFace(value) {
@@ -402,10 +352,6 @@
         svg.setAttribute("width", String(FACE_SIZE));
         svg.setAttribute("height", String(FACE_SIZE));
         svg.setAttribute("viewBox", `0 0 ${FACE_SIZE} ${FACE_SIZE}`);
-        svg.classList.add("dice-face");
-        if (isTriple) {
-          svg.classList.add("is-triple");
-        }
         const positions = DOT_POSITIONS[v] || DOT_POSITIONS[1];
         for (const [gx, gy] of positions) {
           const dot = document.createElementNS(SVG_NS, "circle");
@@ -419,74 +365,57 @@
       }
 
       const diceRowEl = document.getElementById("dice-row");
-      for (const d of diceArr) {
-        diceRowEl.appendChild(renderDiceFace(d));
+      for (let i = 0; i < 3; i++) {
+        const face = document.createElement("div");
+        face.className = "dice-face";
+        face.id = `dice-${i + 1}`;
+        if (isTriple) face.classList.add("is-triple");
+        face.appendChild(renderDiceFace(diceArr[i]));
+        diceRowEl.appendChild(face);
       }
 
-      document.getElementById("sum-formula").textContent =
-        `${diceArr[0]} + ${diceArr[1]} + ${diceArr[2]} = ${total}`;
+      // dice-sum
+      document.getElementById("dice-sum-numbers").textContent =
+        `${diceArr[0]} + ${diceArr[1]} + ${diceArr[2]}`;
+      document.getElementById("dice-sum-total").textContent = String(total);
 
-      // sum label: "豹子" if is_triple, else "大"/"小" derived from total (>=11 big).
-      const sumLabelEl = document.getElementById("sum-label");
+      const sumLabelEl = document.getElementById("dice-sum-label");
       if (isTriple) {
-        sumLabelEl.textContent = "豹子";
+        sumLabelEl.textContent = "（豹子）";
         sumLabelEl.classList.add("is-triple");
       } else if (total >= 11) {
-        sumLabelEl.textContent = "大";
+        sumLabelEl.textContent = "（大）";
       } else {
-        sumLabelEl.textContent = "小";
+        sumLabelEl.textContent = "（小）";
       }
 
-      // ── Result band ────────────────────────────────────────
-      const bandEl = document.getElementById("result-band");
-      const headlineEl = document.getElementById("result-headline");
-
+      // ── Dice result ────────────────────────────────────────
+      const resultEl = document.getElementById("dice-result");
       const RESULT_PRESETS = {
-        win: { cls: "is-win", emoji: "🎉", text: "猜对了！" },
-        triple_win: { cls: "is-triple-win", emoji: "🔥", text: "豹子！" },
-        triple_kill: { cls: "", emoji: "💥", text: "豹子通杀，全部损失" },
-        lose: { cls: "", emoji: "❌", text: "猜错了" },
-        tie: { cls: "", emoji: "⚖️", text: "刚好持平" },
+        win: { cls: "dice-result-win", text: "猜对了" },
+        triple_win: { cls: "dice-result-triple-win", text: "豹子！", dot: true },
+        triple_kill: { cls: "dice-result-triple-kill", text: "豹子通杀" },
+        lose: { cls: "dice-result-lose", text: "猜错了" },
+        tie: { cls: "dice-result-tie", text: "刚好持平" },
       };
       const preset = RESULT_PRESETS[resultKind] || RESULT_PRESETS.lose;
-      if (preset.cls) {
-        bandEl.classList.add(preset.cls);
+      resultEl.classList.add(preset.cls);
+      if (preset.dot) {
+        const dot = document.createElement("span");
+        dot.className = "dice-result-dot";
+        resultEl.appendChild(dot);
       }
-      // headline = emoji + text
-      const emojiSpan = document.createElement("span");
-      emojiSpan.textContent = preset.emoji;
       const textSpan = document.createElement("span");
       textSpan.textContent = preset.text;
-      headlineEl.appendChild(emojiSpan);
-      headlineEl.appendChild(textSpan);
+      resultEl.appendChild(textSpan);
 
-      // ── Result grid ────────────────────────────────────────
-      document.getElementById("result-cost").textContent = `${cost} 💰`;
-      document.getElementById("result-applied-payout").textContent = `${appliedPayout} 💰`;
-
-      const netEl = document.getElementById("result-applied-net");
-      let netText;
-      if (appliedNet > 0) {
-        netText = `+${appliedNet}`;
-        netEl.classList.add("is-net-positive");
-      } else if (appliedNet < 0) {
-        netText = String(appliedNet);
-      } else {
-        netText = "0";
-      }
-      netEl.textContent = netText;
-
-      // ── Footer ─────────────────────────────────────────────
-      document.getElementById("footer-coins").textContent = `💰 ${finalCoins}`;
-
-      const capEl = document.getElementById("footer-cap-warning");
+      // ── Cap warning ────────────────────────────────────────
       if (capped && appliedPayout < payout) {
+        const capEl = document.getElementById("cap-warning");
         const missing = payout - appliedPayout;
         capEl.textContent = `⚠️ 已触账户上限，理论派奖 ${payout}，${missing} 金币未入账`;
         capEl.hidden = false;
       }
-
-      document.getElementById("footer-generated-at").textContent = generatedAt;
     })();
   </script>
 </body>
