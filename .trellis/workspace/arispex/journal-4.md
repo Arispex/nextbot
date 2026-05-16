@@ -534,3 +534,36 @@ server_manager.py 服务器列表 category 服务器管理 → 查询系统；pl
 ### Next Steps
 
 - None - task complete
+
+
+## Session 171: 管理员列表删除 Owner badge
+
+**Date**: 2026-05-16
+**Task**: 管理员列表删除 Owner badge
+**Branch**: `main`
+
+### Summary
+
+admin_list.html 删除 .badge CSS 规则 + JS 创建 badge 元素块。每个 admin 卡片不再显示 'Owner' tag；其它字段（昵称/QQ）不变。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `1f7045e` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

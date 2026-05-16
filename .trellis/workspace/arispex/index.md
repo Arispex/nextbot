@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-4.md`
-- **Total Sessions**: 170
+- **Total Sessions**: 171
 - **Last Active**: 2026-05-16
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-4.md` | ~536 | Active |
+| `journal-4.md` | ~569 | Active |
 | `journal-3.md` | ~1984 | Archived |
 | `journal-2.md` | ~1973 | Archived |
 | `journal-1.md` | ~1999 | Archived |
@@ -32,6 +32,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 171 | 2026-05-16 | 管理员列表删除 Owner badge | `1f7045e` | `main` |
 | 170 | 2026-05-16 | 服务器列表移到查询系统 + 玩家查询改名查询系统 | `5b0e63d` | `main` |
 | 169 | 2026-05-16 | 服务器列表移到查询系统 + 玩家查询改名查询系统 | `5b0e63d` | `main` |
 | 168 | 2026-05-16 | 抽奖标题去结果 + 抽奖发图加 @ | `25745fd` | `main` |
