@@ -187,7 +187,7 @@ _safe_at_segment = safe_at_segment
     permission="player_query.online",
     description="查询服务器在线状态与在线玩家列表",
     usage="在线",
-    category="玩家查询",
+    category="查询系统",
 )
 @require_permission("player_query.online")
 async def handle_online(
@@ -392,7 +392,7 @@ async def handle_self_kick(
             "default": False,
         },
     },
-    category="玩家查询",
+    category="查询系统",
 )
 @require_permission("player_query.inventory.user")
 async def handle_user_inventory(
@@ -560,7 +560,7 @@ async def handle_user_inventory(
             "default": False,
         },
     },
-    category="玩家查询",
+    category="查询系统",
 )
 @require_permission("player_query.inventory.self")
 async def handle_my_inventory(
@@ -686,7 +686,7 @@ async def handle_my_inventory(
     permission="player_query.map.self",
     description="查询当前用户在指定服务器世界中的探索地图",
     usage="我的地图 <服务器 ID>",
-    category="玩家查询",
+    category="查询系统",
 )
 @require_permission("player_query.map.self")
 async def handle_my_map(bot: Bot, event: Event, arg: Message = CommandArg()):
@@ -815,7 +815,7 @@ async def handle_my_map(bot: Bot, event: Event, arg: Message = CommandArg()):
     permission="player_query.map.user",
     description="查询指定用户在指定服务器世界中的探索地图",
     usage="用户地图 <服务器 ID> <用户 QQ/@用户/用户名称>",
-    category="玩家查询",
+    category="查询系统",
 )
 @require_permission("player_query.map.user")
 async def handle_user_map(bot: Bot, event: Event, arg: Message = CommandArg()):
@@ -967,7 +967,7 @@ async def handle_user_map(bot: Bot, event: Event, arg: Message = CommandArg()):
     permission="player_query.map.explored",
     description="查看所有玩家共同探索过的区域地图",
     usage="查看地图 <服务器 ID>",
-    category="玩家查询",
+    category="查询系统",
 )
 @require_permission("player_query.map.explored")
 async def handle_explored_map(bot: Bot, event: Event, arg: Message = CommandArg()):
@@ -1090,7 +1090,7 @@ async def handle_explored_map(bot: Bot, event: Event, arg: Message = CommandArg(
     permission="player_query.progress",
     description="查询世界进度并生成截图",
     usage="进度 <服务器 ID>",
-    category="玩家查询",
+    category="查询系统",
 )
 @require_permission("player_query.progress")
 async def handle_world_progress(

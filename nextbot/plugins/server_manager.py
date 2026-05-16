@@ -18,7 +18,7 @@ list_matcher = on_command("服务器列表")
     permission="server.list",
     description="输出服务器列表",
     usage="服务器列表",
-    category="服务器管理",
+    category="查询系统",
 )
 @require_permission("server.list")
 async def handle_list_servers(
