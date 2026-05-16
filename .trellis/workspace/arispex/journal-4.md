@@ -435,3 +435,36 @@ lottery_list.html 把单 .entry-cmd 改为 .entry-cmds 容器（flex-column 右�
 ### Next Steps
 
 - None - task complete
+
+
+## Session 168: 抽奖标题去结果 + 抽奖发图加 @
+
+**Date**: 2026-05-16
+**Task**: 抽奖标题去结果 + 抽奖发图加 @
+**Branch**: `main`
+
+### Summary
+
+lottery_result.html h1 抽奖结果→抽奖；lottery.py handle_lottery_draw 调 render_and_send_screenshot 追加 at_user_id=user_id。奖池列表/查看奖池 调用不动。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `25745fd` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
