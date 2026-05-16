@@ -135,6 +135,35 @@
       justify-content: center;
       gap: var(--space-xxs);
       padding: var(--space-md);
+      position: relative;
+    }
+
+    .player-avatar {
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      object-fit: cover;
+      background: var(--color-surface-cream-strong);
+      margin-bottom: var(--space-sm);
+    }
+
+    .player-card.is-source {
+      opacity: 0.7;
+    }
+    .player-card.is-source::after {
+      content: "";
+      position: absolute;
+      top: -6px;
+      right: -6px;
+      width: 12px;
+      height: 12px;
+      background: var(--color-accent-amber);
+      border-radius: 50%;
+    }
+
+    .player-card.is-target {
+      background-color: var(--color-surface-cream-strong);
+      outline: 2px solid var(--color-primary);
     }
 
     .player-card-role {
@@ -166,26 +195,45 @@
       margin-top: 2px;
     }
 
-    /* ── Arrow / icon between the two cards ─────────────────────── */
-    .rob-arrow {
-      display: inline-flex;
+    /* ── Flow indicator between the two cards (icon + amount + label). ── */
+    .rob-flow {
+      display: flex;
+      flex-direction: column;
       align-items: center;
-      gap: var(--space-xxs);
-      padding: var(--space-xs) var(--space-sm);
-      background-color: var(--color-surface-card);
-      border: 1px solid var(--color-hairline);
-      border-radius: var(--radius-pill);
-      color: var(--color-muted);
+      gap: var(--space-sm);
+      min-width: 120px;
+    }
+
+    .rob-flow-icon {
+      font-size: 48px;
+      font-family: var(--font-display);
+      line-height: 1;
+    }
+
+    .rob-flow-amount {
       font-family: var(--font-code);
-      font-size: 14px;
+      font-size: 24px;
+      color: var(--color-ink);
+      font-weight: 600;
       font-feature-settings: "tnum";
     }
 
-    .rob-arrow.rob-arrow-crit { color: var(--color-primary); border-color: var(--color-accent-amber); }
-    .rob-arrow.rob-arrow-success { color: var(--color-primary); }
-    .rob-arrow.rob-arrow-counter { color: var(--color-body-strong); }
-    .rob-arrow.rob-arrow-police { color: var(--color-body-strong); }
-    .rob-arrow.rob-arrow-fail { color: var(--color-muted); }
+    .rob-flow-label {
+      color: var(--color-muted);
+      font-size: 11px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+    }
+
+    /* 5 状态切色 */
+    .rob-flow.rob-flow-crit .rob-flow-icon { color: var(--color-primary); }
+    .rob-flow.rob-flow-crit .rob-flow-amount { color: var(--color-primary); }
+    .rob-flow.rob-flow-success .rob-flow-icon { color: var(--color-primary); }
+    .rob-flow.rob-flow-success .rob-flow-amount { color: var(--color-primary); }
+    .rob-flow.rob-flow-counter .rob-flow-icon { color: var(--color-accent-amber); }
+    .rob-flow.rob-flow-counter .rob-flow-amount { color: var(--color-accent-amber); }
+    .rob-flow.rob-flow-police .rob-flow-icon { color: var(--color-body-strong); }
+    .rob-flow.rob-flow-fail .rob-flow-icon { color: var(--color-muted); }
 
     /* ── Rob result (text label below the cards, single line). ─── */
     .rob-result {
@@ -274,13 +322,19 @@
 
     <section class="rob-display">
       <div class="rob-row">
-        <div class="player-card">
+        <div class="player-card" id="rob-robber-card">
+          <img class="player-avatar" id="rob-robber-avatar" src="" alt="" referrerpolicy="no-referrer" />
           <span class="player-card-role">抢劫者</span>
           <span class="player-card-name" id="card-robber-name"></span>
           <span class="player-card-qq" id="card-robber-qq"></span>
         </div>
-        <div class="rob-arrow" id="rob-arrow"></div>
-        <div class="player-card">
+        <div class="rob-flow" id="rob-flow">
+          <div class="rob-flow-icon" id="rob-flow-icon"></div>
+          <div class="rob-flow-amount" id="rob-flow-amount"></div>
+          <div class="rob-flow-label type-caption-uppercase" id="rob-flow-label"></div>
+        </div>
+        <div class="player-card" id="rob-victim-card">
+          <img class="player-avatar" id="rob-victim-avatar" src="" alt="" referrerpolicy="no-referrer" />
           <span class="player-card-role">目标</span>
           <span class="player-card-name" id="card-victim-name"></span>
           <span class="player-card-qq" id="card-victim-qq"></span>
@@ -359,18 +413,39 @@
       document.getElementById("card-victim-name").textContent = victimName;
       document.getElementById("card-victim-qq").textContent = victimQq;
 
-      // ── Arrow / icon between the two cards ─────────────────
-      const ARROW_PRESETS = {
-        crit: { cls: "rob-arrow-crit", text: "→ 💰💰" },
-        success: { cls: "rob-arrow-success", text: "→ 💰" },
-        counter: { cls: "rob-arrow-counter", text: "💰 ←" },
-        police: { cls: "rob-arrow-police", text: "🚨" },
-        fail: { cls: "rob-arrow-fail", text: "✕" },
+      // ── QQ Avatars ─────────────────────────────────────────
+      const avatarUrl = (qq) => `https://q1.qlogo.cn/g?b=qq&nk=${encodeURIComponent(qq)}&s=100`;
+      const robberAvatarEl = document.getElementById("rob-robber-avatar");
+      const victimAvatarEl = document.getElementById("rob-victim-avatar");
+      robberAvatarEl.src = avatarUrl(robberQq);
+      victimAvatarEl.src = avatarUrl(victimQq);
+      const handleAvatarError = (el) => { el.style.visibility = "hidden"; };
+      robberAvatarEl.addEventListener("error", function () { handleAvatarError(this); });
+      victimAvatarEl.addEventListener("error", function () { handleAvatarError(this); });
+
+      // ── Central flow indicator + source/target highlight ───
+      const FLOW_PRESETS = {
+        crit:    { icon: "🔥 ←", label: "抢走",         cls: "rob-flow-crit",    source: "victim", target: "robber" },
+        success: { icon: "←",    label: "抢走",         cls: "rob-flow-success", source: "victim", target: "robber" },
+        counter: { icon: "→",    label: "反被抢",       cls: "rob-flow-counter", source: "robber", target: "victim" },
+        police:  { icon: "🚨 ↓", label: "罚款凭空消失", cls: "rob-flow-police",  source: null,     target: null },
+        fail:    { icon: "❌",   label: "凭空消失",     cls: "rob-flow-fail",    source: null,     target: null },
       };
-      const arrowPreset = ARROW_PRESETS[resultKind] || ARROW_PRESETS.fail;
-      const arrowEl = document.getElementById("rob-arrow");
-      arrowEl.classList.add(arrowPreset.cls);
-      arrowEl.textContent = arrowPreset.text;
+      const flowPreset = FLOW_PRESETS[resultKind] || FLOW_PRESETS.fail;
+      const flowEl = document.getElementById("rob-flow");
+      flowEl.className = "rob-flow " + flowPreset.cls;
+      document.getElementById("rob-flow-icon").textContent = flowPreset.icon;
+      // 入账金额优先取 applied_amount（实际转移 / 实际损失），fail / police 等场景下 fallback 到 amount。
+      const flowAmount = appliedAmount || amount || 0;
+      document.getElementById("rob-flow-amount").textContent = `💰 ${flowAmount}`;
+      document.getElementById("rob-flow-label").textContent = flowPreset.label;
+
+      const robberCardEl = document.getElementById("rob-robber-card");
+      const victimCardEl = document.getElementById("rob-victim-card");
+      robberCardEl.classList.toggle("is-source", flowPreset.source === "robber");
+      robberCardEl.classList.toggle("is-target", flowPreset.target === "robber");
+      victimCardEl.classList.toggle("is-source", flowPreset.source === "victim");
+      victimCardEl.classList.toggle("is-target", flowPreset.target === "victim");
 
       // ── Rob result ─────────────────────────────────────────
       const resultEl = document.getElementById("rob-result");
