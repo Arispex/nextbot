@@ -9,6 +9,11 @@ from nextbot.db import User, get_session
 
 from nonebot.log import logger
 
+try:
+    from nonebot.matcher import current_matcher
+except ImportError:  # 测试 / 非 nonebot 环境降级
+    current_matcher = None  # type: ignore[assignment]
+
 
 def _message_segments_from_event(event: Any) -> list[Any]:
     original_message = getattr(event, "original_message", None)
@@ -44,12 +49,39 @@ def _segments_to_plain_text(segments: list[Any]) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
-def _extract_args_text(text: str, command_name: str) -> str | None:
-    cmd = re.escape(command_name)
-    match = re.match(rf"^/?{cmd}(?:\s+|$)", text)
-    if match is None:
-        return None
-    return text[match.end() :].strip()
+def _get_actual_command() -> str:
+    """读取 NoneBot matcher state 中实际匹配到的命令名（含 alias）。
+
+    Args 解析依赖匹配实际输入的命令前缀；canonical command_name 在用户使用
+    别名时不会出现在消息文本里，会导致正则失配。复用 NoneBot 内部的
+    matcher.state["_prefix"]["raw_command"]（与 command_config 同源）。
+    """
+    if current_matcher is None:
+        return ""
+    try:
+        matcher = current_matcher.get()
+        prefix = matcher.state.get("_prefix", {})
+        return str(prefix.get("raw_command", "")).strip()
+    except Exception:
+        return ""
+
+
+def _extract_args_text(
+    text: str,
+    command_name: str,
+    actual_command: str = "",
+) -> str | None:
+    candidates = [c for c in (actual_command, command_name) if c]
+    seen: set[str] = set()
+    for c in candidates:
+        if c in seen:
+            continue
+        seen.add(c)
+        cmd = re.escape(c)
+        match = re.match(rf"^/?{cmd}(?:\s+|$)", text)
+        if match is not None:
+            return text[match.end():].strip()
+    return None
 
 
 def parse_command_args(event: Any, command_name: str) -> list[str]:
@@ -61,7 +93,8 @@ def parse_command_args(event: Any, command_name: str) -> list[str]:
     if not text:
         return []
 
-    args_text = _extract_args_text(text, command_name)
+    actual_cmd = _get_actual_command()
+    args_text = _extract_args_text(text, command_name, actual_cmd)
     if args_text is None:
         return []
 
@@ -82,7 +115,8 @@ def parse_command_text(event: Any, command_name: str) -> str | None:
     if not text:
         return None
 
-    args_text = _extract_args_text(text, command_name)
+    actual_cmd = _get_actual_command()
+    args_text = _extract_args_text(text, command_name, actual_cmd)
     if args_text is None:
         return None
     return args_text
