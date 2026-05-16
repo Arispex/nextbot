@@ -1,0 +1,1 @@
+{"file": ".trellis/tasks/05-16-revert-webui-token-mask/prd.md", "reason": "Scope = revert H-1 mask in web_server.py only; webui_settings.py / webui_servers.py _mask_token NOT affected (different token domains)."}
