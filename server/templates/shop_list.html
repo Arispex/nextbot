@@ -136,9 +136,13 @@
       line-height: 1.55;
     }
 
-    .hint-line {
-      color: var(--color-muted);
-      font-size: var(--type-body-sm-size);
+    .entry-cmd {
+      margin-left: auto;
+      font-family: var(--font-code);
+      font-size: 12px;
+      color: var(--color-muted-soft);
+      font-feature-settings: "tnum";
+      white-space: nowrap;
     }
 
     .footer {
@@ -167,8 +171,6 @@
     <div id="empty-state" class="empty-state type-body-md" hidden>暂无可用商店</div>
 
     <section id="list" class="list"></section>
-
-    <div id="hint-line" class="hint-line" hidden></div>
 
     <footer class="footer type-caption">Powered by NextBot</footer>
   </main>
@@ -219,6 +221,11 @@
       countBadge.textContent = `${Number(entry?.item_count || 0)} 件商品`;
       top.appendChild(countBadge);
 
+      const cmdHint = document.createElement("span");
+      cmdHint.className = "entry-cmd";
+      cmdHint.textContent = `查看商店 ${entry?.shop_id ?? ""}`.trim();
+      top.appendChild(cmdHint);
+
       card.appendChild(top);
 
       const descText = String(entry?.description || "").trim();
@@ -231,10 +238,6 @@
 
       listEl.appendChild(card);
     }
-
-    const hintLine = document.getElementById("hint-line");
-    hintLine.textContent = "查看商店：「查看商店 <商店 ID/商店名称> [页数]」 · 购买商品：「购买商品 <商店 ID> <商品序号> [数量]」";
-    hintLine.hidden = false;
   </script>
 </body>
 </html>
