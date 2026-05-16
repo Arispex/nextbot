@@ -567,3 +567,36 @@ admin_list.html 删除 .badge CSS 规则 + JS 创建 badge 元素块。每个 ad
 ### Next Steps
 
 - None - task complete
+
+
+## Session 172: inventory/progress 模板 eyebrow 玩家查询→查询系统
+
+**Date**: 2026-05-16
+**Task**: inventory/progress 模板 eyebrow 玩家查询→查询系统
+**Branch**: `main`
+
+### Summary
+
+inventory.html / progress.html 顶部 header-eyebrow 由「玩家查询」改「查询系统」，与 commit 5b0e63d category 改名同步。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `bdb115b` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
