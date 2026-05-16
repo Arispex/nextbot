@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-4.md`
-- **Total Sessions**: 161
+- **Total Sessions**: 162
 - **Last Active**: 2026-05-16
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-4.md` | ~239 | Active |
+| `journal-4.md` | ~272 | Active |
 | `journal-3.md` | ~1984 | Archived |
 | `journal-2.md` | ~1973 | Archived |
 | `journal-1.md` | ~1999 | Archived |
@@ -32,6 +32,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 162 | 2026-05-16 | 抢劫改图片渲染 + 警察→地牢守卫 | `472c2a9` | `main` |
 | 161 | 2026-05-16 | 命令格式错误回复加 @ 调用者（集中入口） | `35485d4` | `main` |
 | 160 | 2026-05-16 | 猜数字改为图片渲染（dice 同模式） | `8aac18d` | `main` |
 | 159 | 2026-05-16 | 全量补齐 plugin 命令失败回复的 @ 调用者（134 处 / 12 文件） | `c2df99b`, `7c7fae5` | `main` |

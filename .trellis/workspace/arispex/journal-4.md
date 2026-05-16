@@ -237,3 +237,36 @@ command_config.py CommandUsageError except 分支补 at + ' ' 前缀，所有命
 ### Next Steps
 
 - None - task complete
+
+
+## Session 162: 抢劫改图片渲染 + 警察→地牢守卫
+
+**Date**: 2026-05-16
+**Task**: 抢劫改图片渲染 + 警察→地牢守卫
+**Branch**: `main`
+
+### Summary
+
+抢劫命令 5 种 result_type 成功路径改图片渲染（与 dice / guess_number 同模式），失败路径保留 reply_failure 文字。新增 rob_page.py + rob.html（text-hero：4-tile stats + 中央 robber/arrow/victim 三段 + 5 状态 result label + cap-warning 按 cap_subject 切 robber/victim 文案）。web_server.py 加 create_rob_page，render.py 加路由，rob.py 接 render_and_send_screenshot(at_user_id=robber_id) + _rob_semaphore(4) + 名字/金币提前 cache 避免 detached ORM。同时全项目「警察」→「地牢守卫」（rob.py 4 处 label/desc + tutorial_data.py 5 处教程文案），param key police_rate/police_penalty_percent 不变（保 DB 兼容）。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `472c2a9` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
