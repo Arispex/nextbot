@@ -864,3 +864,36 @@ security.py 把'全失败'三个子分支（_all_no_pending / 单台 / 多台 re
 ### Next Steps
 
 - None - task complete
+
+
+## Session 181: feat: 签到改图片渲染（DESIGN.md + frontend-design skill）
+
+**Date**: 2026-05-16
+**Task**: feat: 签到改图片渲染（DESIGN.md + frontend-design skill）
+**Branch**: `main`
+
+### Summary
+
+新增 server/templates/signin.html + server/pages/signin_page.py；修改 economy.py / web_server.py / routes/render.py。设计：warm-canvas editorial（系列一致 with dice/rob/guess_number），核心数字 +N 金币 mono 88px teal；2 chip 拆解（基础签到奖励/连续签到奖励，is-bonus teal + is-off muted-soft）；hybrid streak chain（30 dot 真实活跃度 + 末尾连续段 amber underline）；warehouse 风格 avatar header（QQ头像 + 玩家名+QQ+时间，去重 today_order）；3 stat-tiles（累计签到/当前金币/今日排名）；连续中断 + cap warning 兜底。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `e14f19e` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
