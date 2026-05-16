@@ -387,6 +387,7 @@ def _serialize_user_for_render(user: User) -> dict[str, Any]:
 async def handle_user_info(
     bot: Bot, event: Event, arg: Message = CommandArg()
 ):
+    at = safe_at_segment_or_empty(event.get_user_id())
     args = parse_command_args_with_fallback(event, arg, "用户信息")
     if len(args) != 1:
         raise_command_usage()
@@ -399,13 +400,13 @@ async def handle_user_info(
     if parse_error == "missing":
         raise_command_usage()
     if parse_error == "name_not_found":
-        await bot.send(event, reply_failure("查询", "用户名称不存在"))
+        await bot.send(event, at + " " + reply_failure("查询", "用户名称不存在"))
         return
     if parse_error == "name_ambiguous":
-        await bot.send(event, reply_failure("查询", "用户名称不唯一，请使用用户 QQ 或 @用户"))
+        await bot.send(event, at + " " + reply_failure("查询", "用户名称不唯一，请使用用户 QQ 或 @用户"))
         return
     if target_user_id is None:
-        await bot.send(event, reply_failure("查询", "用户参数解析失败"))
+        await bot.send(event, at + " " + reply_failure("查询", "用户参数解析失败"))
         return
 
     days = 365
@@ -413,7 +414,7 @@ async def handle_user_info(
     try:
         user = session.query(User).filter(User.user_id == target_user_id).first()
         if user is None:
-            await bot.send(event, reply_failure("查询", "用户不存在"))
+            await bot.send(event, at + " " + reply_failure("查询", "用户不存在"))
             return
         user_data = _serialize_user_for_render(user)
         sign_dates = _get_sign_dates(session, str(user.user_id), days)
@@ -438,6 +439,7 @@ async def handle_user_info(
 async def handle_self_info(
     bot: Bot, event: Event, arg: Message = CommandArg()
 ):
+    at = safe_at_segment_or_empty(event.get_user_id())
     args = parse_command_args_with_fallback(event, arg, "我的信息")
     if args:
         raise_command_usage()
@@ -448,7 +450,7 @@ async def handle_self_info(
     try:
         user = session.query(User).filter(User.user_id == user_id).first()
         if user is None:
-            await bot.send(event, reply_failure("查询", "未注册账号"))
+            await bot.send(event, at + " " + reply_failure("查询", "未注册账号"))
             return
         user_data = _serialize_user_for_render(user)
         sign_dates = _get_sign_dates(session, str(user.user_id), days)
