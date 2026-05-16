@@ -171,3 +171,36 @@ handle_user_info / handle_self_info 顶部统一取 at；5 处失败 bot.send（
 ### Next Steps
 
 - None - task complete
+
+
+## Session 160: 猜数字改为图片渲染（dice 同模式）
+
+**Date**: 2026-05-16
+**Task**: 猜数字改为图片渲染（dice 同模式）
+**Branch**: `main`
+
+### Summary
+
+猜数字命令成功路径多行文字改为渲染图片，dice/lottery_result/red_packet 视觉对齐。新增 guess_number_page.py（_template_cache + threading.Lock + _VALID_RESULT_KINDS + build_payload + render）+ guess_number.html（text-hero 风格 + 中央 guess-display 三段：你猜 / 差 N / 答案 + 5 状态 result band）。修改 web_server.py 加 create_guess_number_page + render.py 加路由 + guess_number.py 接 render_and_send_screenshot(at_user_id) + _guess_semaphore(4) + user.name 提前 cache + 删除 EMOJI/reply_block import。业务（概率/派奖/cap/冷却/stats）不变。失败/校验/冷却保留 reply_failure 文字。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8aac18d` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
