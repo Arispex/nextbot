@@ -1685,3 +1685,36 @@ commit 8d9546c 移除了 lottery 命令黑名单的前后端逻辑，但 lottery
 ### Next Steps
 
 - None - task complete
+
+
+## Session 146: 下线 group_manager 插件（WebUI groups 已完整覆盖）
+
+**Date**: 2026-05-16
+**Task**: 下线 group_manager 插件（WebUI groups 已完整覆盖）
+**Branch**: `main`
+
+### Summary
+
+nextbot/plugins/group_manager.py 的 7 条 QQ 命令（身份组列表 / 添加 / 删除 / 继承 / 取消继承 / 添加权限 / 删除权限）已被 /webui/groups 完整覆盖，下线该插件避免双轨维护。删除文件 + 清理 4 处指向该文件的 doc 注释残留（permissions.py / permission_manager.py / groups.js / webui_groups.py），仅注释不动行为。ORM 模型 / WebUI 业务 / permission_manager 业务流均不动。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `bcf49ec` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
