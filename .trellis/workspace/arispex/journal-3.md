@@ -1916,3 +1916,36 @@ dice.html 之前用单中央大 card 包所有内容，与其它 render（lotter
 ### Next Steps
 
 - None - task complete
+
+
+## Session 153: dice 求和行 total 字体改 mono 对齐骰子数字
+
+**Date**: 2026-05-16
+**Task**: dice 求和行 total 字体改 mono 对齐骰子数字
+**Branch**: `main`
+
+### Summary
+
+.dice-sum-total 由 var(--font-display) serif 改为 var(--font-code) mono，去 -0.3px negative tracking，避免等号两侧字体不一致的视觉断层。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `c7552bd` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
