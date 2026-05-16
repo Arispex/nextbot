@@ -501,3 +501,36 @@ server_manager.py 服务器列表 category 服务器管理 → 查询系统；pl
 ### Next Steps
 
 - None - task complete
+
+
+## Session 170: 服务器列表移到查询系统 + 玩家查询改名查询系统
+
+**Date**: 2026-05-16
+**Task**: 服务器列表移到查询系统 + 玩家查询改名查询系统
+**Branch**: `main`
+
+### Summary
+
+server_manager.py 服务器列表 category 服务器管理 → 查询系统；player_query.py 7 条命令 category 玩家查询 → 查询系统。WebUI 命令配置 / 菜单中 8 条命令统一新分类。command_key/display_name 不变；archive 因 slug 冲突手动加 -r2 后缀。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `5b0e63d` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
