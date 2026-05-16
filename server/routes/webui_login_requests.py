@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-import threading
-import time
-from collections import deque
 from typing import Any
 
 import nonebot
@@ -28,12 +25,6 @@ from server.routes import (
 router = APIRouter()
 
 
-# H-1：per-target 滑动窗口节流（按 name.lower() 维度），与 webui.py 同款实现。
-_LOGIN_REQUEST_WINDOW_SEC = 300
-_LOGIN_REQUEST_MAX_PER_WINDOW = 1
-_login_request_lock = threading.Lock()
-_login_request_history: dict[str, deque[float]] = {}
-
 # M-2 / M-3：限制日志注入和资源消耗的输入长度。
 _NAME_MAX_LENGTH = 64
 
@@ -41,32 +32,6 @@ _NAME_MAX_LENGTH = 64
 # CRIT-1 / HIGH-2：thin re-export aliases；canonical helper 在 server/routes/__init__.py。
 _client_ip = _shared_client_ip
 _user_agent = _shared_user_agent
-
-
-def _check_login_request_rate_limit(key: str) -> tuple[bool, int]:
-    """H-1：检查 per-target 节流，返回 (allowed, retry_after_seconds)。"""
-    now = time.monotonic()
-    with _login_request_lock:
-        history = _login_request_history.get(key)
-        if history is None:
-            return True, 0
-        while history and now - history[0] > _LOGIN_REQUEST_WINDOW_SEC:
-            history.popleft()
-        if not history:
-            _login_request_history.pop(key, None)
-            return True, 0
-        if len(history) >= _LOGIN_REQUEST_MAX_PER_WINDOW:
-            retry_after = int(_LOGIN_REQUEST_WINDOW_SEC - (now - history[0])) + 1
-            return False, max(retry_after, 1)
-        return True, 0
-
-
-def _record_login_request(key: str) -> None:
-    """H-1：成功推送后记录一次时间戳到滑动窗口。"""
-    now = time.monotonic()
-    with _login_request_lock:
-        history = _login_request_history.setdefault(key, deque())
-        history.append(now)
 
 
 def _pick_onebot_bot() -> OBV11Bot | None:
@@ -200,22 +165,6 @@ async def webui_login_requests_create(request: Request) -> JSONResponse:
         new_device = bool(data.get("newDevice", False))
         new_location = bool(data.get("newLocation", False))
 
-        # H-1：per-target 节流，按 name.lower() 维度，命中返回 429（仅原因）。
-        rate_key = name.lower()
-        allowed, retry_after = _check_login_request_rate_limit(rate_key)
-        if not allowed:
-            logger.warning(
-                f"发送登入确认失败：name={name!r} reason=触发节流 "
-                f"retry_after={retry_after} client_ip={client_ip} "
-                f"user_agent={user_agent!r}"
-            )
-            return api_error(
-                status_code=429,
-                code="too_many_requests",
-                message="该用户最近已发送过登入确认，请稍后再试",
-                headers={"Retry-After": str(retry_after)},
-            )
-
         user_id = _resolve_user_id_by_name(name)
         if user_id is None:
             logger.warning(
@@ -338,9 +287,6 @@ async def webui_login_requests_create(request: Request) -> JSONResponse:
                     for r in results
                 ],
             )
-
-        # H-1：至少 1 群成功后才记录节流时间戳。
-        _record_login_request(rate_key)
 
         # M-11：统一 results 数组形式，调用方不再走两套解码
         return api_success(

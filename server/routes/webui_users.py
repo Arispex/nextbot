@@ -1,10 +1,8 @@
 from __future__ import annotations
 
 import re
-import time
 from dataclasses import dataclass
 from datetime import datetime
-from threading import Lock
 from typing import Any
 
 from fastapi import APIRouter, Path, Request
@@ -40,11 +38,6 @@ _MAX_USER_NAME_LENGTH = 16
 _KEYWORD_MAX_LENGTH = 128  # H-6：搜索关键字长度上限
 _PER_PAGE_MAX = 100  # 每页上限，仅对非全表请求 cap
 
-# M-4：sync-whitelist 每用户 5s 冷却（curl 直连同样限流）
-_SYNC_COOLDOWN_SECONDS = 5.0
-_sync_cooldown_lock = Lock()
-_sync_last_request: dict[int, float] = {}
-
 
 # CRIT-1 / HIGH-2：thin re-export alias；canonical helper 在 server/routes/__init__.py。
 _user_agent = _shared_user_agent
@@ -70,18 +63,6 @@ def _escape_like_keyword(keyword: str) -> str:
         .replace("%", "\\%")
         .replace("_", "\\_")
     )
-
-
-def _check_sync_cooldown(user_db_id: int) -> tuple[bool, float]:
-    """M-4：返回 (allowed, remaining_seconds)；首次调用直接放行。"""
-    now = time.monotonic()
-    with _sync_cooldown_lock:
-        last = _sync_last_request.get(user_db_id)
-        if last is not None and (now - last) < _SYNC_COOLDOWN_SECONDS:
-            remaining = _SYNC_COOLDOWN_SECONDS - (now - last)
-            return False, remaining
-        _sync_last_request[user_db_id] = now
-        return True, 0.0
 
 
 @dataclass(frozen=True)
@@ -618,19 +599,6 @@ async def webui_users_sync_whitelist(
     # M-1：补 request 参数；H-1：日志补 client_ip / user_agent
     client_ip = _client_ip(request)
     user_agent = _user_agent(request)
-
-    # M-4：5s cooldown，避免单击连发 + curl 直连泛洪
-    allowed, remaining = _check_sync_cooldown(user_id)
-    if not allowed:
-        logger.warning(
-            f"同步用户白名单被限流：user_id={user_id}，"
-            f"retry_after={remaining:.1f}s client_ip={client_ip}"
-        )
-        return api_error(
-            status_code=429,
-            code="rate_limited",
-            message="操作过于频繁，请稍后再试",
-        )
 
     session = get_session()
     try:

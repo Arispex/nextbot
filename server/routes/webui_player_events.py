@@ -1,9 +1,5 @@
 from __future__ import annotations
 
-import threading
-import time
-from collections import deque
-
 import nonebot
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
@@ -36,42 +32,10 @@ _FORBIDDEN_CONTROL_CHARS = "".join(
 )
 _MAX_NEWLINES = 5
 
-# H-2：per-IP 滑动窗口节流，60s 内最多 30 条，防止被滥用作群消息转发器。
-_PLAYER_EVENT_WINDOW_SEC = 60
-_PLAYER_EVENT_MAX_PER_WINDOW = 30
-_player_event_lock = threading.Lock()
-_player_event_history: dict[str, deque[float]] = {}
-
 
 # CRIT-1 / HIGH-2：thin re-export aliases；canonical helper 在 server/routes/__init__.py。
 _client_ip = _shared_client_ip
 _user_agent = _shared_user_agent
-
-
-def _check_player_event_rate_limit(client_ip: str) -> tuple[bool, int]:
-    """H-2：per-IP 节流，返回 (allowed, retry_after_seconds)。"""
-    now = time.monotonic()
-    with _player_event_lock:
-        history = _player_event_history.get(client_ip)
-        if history is None:
-            return True, 0
-        while history and now - history[0] > _PLAYER_EVENT_WINDOW_SEC:
-            history.popleft()
-        if not history:
-            _player_event_history.pop(client_ip, None)
-            return True, 0
-        if len(history) >= _PLAYER_EVENT_MAX_PER_WINDOW:
-            retry_after = int(_PLAYER_EVENT_WINDOW_SEC - (now - history[0])) + 1
-            return False, max(retry_after, 1)
-        return True, 0
-
-
-def _record_player_event(client_ip: str) -> None:
-    """H-2：每次成功通过校验后追加时间戳到滑动窗口。"""
-    now = time.monotonic()
-    with _player_event_lock:
-        history = _player_event_history.setdefault(client_ip, deque())
-        history.append(now)
 
 
 def _pick_onebot_bot() -> OBV11Bot | None:
@@ -190,20 +154,6 @@ async def webui_player_events_create(request: Request) -> JSONResponse:
 
     # M-1：顶层 try/except 防止异常路径泄漏 stack trace。
     try:
-        # H-2：先做节流，避免对未授权 IP 浪费校验 / DB / 上游 OneBot 调用。
-        allowed, retry_after = _check_player_event_rate_limit(client_ip)
-        if not allowed:
-            logger.warning(
-                f"推送玩家事件失败：reason=触发节流 retry_after={retry_after} "
-                f"client_ip={client_ip} user_agent={user_agent!r}"
-            )
-            return api_error(
-                status_code=429,
-                code="too_many_requests",
-                message="请求过于频繁，请稍后再试",
-                headers={"Retry-After": str(retry_after)},
-            )
-
         player_name = str(data.get("player_name") or "").strip()
         if not player_name:
             return api_error(
@@ -320,9 +270,6 @@ async def webui_player_events_create(request: Request) -> JSONResponse:
                 code="service_misconfigured",
                 message="未配置有效的通知群",
             )
-
-        # H-2：通过所有校验后才记节流，避免预防性输入校验拒绝消耗配额。
-        _record_player_event(client_ip)
 
         bound_user_id = _resolve_user_id_by_name(player_name)
         display_name = (
