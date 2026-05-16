@@ -369,3 +369,36 @@ shop_list.html 删底部 hint-line（HTML/CSS/JS 整段）；每个 entry-top �
 ### Next Steps
 
 - None - task complete
+
+
+## Session 166: lottery_list 移除底部 hint + 每奖池右侧加查看奖池命令
+
+**Date**: 2026-05-16
+**Task**: lottery_list 移除底部 hint + 每奖池右侧加查看奖池命令
+**Branch**: `main`
+
+### Summary
+
+与 shop_list 同模式。lottery_list.html 删底部 hint-line（HTML/CSS/JS）；每个 entry-top 末尾加 .entry-cmd 显示『查看奖池 <pool_id>』。仅模板内改动。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `a2da8d6` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
