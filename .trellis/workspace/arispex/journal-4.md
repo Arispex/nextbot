@@ -633,3 +633,36 @@ _extract_args_text 之前只按 canonical command_name 匹配前缀，用户用 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 174: 移除 3 个端点的限速 / 节流
+
+**Date**: 2026-05-16
+**Task**: 移除 3 个端点的限速 / 节流
+**Branch**: `main`
+
+### Summary
+
+按用户偏好移除 POST /webui/api/login-requests（per-name 5min/1）、POST /webui/api/player-events（per-IP 60s/30）、POST /webui/api/users/{id}/sync-whitelist（per-user 5s）3 处节流与冷却；纯删除 139 行含支撑代码与未使用 import。POST /webui/api/session 登录失败速率限制保留。前置轮次另写 2 篇插件接入 / 迁移文档（docs/webui_api_for_plugins.md / migration_guide.md），未在本任务范围内提交。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `bfda70d` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

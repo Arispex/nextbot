@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-4.md`
-- **Total Sessions**: 173
+- **Total Sessions**: 174
 - **Last Active**: 2026-05-16
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-4.md` | ~635 | Active |
+| `journal-4.md` | ~668 | Active |
 | `journal-3.md` | ~1984 | Archived |
 | `journal-2.md` | ~1973 | Archived |
 | `journal-1.md` | ~1999 | Archived |
@@ -32,6 +32,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 174 | 2026-05-16 | 移除 3 个端点的限速 / 节流 | `bfda70d` | `main` |
 | 173 | 2026-05-16 | 修复命令别名 + @用户 解析失败 | `4cddfe2` | `main` |
 | 172 | 2026-05-16 | inventory/progress 模板 eyebrow 玩家查询→查询系统 | `bdb115b` | `main` |
 | 171 | 2026-05-16 | 管理员列表删除 Owner badge | `1f7045e` | `main` |
