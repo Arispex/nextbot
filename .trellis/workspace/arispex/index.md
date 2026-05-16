@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-4.md`
-- **Total Sessions**: 155
+- **Total Sessions**: 156
 - **Last Active**: 2026-05-16
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-4.md` | ~40 | Active |
+| `journal-4.md` | ~73 | Active |
 | `journal-3.md` | ~1984 | Archived |
 | `journal-2.md` | ~1973 | Archived |
 | `journal-1.md` | ~1999 | Archived |
@@ -32,6 +32,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 156 | 2026-05-16 | dice 改动审计 R1+R2 闭环（20 findings / 8 fixes / 0 new H） | `3e8792c` | `main` |
 | 155 | 2026-05-16 | dice 加 win_rate 概率控制（默认 50%，仅大/小，豹子保留自然） | `7257317` | `main` |
 | 154 | 2026-05-16 | dice 标题去「结果」+ render_and_send_screenshot 加 at_user_id | `f340aaa` | `main` |
 | 153 | 2026-05-16 | dice 求和行 total 字体改 mono 对齐骰子数字 | `c7552bd` | `main` |
