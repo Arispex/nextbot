@@ -12,7 +12,7 @@ from nextbot.db import Server, User, get_session
 from nextbot.message_parser import parse_command_args_with_fallback
 from nextbot.permissions import require_permission
 from nextbot.server_broadcast import BroadcastOutcome, aggregate, broadcast
-from nextbot.text_utils import reply_block, reply_failure, reply_success, safe_at_segment_or_empty
+from nextbot.text_utils import reply_failure, reply_success, safe_at_segment_or_empty
 from nextbot.tshock_api import (
     TShockRequestError,
     get_error_reason,
@@ -22,8 +22,6 @@ from nextbot.tshock_api import (
 
 confirm_login_matcher = on_command("允许登入")
 reject_login_matcher = on_command("拒绝登入")
-
-_NO_PENDING_MARK = "No pending login request"
 
 
 def _load_self_and_servers(user_id: str) -> tuple[User | None, list[Server]]:
@@ -68,23 +66,6 @@ async def _broadcast_login_action(
         )
 
     return await broadcast(servers, _one)
-
-
-def _format_failure_lines(outcomes: list[BroadcastOutcome[str]]) -> list[str]:
-    """SA-1.2：把每台服务器的失败原因逐行列出，让用户能区分超时 / 宕机 / 未审核。"""
-    return [
-        f"{o.server.id}.{o.server.name}：❌ {o.detail}"
-        for o in outcomes
-        if not o.ok
-    ]
-
-
-def _all_no_pending(outcomes: list[BroadcastOutcome[str]]) -> bool:
-    """所有失败原因都是 "No pending login request" 时，等价于 "没有待处理的登入请求"。"""
-    failures = [o for o in outcomes if not o.ok]
-    if not failures:
-        return False
-    return all(_NO_PENDING_MARK in o.detail for o in failures)
 
 
 def _log_results(
@@ -132,7 +113,7 @@ async def _handle_login_action(
         return
 
     outcomes = await _broadcast_login_action(servers, user.name, path_template)
-    success_count, total = aggregate(outcomes)
+    success_count, _ = aggregate(outcomes)
     _log_results(command_name, user_id, user_id, user.name, success_count, outcomes)
 
     # SA-1.7 + UX：至少一台服务器成功即视为成功；其他台多半是 No pending login，
@@ -141,24 +122,12 @@ async def _handle_login_action(
         await bot.send(event, at + " " + reply_success(action, success_detail))
         return
 
-    # 全失败
-    if _all_no_pending(outcomes):
-        await bot.send(
-            event,
-            at + " " + reply_failure(action, "没有待处理的登入请求"),
-        )
-        return
-
-    failure_lines = _format_failure_lines(outcomes)
-    if len(failure_lines) == 1:
-        # 单台服务器场景，沿用原 reply_failure 单行格式
-        only_reason = next(o.detail for o in outcomes if not o.ok)
-        await bot.send(event, at + " " + reply_failure(action, only_reason))
-        return
-
-    head = reply_failure(action, f"全部 {total} 台服务器失败")
-    body = reply_block(head, failure_lines)
-    await bot.send(event, at + "\n" + body)
+    # 全失败：统一返回"没有待处理的登入请求"，不暴露 per-server 技术原因。
+    # 真实失败原因仍记录在审计日志（_log_results）供运维追查。
+    await bot.send(
+        event,
+        at + " " + reply_failure(action, "没有待处理的登入请求"),
+    )
 
 
 @confirm_login_matcher.handle()
