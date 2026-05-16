@@ -135,17 +135,10 @@ async def _handle_login_action(
     success_count, total = aggregate(outcomes)
     _log_results(command_name, user_id, user_id, user.name, success_count, outcomes)
 
-    # SA-1.7：完全成功 / 部分成功 / 全失败 三态区分
-    if success_count == total:
-        await bot.send(event, at + " " + reply_success(action, success_detail))
-        return
-
+    # SA-1.7 + UX：至少一台服务器成功即视为成功；其他台多半是 No pending login，
+    # 是预期状态，不展示明细。审计日志仍记录 per-server 结果，运维可追溯。
     if success_count > 0:
-        # 部分成功：⚠️ 头 + 失败明细，让用户知道哪几台 OK 哪几台未 OK
-        head = f"⚠️ {action}部分成功（{success_count}/{total}）"
-        failure_lines = _format_failure_lines(outcomes)
-        body = reply_block(head, failure_lines)
-        await bot.send(event, at + "\n" + body)
+        await bot.send(event, at + " " + reply_success(action, success_detail))
         return
 
     # 全失败
