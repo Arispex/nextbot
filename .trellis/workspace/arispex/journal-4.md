@@ -732,3 +732,36 @@ _extract_args_text 之前只按 canonical command_name 匹配前缀，用户用 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 177: fix: 仪表盘命令计数过滤已下线命令
+
+**Date**: 2026-05-16
+**Task**: fix: 仪表盘命令计数过滤已下线命令
+**Branch**: `main`
+
+### Summary
+
+stats.py 给 command_total / command_enabled_count 两处 query 加 .filter(CommandConfig.is_registered.is_(True))，与命令页面 list_command_configs 的 is_registered 过滤对齐。软删除策略保留，残留行不动。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7361a74` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
