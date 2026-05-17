@@ -243,10 +243,6 @@
           <span class="owner-name" id="gn-owner-name"></span>
           <span class="owner-id" id="gn-owner-id"></span>
           <span class="meta-divider">·</span>
-          <span>范围 <span class="meta-value" id="meta-range"></span></span>
-          <span class="meta-divider">·</span>
-          <span>投入 <span class="meta-value" id="meta-cost"></span></span>
-          <span class="meta-divider">·</span>
           <span id="generated-at"></span>
         </div>
       </div>
@@ -326,8 +322,6 @@
         `https://q1.qlogo.cn/g?b=qq&nk=${encodeURIComponent(playerQq)}&s=100`;
       document.getElementById("gn-owner-name").textContent = playerName || "未知玩家";
       document.getElementById("gn-owner-id").textContent = playerQq ? `(${playerQq})` : "";
-      document.getElementById("meta-range").textContent = `1-${rangeMax}`;
-      document.getElementById("meta-cost").textContent = String(cost);
       document.getElementById("generated-at").textContent = generatedAt;
 
       // ── Stats tiles ────────────────────────────────────────
