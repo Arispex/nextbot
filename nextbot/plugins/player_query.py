@@ -384,13 +384,6 @@ async def handle_self_kick(
             "required": False,
             "default": True,
         },
-        "send_link": {
-            "type": "bool",
-            "label": "发送链接",
-            "description": "开启后在截图前额外发送背包页面链接",
-            "required": False,
-            "default": False,
-        },
     },
     category="查询系统",
 )
@@ -510,13 +503,10 @@ async def handle_user_inventory(
             show_index=bool(get_current_param("show_index", True)),
             slots=[item for item in inventory if isinstance(item, dict)],
         )
-        public_page_url = _to_public_render_url(page_url)
         # PQA-3.7：日志不再记录完整 render URL（含 token），只保留诊断必要字段
         logger.info(
             f"用户背包渲染：server_id={server.id} target_user_id={target_user.user_id}"
         )
-        if bool(get_current_param("send_link", False)):
-            await bot.send(event, f"ℹ️ 用户背包链接：{public_page_url}")
         # per-server semaphore 已由外层 `async with sem` 持有；helper 不再
         # 重复加锁，否则同一 task 二次 acquire 同一信号量在 max=2 + 并发 2 时
         # 可能构成死锁。
@@ -551,13 +541,6 @@ async def handle_user_inventory(
             "description": "关闭后隐藏物品格左上角的索引编号",
             "required": False,
             "default": True,
-        },
-        "send_link": {
-            "type": "bool",
-            "label": "发送链接",
-            "description": "开启后在截图前额外发送背包页面链接",
-            "required": False,
-            "default": False,
         },
     },
     category="查询系统",
@@ -659,13 +642,10 @@ async def handle_my_inventory(
             show_index=bool(get_current_param("show_index", True)),
             slots=[item for item in inventory if isinstance(item, dict)],
         )
-        public_page_url = _to_public_render_url(page_url)
         # PQA-3.7：日志不再记录完整 render URL（含 token）
         logger.info(
             f"我的背包渲染：server_id={server.id} user_id={user.user_id}"
         )
-        if bool(get_current_param("send_link", False)):
-            await bot.send(event, f"ℹ️ 我的背包链接：{public_page_url}")
 
         # per-server semaphore 已由外层 `async with sem` 持有；helper 不再
         # 重复加锁，避免同 task 重复 acquire 在并发场景下死锁。
