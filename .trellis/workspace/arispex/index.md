@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-4.md`
-- **Total Sessions**: 189
+- **Total Sessions**: 190
 - **Last Active**: 2026-05-17
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-4.md` | ~1163 | Active |
+| `journal-4.md` | ~1196 | Active |
 | `journal-3.md` | ~1984 | Archived |
 | `journal-2.md` | ~1973 | Archived |
 | `journal-1.md` | ~1999 | Archived |
@@ -32,6 +32,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 190 | 2026-05-17 | refactor: 删除 我的背包/用户背包 的 send_link 参数 | `66fc472` | `main` |
 | 189 | 2026-05-17 | fix: lottery_result header 奖池 ID 去 # prefix | `8805ed0` | `main` |
 | 188 | 2026-05-17 | feat: red_packet_own header 加 owner bar (avatar + name + QQ) | `a2f224a` | `main` |
 | 187 | 2026-05-17 | fix: red_packet_all 标题改红包列表 + 每条加抢红包引导 | `fc6ffaa` | `main` |

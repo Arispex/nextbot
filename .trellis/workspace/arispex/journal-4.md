@@ -1161,3 +1161,36 @@ lottery_result.html L395 把 meta-pool-id 文案从带 # prefix 的模板字符�
 ### Next Steps
 
 - None - task complete
+
+
+## Session 190: refactor: 删除 我的背包/用户背包 的 send_link 参数
+
+**Date**: 2026-05-17
+**Task**: refactor: 删除 我的背包/用户背包 的 send_link 参数
+**Branch**: `main`
+
+### Summary
+
+player_query.py 删除两个 handler (handle_user_inventory + handle_my_inventory) 的 send_link param 定义 + public_page_url 行 + 发链接 if 块。共 -20 行纯删除。_to_public_render_url helper 现在 dead (0 调用) 但留着备用。CommandConfig DB sync 会自动 drop 用户残留的 send_link=true 值。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `66fc472` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
