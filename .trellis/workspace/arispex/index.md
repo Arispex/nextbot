@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-4.md`
-- **Total Sessions**: 183
+- **Total Sessions**: 184
 - **Last Active**: 2026-05-17
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-4.md` | ~965 | Active |
+| `journal-4.md` | ~998 | Active |
 | `journal-3.md` | ~1984 | Archived |
 | `journal-2.md` | ~1973 | Archived |
 | `journal-1.md` | ~1999 | Archived |
@@ -32,6 +32,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 184 | 2026-05-17 | fix: dice header 去重「投入」+「你的选择」并入 5-stat-tile 网格 | `bf4a97d` | `main` |
 | 183 | 2026-05-17 | refactor: 4 个图片模板 header 统一玩家 avatar bar | `c52d97d` | `main` |
 | 182 | 2026-05-16 | refactor: 删除所有图片模板的 header-eyebrow | `2874512` | `main` |
 | 181 | 2026-05-16 | feat: 签到改图片渲染（DESIGN.md + frontend-design skill） | `e14f19e` | `main` |

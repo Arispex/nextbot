@@ -963,3 +963,36 @@ dice / guess_number / rob / lottery_result 4 个模板 header 从旧 '玩家 X �
 ### Next Steps
 
 - None - task complete
+
+
+## Session 184: fix: dice header 去重「投入」+「你的选择」并入 5-stat-tile 网格
+
+**Date**: 2026-05-17
+**Task**: fix: dice header 去重「投入」+「你的选择」并入 5-stat-tile 网格
+**Branch**: `main`
+
+### Summary
+
+dice.html header owner-meta 删 选择 / 投入 段（投入 与 stat-tile 重复，选择 移到 stats 区）。迭代：先做 chip + 4-tile 双栏 flex，但用户反馈 chip 与 tile 样式不一致，最终改为 5 等宽 stat-tile 网格（你的选择 / 投入 / 实际获得 / 净赚 / 当前金币）。所有 .choice-* CSS 删除，复用 .stat-tile / .stat-label / .stat-value。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `bf4a97d` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
