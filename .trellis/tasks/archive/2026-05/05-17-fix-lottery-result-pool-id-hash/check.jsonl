@@ -1,0 +1,1 @@
+{"file": ".trellis/tasks/05-17-fix-lottery-result-pool-id-hash/prd.md", "reason": "Acceptance: no # prefix on meta-pool-id, only data.pool_id raw."}

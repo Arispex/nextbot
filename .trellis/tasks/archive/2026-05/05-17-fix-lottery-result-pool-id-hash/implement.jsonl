@@ -1,0 +1,1 @@
+{"file": ".trellis/tasks/05-17-fix-lottery-result-pool-id-hash/prd.md", "reason": "1-line fix: drop # prefix from meta-pool-id; pool_id is already DB real id."}
