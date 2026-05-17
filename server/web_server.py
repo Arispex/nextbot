@@ -208,9 +208,15 @@ def create_red_packet_own_page(
     page: int,
     total_pages: int,
     entries: list[dict[str, Any]],
+    owner_user_id: str,
+    owner_user_name: str,
 ) -> str:
     payload = red_packet_own_page.build_payload(
-        page=page, total_pages=total_pages, entries=entries,
+        page=page,
+        total_pages=total_pages,
+        entries=entries,
+        owner_user_id=owner_user_id,
+        owner_user_name=owner_user_name,
     )
     return _make_page_url("red_packet_own", payload)
 

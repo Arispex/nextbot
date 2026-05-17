@@ -626,6 +626,8 @@ async def handle_list_own(bot: Bot, event: Event, arg: Message = CommandArg()) -
                 .limit(limit)
                 .all()
             )
+            user_row = session.query(User).filter(User.user_id == user_id).first()
+            user_name = str(user_row.name) if user_row else ""
         finally:
             session.close()
 
@@ -651,7 +653,11 @@ async def handle_list_own(bot: Bot, event: Event, arg: Message = CommandArg()) -
             )
 
         page_url = create_red_packet_own_page(
-            page=page, total_pages=total_pages, entries=entries,
+            page=page,
+            total_pages=total_pages,
+            entries=entries,
+            owner_user_id=user_id,
+            owner_user_name=user_name,
         )
         logger.info(
             f"我的红包渲染地址：user_id={user_id} page={page}/{total_pages} total={total} internal_url={page_url}"

@@ -27,6 +27,8 @@ def build_payload(
     page: int,
     total_pages: int,
     entries: list[dict[str, Any]],
+    owner_user_id: str,
+    owner_user_name: str,
 ) -> dict[str, Any]:
     normalized: list[dict[str, Any]] = []
     for i, item in enumerate(entries):
@@ -56,6 +58,8 @@ def build_payload(
         "page": max(1, int(page)),
         "total_pages": max(1, int(total_pages)),
         "entries": normalized,
+        "owner_user_id": str(owner_user_id or "").strip(),
+        "owner_user_name": str(owner_user_name or "").strip(),
     }
 
 
@@ -66,6 +70,8 @@ def render(payload: dict[str, Any]) -> bytes:
         "page": int(payload.get("page", 1)),
         "total_pages": int(payload.get("total_pages", 1)),
         "entries": payload.get("entries", []),
+        "owner_user_id": str(payload.get("owner_user_id", "")),
+        "owner_user_name": str(payload.get("owner_user_name", "")),
     }
     data_json = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
     content = template.replace("__RED_PACKET_OWN_DATA_JSON__", data_json)

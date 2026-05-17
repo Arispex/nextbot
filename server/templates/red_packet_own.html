@@ -45,14 +45,42 @@
       margin: 0 0 var(--space-md) 0;
     }
 
-    .header-meta {
+    .owner-bar {
+      display: flex;
+      align-items: center;
+      gap: var(--space-md);
       color: var(--color-muted-soft);
+    }
+
+    .owner-bar .avatar {
+      width: 48px;
+      height: 48px;
+      border-radius: var(--radius-pill);
+      background-color: var(--color-surface-card);
+      border: 1px solid var(--color-hairline);
+      object-fit: cover;
+      flex-shrink: 0;
+    }
+
+    .owner-meta {
       display: flex;
       gap: var(--space-md);
       align-items: baseline;
+      flex-wrap: wrap;
+      min-width: 0;
     }
 
-    .header-meta-divider {
+    .owner-name {
+      color: var(--color-ink);
+      font-weight: 500;
+    }
+
+    .owner-id {
+      color: var(--color-muted);
+      font-family: var(--font-code);
+    }
+
+    .meta-divider {
       color: var(--color-hairline);
     }
 
@@ -185,12 +213,18 @@
     <header>
       <div class="header-rule"></div>
       <h1 id="header-title" class="header-title type-display-lg"></h1>
-      <div class="header-meta type-body-sm">
-        <span id="header-count"></span>
-        <span class="header-meta-divider">·</span>
-        <span id="header-page"></span>
-        <span class="header-meta-divider">·</span>
-        <span id="header-generated-at"></span>
+      <div class="owner-bar">
+        <img id="rpo-avatar" class="avatar" alt="avatar" />
+        <div class="owner-meta type-body-sm">
+          <span class="owner-name" id="rpo-owner-name"></span>
+          <span class="owner-id" id="rpo-owner-id"></span>
+          <span class="meta-divider">·</span>
+          <span id="header-count"></span>
+          <span class="meta-divider">·</span>
+          <span id="header-page"></span>
+          <span class="meta-divider">·</span>
+          <span id="header-generated-at"></span>
+        </div>
       </div>
     </header>
 
@@ -212,6 +246,14 @@
     const totalPages = Number(data.total_pages || 1);
 
     document.getElementById("header-title").textContent = "我的红包";
+
+    const ownerUserId = String(data.owner_user_id || "").trim();
+    const ownerUserName = String(data.owner_user_name || "").trim();
+    document.getElementById("rpo-avatar").src =
+      `https://q1.qlogo.cn/g?b=qq&nk=${encodeURIComponent(ownerUserId)}&s=100`;
+    document.getElementById("rpo-owner-name").textContent = ownerUserName || "未知玩家";
+    document.getElementById("rpo-owner-id").textContent = ownerUserId ? `(${ownerUserId})` : "";
+
     document.getElementById("header-count").textContent = `${entries.length} 个红包`;
     document.getElementById("header-page").textContent = `第 ${page} / ${totalPages} 页`;
     document.getElementById("header-generated-at").textContent = data.generated_at || "";
