@@ -90,11 +90,11 @@
       font-feature-settings: "tnum";
     }
 
-    /* ── Stats tiles (4 across, cream-card). ─ */
+    /* ── Stats tiles (5 across: choice + 4 numeric stats, cream-card). ─ */
     .stats-tiles {
       display: grid;
       gap: var(--space-sm);
-      grid-template-columns: repeat(4, minmax(0, 1fr));
+      grid-template-columns: repeat(5, minmax(0, 1fr));
     }
 
     .stat-tile {
@@ -255,16 +255,16 @@
           <span class="owner-name" id="dice-owner-name"></span>
           <span class="owner-id" id="dice-owner-id"></span>
           <span class="meta-divider">·</span>
-          <span>选择 <span class="meta-value" id="meta-choice"></span></span>
-          <span class="meta-divider">·</span>
-          <span>投入 <span class="meta-value" id="meta-cost"></span></span>
-          <span class="meta-divider">·</span>
           <span id="generated-at"></span>
         </div>
       </div>
     </header>
 
     <section class="stats-tiles">
+      <div class="stat-tile">
+        <span class="stat-label">你的选择</span>
+        <span class="stat-value" id="meta-choice"></span>
+      </div>
       <div class="stat-tile">
         <span class="stat-label">投入</span>
         <span class="stat-value loss" id="sum-cost"></span>
@@ -333,7 +333,6 @@
       document.getElementById("dice-owner-name").textContent = playerName || "未知玩家";
       document.getElementById("dice-owner-id").textContent = playerQq ? `(${playerQq})` : "";
       document.getElementById("meta-choice").textContent = choice;
-      document.getElementById("meta-cost").textContent = String(cost);
       document.getElementById("generated-at").textContent = generatedAt;
 
       // ── Stats tiles ────────────────────────────────────────
