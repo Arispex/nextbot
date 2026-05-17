@@ -1095,3 +1095,36 @@ red_packet_all.html 标题 当前红包 → 红包列表（DOM <title> + JS head
 ### Next Steps
 
 - None - task complete
+
+
+## Session 188: feat: red_packet_own header 加 owner bar (avatar + name + QQ)
+
+**Date**: 2026-05-17
+**Task**: feat: red_packet_own header 加 owner bar (avatar + name + QQ)
+**Branch**: `main`
+
+### Summary
+
+4 文件全链改造：handler 查 user.name → URL builder + page module 透传 owner_user_id / owner_user_name → template DOM 换 owner-bar + JS 设 rpo-avatar/owner-name/owner-id（mirror signin/warehouse pattern）。.avatar 用 .owner-bar .avatar scope 化避免与 entry 卡片 .avatar 冲突。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `a2f224a` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
