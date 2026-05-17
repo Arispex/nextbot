@@ -315,8 +315,6 @@
           <span class="owner-name" id="rob-owner-name"></span>
           <span class="owner-id" id="rob-owner-id"></span>
           <span class="meta-divider">·</span>
-          <span>→ 目标 <span class="meta-value" id="rob-victim-text"></span></span>
-          <span class="meta-divider">·</span>
           <span id="generated-at"></span>
         </div>
       </div>
@@ -399,8 +397,6 @@
         `https://q1.qlogo.cn/g?b=qq&nk=${encodeURIComponent(robberQq)}&s=100`;
       document.getElementById("rob-owner-name").textContent = robberName || "未知玩家";
       document.getElementById("rob-owner-id").textContent = robberQq ? `(${robberQq})` : "";
-      const victimText = victimQq ? `${victimName} (${victimQq})` : (victimName || "未知玩家");
-      document.getElementById("rob-victim-text").textContent = victimText;
       document.getElementById("generated-at").textContent = generatedAt;
 
       // ── Stats tiles ────────────────────────────────────────
