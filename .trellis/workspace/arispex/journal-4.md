@@ -1062,3 +1062,36 @@ rob.html 删 header owner-meta 中的 → 目标 W (Z) 段（正文 rob-victim-c
 ### Next Steps
 
 - None - task complete
+
+
+## Session 187: fix: red_packet_all 标题改红包列表 + 每条加抢红包引导
+
+**Date**: 2026-05-17
+**Task**: fix: red_packet_all 标题改红包列表 + 每条加抢红包引导
+**Branch**: `main`
+
+### Summary
+
+red_packet_all.html 标题 当前红包 → 红包列表（DOM <title> + JS header-title 都改）；每条 entry 末尾加 抢红包 <name> 引导文本，14px mono muted；entry 布局重排为 [avatar | name+pill / sender | stats 剩余金币+份数 | 抢红包 <name>]，stats 视觉居中，cmd 右端独立。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `fc6ffaa` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
