@@ -996,3 +996,36 @@ dice.html header owner-meta 删 选择 / 投入 段（投入 与 stat-tile 重�
 ### Next Steps
 
 - None - task complete
+
+
+## Session 185: fix: guess_number header 删 范围 / 投入 元信息
+
+**Date**: 2026-05-17
+**Task**: fix: guess_number header 删 范围 / 投入 元信息
+**Branch**: `main`
+
+### Summary
+
+guess_number.html 删 header owner-meta 中的 范围 / 投入 两段（与 stat-tile 的 投入 重复；范围 用户认为不必要）。header 变为 [avatar] Name (QQ) · 时间，与 dice / signin 一致。1 file -6/+0。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `fd91d35` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
