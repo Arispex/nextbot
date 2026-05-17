@@ -1029,3 +1029,36 @@ guess_number.html 删 header owner-meta 中的 范围 / 投入 两段（与 stat
 ### Next Steps
 
 - None - task complete
+
+
+## Session 186: fix: rob header 删「→ 目标」元信息
+
+**Date**: 2026-05-17
+**Task**: fix: rob header 删「→ 目标」元信息
+**Branch**: `main`
+
+### Summary
+
+rob.html 删 header owner-meta 中的 → 目标 W (Z) 段（正文 rob-victim-card + flow 图已完整展示双方，header 重复）。保留 victimName/victimQq 变量（正文 card 还在用）。.meta-value CSS 规则变 dead，留待下次清理。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `86362ca` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
