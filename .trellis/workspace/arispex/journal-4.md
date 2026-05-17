@@ -1128,3 +1128,36 @@ red_packet_all.html 标题 当前红包 → 红包列表（DOM <title> + JS head
 ### Next Steps
 
 - None - task complete
+
+
+## Session 189: fix: lottery_result header 奖池 ID 去 # prefix
+
+**Date**: 2026-05-17
+**Task**: fix: lottery_result header 奖池 ID 去 # prefix
+**Branch**: `main`
+
+### Summary
+
+lottery_result.html L395 把 meta-pool-id 文案从带 # prefix 的模板字符串改为 String(data.pool_id) 纯 ID 输出。显示 奖池 名称 (7) 而不是 (#7)，与 v1.6.0 shop/lottery list ID 显示真实 ID 决策对齐。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8805ed0` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
