@@ -392,7 +392,7 @@
       document.getElementById("lr-owner-name").textContent = playerName || "未知玩家";
       document.getElementById("lr-owner-id").textContent = playerQq ? `(${playerQq})` : "";
       document.getElementById("meta-pool-name").textContent = String(data.pool_name || "未命名");
-      document.getElementById("meta-pool-id").textContent = `#${data.pool_id ?? "-"}`;
+      document.getElementById("meta-pool-id").textContent = String(data.pool_id ?? "-");
       document.getElementById("generated-at").textContent = data.generated_at || "";
 
       // ── Stats tiles ─────────────────────────────────────────
