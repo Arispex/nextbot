@@ -1194,3 +1194,36 @@ player_query.py 删除两个 handler (handle_user_inventory + handle_my_inventor
 ### Next Steps
 
 - None - task complete
+
+
+## Session 191: fix: WebUI 删除/改名用户补 server 白名单 push
+
+**Date**: 2026-05-18
+**Task**: fix: WebUI 删除/改名用户补 server 白名单 push
+**Branch**: `main`
+
+### Summary
+
+webui_users.py 新增 _broadcast_whitelist_remove + _broadcast_whitelist_rename helpers，模仿 ban/unban 的 broadcast/aggregate 模式。webui_users_delete commit 后 push 移除（响应 204→200+server_results）。webui_users_update name 变化时 push remove old + add new。users.js 同步 expectedStatus 200，delete 路径展示 per-server 结果。trellis-check 全 20 项 PASS（1 项 line-length self-fix）。预存 P1：_unban_one 的 user_name 拼 URL 没 quote()，留下次。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `46a3692` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
