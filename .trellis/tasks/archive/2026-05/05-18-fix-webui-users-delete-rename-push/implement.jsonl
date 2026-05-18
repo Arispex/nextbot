@@ -1,0 +1,2 @@
+{"file": ".trellis/tasks/05-18-fix-webui-users-delete-rename-push/prd.md", "reason": "Full spec: delete push + rename push, helper extraction options, security/robustness checklist, response shape decision."}
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend pre-development checklist + spec index for logging / error handling / quality guidelines."}

@@ -1,0 +1,2 @@
+{"file": ".trellis/tasks/05-18-fix-webui-users-delete-rename-push/prd.md", "reason": "Acceptance criteria + Self-Check Loop section: security + correctness + robustness + consistency + spec compliance."}
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend quality / logging / error-handling baseline for the security/correctness review."}
