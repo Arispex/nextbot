@@ -1227,3 +1227,36 @@ webui_users.py 新增 _broadcast_whitelist_remove + _broadcast_whitelist_rename 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 192: fix: WebUI 创建用户补 push + 修复 _sync_user_whitelist 错误端点
+
+**Date**: 2026-05-18
+**Task**: fix: WebUI 创建用户补 push + 修复 _sync_user_whitelist 错误端点
+**Branch**: `main`
+
+### Summary
+
+webui_users_create 在 commit 后调 _sync_user_whitelist broadcast 白名单 add；response 改 {user, server_results}（201 不变）；users.js saveUser 用 unwrapData 适配并复用 delete 的 per-server 行展示。审查时发现 root cause：_sync_user_whitelist 原本用错误 endpoint /v3/server/rawcmd?cmd=/bwl add（TShock 自带 plugin），改成正确的 /nextbot/whitelist/add/<encoded>（NextBotAdapter，与 _sync_one_whitelist 一致）；加 quote 防注入 + idempotent 已存在判定。同时修好了之前一直无效的 WebUI 手动同步白名单。check self-fix 1 项 idempotency 字符串匹配过宽（拒 does not exist 误判）。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `62af1f9` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
