@@ -912,7 +912,7 @@
       const url = isEdit ? `/webui/api/users/${editingUserDbId}` : "/webui/api/users";
       const method = isEdit ? "PUT" : "POST";
 
-      await api.apiRequest(url, {
+      const responsePayload = await api.apiRequest(url, {
         method,
         headers: {
           "Content-Type": "application/json",
@@ -926,7 +926,31 @@
       closeModalAndRestoreFocus(modalNode);
       const reloaded = await loadUsers({ clearStatus: false });
       if (reloaded) {
-        setStatus(isEdit ? "更新成功" : "创建成功", "success");
+        // L-8：mirror delete/ban/unban 的 server_results 展示；create + 改名 update 都附带 server_results
+        const result = api.unwrapData(responsePayload) || {};
+        const serverResults = Array.isArray(result.server_results) ? result.server_results : [];
+        const lines = [isEdit ? "更新成功" : "创建成功"];
+        if (serverResults.length) {
+          lines.push("服务器白名单：");
+          for (let i = 0; i < serverResults.length; i++) {
+            const item = serverResults[i];
+            const serverId = String(item.server_id || "?");
+            const serverName = String(item.server_name || "未知服务器");
+            if (item.success) {
+              const extra = item.reason ? "（" + item.reason + "）" : "";
+              lines.push(serverId + "." + serverName + "：成功" + extra);
+            } else {
+              // L-9：原样透传后端 reason，detail 空时不拼"未知错误"
+              const failReason = String(item.reason || "");
+              if (failReason) {
+                lines.push(serverId + "." + serverName + "：失败，" + failReason);
+              } else {
+                lines.push(serverId + "." + serverName + "：失败");
+              }
+            }
+          }
+        }
+        setStatus(lines.join("\n"), "success");
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : isEdit ? "更新失败" : "创建失败";

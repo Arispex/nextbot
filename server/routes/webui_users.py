@@ -237,13 +237,15 @@ async def _sync_user_whitelist(user: User) -> list[dict[str, Any]]:
     # R2-T-1：原 `for server in servers:` 串行（N×5s timeout）改为 broadcast 并行，
     # 避免前端 15s timeout 在 N≥3 服务器场景必触发的回归。
     user_name = str(user.name)
+    # PC-3.1：URL path segment quote(safe="") 防 / ? # 注入（与命令端
+    # `_sync_one_whitelist` 防御对齐）
+    encoded_name = quote(user_name, safe="")
 
     async def _one(server: Server) -> BroadcastOutcome[str]:
         try:
             response = await request_server_api(
                 server,
-                "/v3/server/rawcmd",
-                params={"cmd": f"/bwl add {user_name}"},
+                f"/nextbot/whitelist/add/{encoded_name}",
             )
         except TShockRequestError:
             return BroadcastOutcome(
@@ -252,12 +254,24 @@ async def _sync_user_whitelist(user: User) -> list[dict[str, Any]]:
 
         if is_success(response):
             return BroadcastOutcome(
-                server=server, ok=True, detail="", payload=None
+                server=server, ok=True, detail="同步成功", payload="added"
+            )
+        # 幂等：白名单已存在该 name 视为成功（与 _broadcast_whitelist_remove 的
+        # not_present 幂等模式对齐）。仅匹配 "already" + ("exist" | "whitelist")
+        # 避免裸 "exist" 误判 "does not exist" 类反向语义。
+        reason = get_error_reason(response)
+        lowered = reason.lower()
+        if "already" in lowered and ("exist" in lowered or "whitelist" in lowered):
+            return BroadcastOutcome(
+                server=server,
+                ok=True,
+                detail="已存在于白名单",
+                payload="already_exists",
             )
         return BroadcastOutcome(
             server=server,
             ok=False,
-            detail=get_error_reason(response),
+            detail=reason,
             payload=None,
         )
 
@@ -544,11 +558,12 @@ async def webui_users_create(request: Request) -> JSONResponse:
             f"创建用户成功：user_id={_mask_qq(user.user_id)}，name={user.name} "
             f"client_ip={client_ip} user_agent={user_agent!r}"
         )
-        return api_success(
-            status_code=201,
-            data=_serialize_user(user),
-            headers={"Location": f"/webui/api/users/{user.id}"},
-        )
+        # 在 session 关闭前序列化 user 并捕获 broadcast 所需字段，
+        # 避免 detached instance 访问漂移
+        serialized_user = _serialize_user(user)
+        created_user = user
+        created_user_id = str(user.user_id)
+        created_name = str(user.name)
     except Exception as exc:
         session.rollback()
         logger.exception(
@@ -562,6 +577,31 @@ async def webui_users_create(request: Request) -> JSONResponse:
         )
     finally:
         session.close()
+
+    # commit 已成功，best-effort 同步 server 白名单；
+    # broadcast 失败不回滚 DB（用户已创建），仅在 server_results 中反映；
+    # 内部异常单独捕获，避免吞掉已成功的创建。
+    try:
+        server_results = await _sync_user_whitelist(created_user)
+    except Exception as broadcast_exc:
+        logger.exception(
+            f"WebUI 创建用户白名单同步异常：user_id={_mask_qq(created_user_id)} "
+            f"name={created_name} reason={broadcast_exc} client_ip={client_ip}"
+        )
+        server_results = []
+
+    success_count = sum(1 for r in server_results if r["success"])
+    logger.info(
+        f"WebUI 创建用户白名单同步完成：user_id={_mask_qq(created_user_id)} "
+        f"name={created_name} success={success_count}/{len(server_results)} "
+        f"client_ip={client_ip}"
+    )
+
+    return api_success(
+        status_code=201,
+        data={"user": serialized_user, "server_results": server_results},
+        headers={"Location": f"/webui/api/users/{serialized_user['id']}"},
+    )
 
 
 @router.put("/webui/api/users/{user_id}")
