@@ -949,17 +949,42 @@
 
     setStatus("删除中…", "warning");
     try {
-      await api.apiRequest(`/webui/api/users/${targetUser.id}`, {
+      const payload = await api.apiRequest(`/webui/api/users/${targetUser.id}`, {
         method: "DELETE",
         headers: { Accept: "application/json" },
         action: "删除",
-        expectedStatus: 204,
+        expectedStatus: 200,
       });
+      const result = api.unwrapData(payload) || {};
+
       syncResultMap.delete(targetUser.id);
       closeDeleteModal(true);
       const reloaded = await loadUsers({ clearStatus: false });
       if (reloaded) {
-        setStatus("删除成功", "success");
+        // L-8：toast 文案去对象名（CLAUDE.md 规范），mirror ban/unban 的 server_results 展示
+        var serverResults = Array.isArray(result.server_results) ? result.server_results : [];
+        var lines = ["删除成功"];
+        if (serverResults.length) {
+          lines.push("服务器白名单：");
+          for (var i = 0; i < serverResults.length; i++) {
+            var item = serverResults[i];
+            var serverId = String(item.server_id || "?");
+            var serverName = String(item.server_name || "未知服务器");
+            if (item.success) {
+              var extra = item.reason ? "（" + item.reason + "）" : "";
+              lines.push(serverId + "." + serverName + "：成功" + extra);
+            } else {
+              // L-9：原样透传后端 reason，detail 空时不拼"未知错误"
+              var failReason = String(item.reason || "");
+              if (failReason) {
+                lines.push(serverId + "." + serverName + "：失败，" + failReason);
+              } else {
+                lines.push(serverId + "." + serverName + "：失败");
+              }
+            }
+          }
+        }
+        setStatus(lines.join("\n"), "success");
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : "删除失败";

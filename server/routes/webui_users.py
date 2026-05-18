@@ -4,9 +4,10 @@ import re
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
+from urllib.parse import quote
 
 from fastapi import APIRouter, Path, Request
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse
 from nonebot.log import logger
 from sqlalchemy import func, or_
 
@@ -272,6 +273,142 @@ async def _sync_user_whitelist(user: User) -> list[dict[str, Any]]:
     ]
 
 
+async def _broadcast_whitelist_remove(name: str) -> list[dict[str, Any]]:
+    """对所有 server 调用 /nextbot/whitelist/remove/<name>，返回 per-server 结果。
+
+    幂等语义：若 server 报告白名单中不存在该 name，视为成功（与 ban/unban handler 的
+    already_exists / not_present 行为对齐）。broadcast 永不抛异常，
+    失败仅反映在结果集中。
+    """
+    session = get_session()
+    try:
+        servers = session.query(Server).order_by(Server.id.asc()).all()
+    finally:
+        session.close()
+
+    if not servers:
+        return []
+
+    # PC-3.1：URL path segment quote(safe="") 防 / ? # 注入
+    encoded = quote(name, safe="")
+
+    async def _one(server: Server) -> BroadcastOutcome[str]:
+        try:
+            response = await request_server_api(
+                server, f"/nextbot/whitelist/remove/{encoded}"
+            )
+        except TShockRequestError:
+            return BroadcastOutcome(
+                server=server, ok=False, detail="无法连接服务器", payload=None
+            )
+
+        if is_success(response):
+            return BroadcastOutcome(
+                server=server, ok=True, detail="移除成功", payload="removed"
+            )
+
+        reason = get_error_reason(response)
+        lowered = reason.lower()
+        if "not" in lowered and (
+            "found" in lowered or "exist" in lowered or "present" in lowered
+        ):
+            return BroadcastOutcome(
+                server=server, ok=True, detail="白名单中不存在", payload="not_present"
+            )
+        return BroadcastOutcome(
+            server=server, ok=False, detail=reason, payload=None
+        )
+
+    outcomes = await broadcast(servers, _one)
+    return [
+        {
+            "server_id": int(o.server.id),
+            "server_name": str(o.server.name),
+            "success": o.ok,
+            "reason": o.detail,
+        }
+        for o in outcomes
+    ]
+
+
+async def _broadcast_whitelist_rename(
+    old_name: str, new_name: str
+) -> list[dict[str, Any]]:
+    """改名同步：对每个 server 先 remove(old) 再 add(new)，返回 per-server 综合结果。
+
+    per-server ok = True 仅当：remove 成功（或白名单本不存在）AND add 成功。
+    broadcast 永不抛异常，失败仅反映在结果集中。
+    """
+    session = get_session()
+    try:
+        servers = session.query(Server).order_by(Server.id.asc()).all()
+    finally:
+        session.close()
+
+    if not servers:
+        return []
+
+    # PC-3.1：URL path segment quote(safe="")
+    encoded_old = quote(old_name, safe="")
+    encoded_new = quote(new_name, safe="")
+
+    async def _one(server: Server) -> BroadcastOutcome[str]:
+        # Step 1：remove 旧名（幂等：白名单中不存在视为成功）
+        try:
+            rm_resp = await request_server_api(
+                server, f"/nextbot/whitelist/remove/{encoded_old}"
+            )
+        except TShockRequestError:
+            return BroadcastOutcome(
+                server=server, ok=False, detail="无法连接服务器", payload=None
+            )
+        if not is_success(rm_resp):
+            reason = get_error_reason(rm_resp)
+            lowered = reason.lower()
+            is_not_present = "not" in lowered and (
+                "found" in lowered or "exist" in lowered or "present" in lowered
+            )
+            if not is_not_present:
+                return BroadcastOutcome(
+                    server=server,
+                    ok=False,
+                    detail=f"移除旧名失败：{reason}",
+                    payload=None,
+                )
+
+        # Step 2：add 新名
+        try:
+            add_resp = await request_server_api(
+                server, f"/nextbot/whitelist/add/{encoded_new}"
+            )
+        except TShockRequestError:
+            return BroadcastOutcome(
+                server=server, ok=False, detail="无法连接服务器", payload=None
+            )
+
+        if is_success(add_resp):
+            return BroadcastOutcome(
+                server=server, ok=True, detail="改名同步成功", payload="renamed"
+            )
+        return BroadcastOutcome(
+            server=server,
+            ok=False,
+            detail=f"新名添加失败：{get_error_reason(add_resp)}",
+            payload=None,
+        )
+
+    outcomes = await broadcast(servers, _one)
+    return [
+        {
+            "server_id": int(o.server.id),
+            "server_name": str(o.server.name),
+            "success": o.ok,
+            "reason": o.detail,
+        }
+        for o in outcomes
+    ]
+
+
 def _validation_error(exc: UserPayloadValidationError) -> JSONResponse:
     logger.warning(f"参数校验失败：field={exc.field or ''}，reason={exc}")
     return api_error(
@@ -505,6 +642,9 @@ async def webui_users_update(
                 details=[{"field": "group", "message": "身份组不存在"}],
             )
 
+        # 在 mutation 前捕获旧 name，commit 成功后判断是否需要 broadcast rename
+        original_name = str(user.name)
+
         user.user_id = validated.user_id
         user.name = validated.name
         user.coins = validated.coins
@@ -517,7 +657,8 @@ async def webui_users_update(
             f"更新用户成功：user_id={user_id}，account_id={_mask_qq(user.user_id)} "
             f"client_ip={client_ip} user_agent={user_agent!r}"
         )
-        return api_success(data=_serialize_user(user))
+        serialized_user = _serialize_user(user)
+        new_name = str(user.name)
     except Exception as exc:
         session.rollback()
         logger.exception(
@@ -531,6 +672,22 @@ async def webui_users_update(
         )
     finally:
         session.close()
+
+    # commit 已成功，name 变化时 best-effort 同步 server 白名单；
+    # broadcast 失败不回滚 DB，仅在 server_results 中反映。
+    server_results: list[dict[str, Any]] | None = None
+    if new_name != original_name:
+        server_results = await _broadcast_whitelist_rename(original_name, new_name)
+        success_count = sum(1 for r in server_results if r["success"])
+        logger.info(
+            f"WebUI 改名白名单同步完成：old_name={original_name} new_name={new_name} "
+            f"success={success_count}/{len(server_results)} client_ip={client_ip}"
+        )
+
+    response_data: dict[str, Any] = {"user": serialized_user}
+    if server_results is not None:
+        response_data["server_results"] = server_results
+    return api_success(data=response_data)
 
 
 @router.delete("/webui/api/users/{user_id}")
@@ -575,7 +732,6 @@ async def webui_users_delete(
             f"删除用户成功：user_id={user_id}，account_id={_mask_qq(deleted_user_id)}，"
             f"name={deleted_name} client_ip={client_ip} user_agent={user_agent!r}"
         )
-        return Response(status_code=204)
     except Exception as exc:
         session.rollback()
         logger.exception(
@@ -589,6 +745,17 @@ async def webui_users_delete(
         )
     finally:
         session.close()
+
+    # commit 已成功，best-effort 清理 server 白名单；
+    # broadcast 失败不回滚 DB，仅在 server_results 中反映。
+    server_results = await _broadcast_whitelist_remove(deleted_name)
+    success_count = sum(1 for r in server_results if r["success"])
+    logger.info(
+        f"WebUI 删除用户白名单清理完成：name={deleted_name} "
+        f"success={success_count}/{len(server_results)} client_ip={client_ip}"
+    )
+
+    return api_success(data={"server_results": server_results})
 
 
 @router.post("/webui/api/users/{user_id}/sync-whitelist")
