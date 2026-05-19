@@ -1359,3 +1359,37 @@ trellis-check 审计 commit 1aa4bff + d015756 共发现 15 项 findings (2 Criti
 ### Next Steps
 
 - None - task complete
+
+
+## Session 196: feat: WebUI 创建用户加密码字段 + TShock create push
+
+**Date**: 2026-05-19
+**Task**: feat: WebUI 创建用户加密码字段 + TShock create push
+**Branch**: `main`
+
+### Summary
+
+WebUI 创建用户 dialog 加 password / confirm 字段 + 生成按钮（crypto.getRandomValues 16 位 [A-Za-z0-9]，3s reveal）；后端复用命令端 _hash_password + _create_tshock_user_on_all_servers；response 拆 whitelist_results + tshock_results 两段独立展示，与 ban/unban/delete 的 server_results 不同（仅 create 用）。plaintext 全路径生命周期最小化，异常分支 / finally / 早返回都清空。check 23 项 PASS + 3 项 defense-in-depth self-fix（closeModal 清 input value + payload.password 释放）。后续 user 反馈合并段 label 误导，再做一次 拆 2 段（services + tshock 各自展示），删除 _combine_server_results helper。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8825841` | (see git log) |
+| `d3b1fa2` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
