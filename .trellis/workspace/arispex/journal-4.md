@@ -1492,3 +1492,36 @@ webui_users.py 删除 delete / ban / unban 3 个 handler 的 owner 保护 if-ret
 ### Next Steps
 
 - None - task complete
+
+
+## Session 200: feat: WebUI 改名拎出独立 dialog/endpoint
+
+**Date**: 2026-05-19
+**Task**: feat: WebUI 改名拎出独立 dialog/endpoint
+**Branch**: `main`
+
+### Summary
+
+新 endpoint POST /webui/api/users/{id}/change-name 接管改名逻辑（复用 _normalize_user_name + _broadcast_whitelist_rename）；update endpoint 移除 user.name 写入 + 唯一性检查 + broadcast，response 简化为 {user}；编辑用户 dialog name input 编辑模式 readonly + hint 提示走"修改用户名"按钮；表格行新增"修改用户名"按钮，单 input dialog 含前端校验（对齐 backend _normalize_user_name 字符集）。Q2=A change-name endpoint 无 owner 保护。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `319c77c` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
