@@ -1015,14 +1015,20 @@
       closeModalAndRestoreFocus(modalNode);
       const reloaded = await loadUsers({ clearStatus: false });
       if (reloaded) {
-        // L-8：mirror delete/ban/unban 的 server_results 展示；create + 改名 update 都附带 server_results
+        // L-8：create 路径走双段独立展示（whitelist_results + tshock_results），
+        // update 路径继续 fallback 到 server_results（改名同步）
         const result = api.unwrapData(responsePayload) || {};
-        const serverResults = Array.isArray(result.server_results) ? result.server_results : [];
+        const whitelistResults = Array.isArray(result.whitelist_results)
+          ? result.whitelist_results
+          : [];
+        const tshockResults = Array.isArray(result.tshock_results)
+          ? result.tshock_results
+          : [];
         const lines = [isEdit ? "更新成功" : "创建成功"];
-        if (serverResults.length) {
-          lines.push("服务器白名单：");
-          for (let i = 0; i < serverResults.length; i++) {
-            const item = serverResults[i];
+
+        const appendServerLines = (items) => {
+          for (let i = 0; i < items.length; i++) {
+            const item = items[i];
             const serverId = String(item.server_id || "?");
             const serverName = String(item.server_name || "未知服务器");
             if (item.success) {
@@ -1037,6 +1043,27 @@
                 lines.push(serverId + "." + serverName + "：失败");
               }
             }
+          }
+        };
+
+        if (whitelistResults.length || tshockResults.length) {
+          // create 路径：双段独立展示
+          if (whitelistResults.length) {
+            lines.push("服务器白名单：");
+            appendServerLines(whitelistResults);
+          }
+          if (tshockResults.length) {
+            lines.push("服务器账号：");
+            appendServerLines(tshockResults);
+          }
+        } else {
+          // update 路径（改名同步等）继续走 server_results
+          const serverResults = Array.isArray(result.server_results)
+            ? result.server_results
+            : [];
+          if (serverResults.length) {
+            lines.push("服务器白名单：");
+            appendServerLines(serverResults);
           }
         }
         setStatus(lines.join("\n"), "success");

@@ -199,57 +199,19 @@ def _normalize_password(raw_value: Any) -> str:
     return pwd
 
 
-def _combine_server_results(
-    whitelist_results: list[dict[str, Any]],
-    tshock_outcomes: list[BroadcastOutcome[str]],
+def _outcomes_to_server_results(
+    outcomes: list[BroadcastOutcome[str]],
 ) -> list[dict[str, Any]]:
-    """合并白名单 + TShock create 的 per-server 结果，每 server 一行。
-
-    success = whitelist_ok AND tshock_ok；reason 按"白名单：xxx；账号：yyy"拼接。
-    """
-    by_id: dict[int, dict[str, Any]] = {}
-
-    for w in whitelist_results:
-        sid = int(w["server_id"])
-        by_id[sid] = {
-            "server_id": sid,
-            "server_name": str(w["server_name"]),
-            "success": bool(w["success"]),
-            "reason": str(w.get("reason") or ""),
-            "_whitelist_ok": bool(w["success"]),
-            "_whitelist_reason": str(w.get("reason") or ""),
+    """把 broadcast outcomes 转成 {server_id, server_name, success, reason} 列表。"""
+    return [
+        {
+            "server_id": int(o.server.id),
+            "server_name": str(o.server.name),
+            "success": bool(o.ok),
+            "reason": "" if o.ok else str(o.detail or ""),
         }
-
-    for o in tshock_outcomes:
-        sid = int(o.server.id)
-        if sid in by_id:
-            entry = by_id[sid]
-            wl_ok = entry["_whitelist_ok"]
-            wl_reason = entry["_whitelist_reason"]
-            combined_ok = wl_ok and o.ok
-            reasons: list[str] = []
-            if not wl_ok and wl_reason:
-                reasons.append(f"白名单：{wl_reason}")
-            if not o.ok and o.detail:
-                reasons.append(f"账号：{o.detail}")
-            entry["success"] = combined_ok
-            entry["reason"] = "；".join(reasons) if reasons else ""
-        else:
-            by_id[sid] = {
-                "server_id": sid,
-                "server_name": str(o.server.name),
-                "success": bool(o.ok),
-                "reason": "" if o.ok else str(o.detail or ""),
-                "_whitelist_ok": True,
-                "_whitelist_reason": "",
-            }
-
-    results: list[dict[str, Any]] = []
-    for entry in sorted(by_id.values(), key=lambda r: int(r["server_id"])):
-        entry.pop("_whitelist_ok", None)
-        entry.pop("_whitelist_reason", None)
-        results.append(entry)
-    return results
+        for o in outcomes
+    ]
 
 
 def _validate_payload(payload: dict[str, Any]) -> ValidatedUserPayload:
@@ -664,34 +626,44 @@ async def webui_users_create(request: Request) -> JSONResponse:
         session.close()
 
     # commit 已成功，best-effort 同步 server 白名单 + TShock 账号创建；
-    # broadcast 失败不回滚 DB（用户已创建），仅在 server_results 中反映；
-    # 内部异常单独捕获，避免吞掉已成功的创建。
+    # broadcast 失败不回滚 DB（用户已创建），仅在 whitelist_results / tshock_results 中反映；
+    # 内部异常单独捕获，避免吞掉已成功的创建。两段结果独立展示给 admin，
+    # 便于一眼看清"白名单同步"与"账号创建"两类操作分别的成败分布。
     try:
         whitelist_results = await _sync_user_whitelist(created_user)
         tshock_outcomes = await _create_tshock_user_on_all_servers(
             created_name, plaintext_password
         )
-        server_results = _combine_server_results(whitelist_results, tshock_outcomes)
+        tshock_results = _outcomes_to_server_results(tshock_outcomes)
     except Exception as broadcast_exc:
         logger.exception(
             f"WebUI 创建用户白名单 / TShock 同步异常：user_id={_mask_qq(created_user_id)} "
             f"name={created_name} reason={broadcast_exc} client_ip={client_ip}"
         )
-        server_results = []
+        # 保持 response shape 稳定：异常路径也返回两个空列表
+        whitelist_results = []
+        tshock_results = []
     finally:
         # plaintext 立即清空，无论 broadcast 成功还是异常
         plaintext_password = ""
 
-    success_count = sum(1 for r in server_results if r["success"])
+    wl_success = sum(1 for r in whitelist_results if r["success"])
+    ts_success = sum(1 for r in tshock_results if r["success"])
     logger.info(
         f"WebUI 创建用户白名单 + TShock 同步完成：user_id={_mask_qq(created_user_id)} "
-        f"name={created_name} success={success_count}/{len(server_results)} "
+        f"name={created_name} "
+        f"whitelist_success={wl_success}/{len(whitelist_results)} "
+        f"tshock_success={ts_success}/{len(tshock_results)} "
         f"client_ip={client_ip}"
     )
 
     return api_success(
         status_code=201,
-        data={"user": serialized_user, "server_results": server_results},
+        data={
+            "user": serialized_user,
+            "whitelist_results": whitelist_results,
+            "tshock_results": tshock_results,
+        },
         headers={"Location": f"/webui/api/users/{serialized_user['id']}"},
     )
 
