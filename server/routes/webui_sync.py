@@ -16,7 +16,9 @@ from server.routes.webui import _client_ip
 router = APIRouter()
 
 
-def _build_users_payload(rows: list[tuple[str, bool, str | None]]) -> list[dict[str, Any]]:
+def _build_users_payload(
+    rows: list[tuple[str, bool, str | None, str]],
+) -> list[dict[str, Any]]:
     """把 DB 行转为响应中的 user 列表。
 
     保留 password_hash 的原始 None；ETag 阶段才把 None 当作 "" 参与 hash，
@@ -27,13 +29,14 @@ def _build_users_payload(rows: list[tuple[str, bool, str | None]]) -> list[dict[
             "name": str(name),
             "banned": bool(banned),
             "password_hash": password_hash if password_hash else None,
+            "ban_reason": str(ban_reason or ""),
         }
-        for name, banned, password_hash in rows
+        for name, banned, password_hash, ban_reason in rows
     ]
 
 
 def _compute_snapshot_etag(users_payload: list[dict[str, Any]]) -> str:
-    """对 sync-relevant 字段（name / banned / password_hash）按 name 排序后稳定哈希。
+    """对 sync-relevant 字段（name / banned / password_hash / ban_reason）按 name 排序后稳定哈希。
 
     - password_hash 为 None 时在 hash 输入里用空串占位（响应体里仍输出 null）。
     - 仅 sync-relevant 字段参与；coins / sign_streak / rob_* 改动不影响 ETag。
@@ -46,6 +49,7 @@ def _compute_snapshot_etag(users_payload: list[dict[str, Any]]) -> str:
                     "name": u["name"],
                     "banned": bool(u["banned"]),
                     "password_hash": u["password_hash"] or "",
+                    "ban_reason": str(u.get("ban_reason") or ""),
                 }
                 for u in users_payload
             ],
@@ -77,9 +81,11 @@ async def webui_sync_snapshot(request: Request) -> Response:
     """
     session = get_session()
     try:
-        rows: list[tuple[str, bool, str | None]] = [
-            (row.name, row.is_banned, row.password_hash)
-            for row in session.query(User.name, User.is_banned, User.password_hash).all()
+        rows: list[tuple[str, bool, str | None, str]] = [
+            (row.name, row.is_banned, row.password_hash, row.ban_reason)
+            for row in session.query(
+                User.name, User.is_banned, User.password_hash, User.ban_reason
+            ).all()
         ]
     except Exception as exc:
         client_ip = _client_ip(request)
