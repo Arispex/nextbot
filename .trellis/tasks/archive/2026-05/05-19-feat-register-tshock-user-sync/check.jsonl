@@ -1,0 +1,2 @@
+{"file": ".trellis/tasks/05-19-feat-register-tshock-user-sync/prd.md", "reason": "Acceptance + ADR + Edge Cases."}
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend quality baseline (security/logging/error handling)."}
