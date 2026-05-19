@@ -117,6 +117,40 @@
         <input id="field-permissions" class="input" type="text" placeholder="server.list,permission.user.add" />
       </label>
 
+      <div class="form-grid" data-create-only>
+        <label class="form-item">
+          <span class="form-label">密码 <span class="required">*</span></span>
+          <div class="input-with-action" style="display:flex;gap:8px;align-items:stretch;">
+            <input
+              id="field-password"
+              class="input"
+              type="password"
+              minlength="8"
+              autocomplete="new-password"
+              placeholder="至少 8 位"
+              style="flex:1;min-width:0;"
+            />
+            <button
+              id="field-password-generate"
+              type="button"
+              class="btn"
+              title="随机生成 16 位密码"
+            >生成</button>
+          </div>
+        </label>
+        <label class="form-item">
+          <span class="form-label">确认密码 <span class="required">*</span></span>
+          <input
+            id="field-password-confirm"
+            class="input"
+            type="password"
+            minlength="8"
+            autocomplete="new-password"
+            placeholder="再次输入密码"
+          />
+        </label>
+      </div>
+
       <div class="permission-preview">
         <span class="form-label">权限预览</span>
         <div id="permission-preview-list" class="permission-list"></div>

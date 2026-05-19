@@ -187,6 +187,71 @@ def _normalize_group(raw_value: Any) -> str:
     return value
 
 
+def _normalize_password(raw_value: Any) -> str:
+    """校验创建用户密码 plaintext：必须是字符串、非空、长度 >= 8。"""
+    if not isinstance(raw_value, str):
+        raise UserPayloadValidationError("密码必须是字符串", field="password")
+    pwd = raw_value.strip()
+    if not pwd:
+        raise UserPayloadValidationError("密码不能为空", field="password")
+    if len(pwd) < 8:
+        raise UserPayloadValidationError("密码长度至少 8 位", field="password")
+    return pwd
+
+
+def _combine_server_results(
+    whitelist_results: list[dict[str, Any]],
+    tshock_outcomes: list[BroadcastOutcome[str]],
+) -> list[dict[str, Any]]:
+    """合并白名单 + TShock create 的 per-server 结果，每 server 一行。
+
+    success = whitelist_ok AND tshock_ok；reason 按"白名单：xxx；账号：yyy"拼接。
+    """
+    by_id: dict[int, dict[str, Any]] = {}
+
+    for w in whitelist_results:
+        sid = int(w["server_id"])
+        by_id[sid] = {
+            "server_id": sid,
+            "server_name": str(w["server_name"]),
+            "success": bool(w["success"]),
+            "reason": str(w.get("reason") or ""),
+            "_whitelist_ok": bool(w["success"]),
+            "_whitelist_reason": str(w.get("reason") or ""),
+        }
+
+    for o in tshock_outcomes:
+        sid = int(o.server.id)
+        if sid in by_id:
+            entry = by_id[sid]
+            wl_ok = entry["_whitelist_ok"]
+            wl_reason = entry["_whitelist_reason"]
+            combined_ok = wl_ok and o.ok
+            reasons: list[str] = []
+            if not wl_ok and wl_reason:
+                reasons.append(f"白名单：{wl_reason}")
+            if not o.ok and o.detail:
+                reasons.append(f"账号：{o.detail}")
+            entry["success"] = combined_ok
+            entry["reason"] = "；".join(reasons) if reasons else ""
+        else:
+            by_id[sid] = {
+                "server_id": sid,
+                "server_name": str(o.server.name),
+                "success": bool(o.ok),
+                "reason": "" if o.ok else str(o.detail or ""),
+                "_whitelist_ok": True,
+                "_whitelist_reason": "",
+            }
+
+    results: list[dict[str, Any]] = []
+    for entry in sorted(by_id.values(), key=lambda r: int(r["server_id"])):
+        entry.pop("_whitelist_ok", None)
+        entry.pop("_whitelist_reason", None)
+        results.append(entry)
+    return results
+
+
 def _validate_payload(payload: dict[str, Any]) -> ValidatedUserPayload:
     user_id = _normalize_user_id(_require_field(payload, "user_id"))
     name = _normalize_user_name(_require_field(payload, "name"))
@@ -511,8 +576,17 @@ async def webui_users_create(request: Request) -> JSONResponse:
 
     try:
         validated = _validate_payload(data)
+        plaintext_password = _normalize_password(data.get("password"))
     except UserPayloadValidationError as exc:
         return _validation_error(exc)
+
+    # plaintext 立即 hash，不长时间持有；hash 后保留 plaintext 仅为 TShock create 调用。
+    from nextbot.plugins.user_manager import (
+        _create_tshock_user_on_all_servers,
+        _hash_password,
+    )
+
+    password_hash = _hash_password(plaintext_password)
 
     client_ip = _client_ip(request)
     user_agent = _user_agent(request)
@@ -520,6 +594,8 @@ async def webui_users_create(request: Request) -> JSONResponse:
     session = get_session()
     try:
         if session.query(User).filter(User.user_id == validated.user_id).first() is not None:
+            plaintext_password = ""
+            password_hash = ""
             return api_error(
                 status_code=409,
                 code="conflict",
@@ -528,6 +604,8 @@ async def webui_users_create(request: Request) -> JSONResponse:
             )
 
         if session.query(User).filter(func.lower(User.name) == validated.name.lower()).first() is not None:
+            plaintext_password = ""
+            password_hash = ""
             return api_error(
                 status_code=409,
                 code="conflict",
@@ -536,6 +614,8 @@ async def webui_users_create(request: Request) -> JSONResponse:
             )
 
         if session.query(Group).filter(Group.name == validated.group).first() is None:
+            plaintext_password = ""
+            password_hash = ""
             return api_error(
                 status_code=422,
                 code="validation_error",
@@ -551,6 +631,7 @@ async def webui_users_create(request: Request) -> JSONResponse:
             sign_streak=validated.sign_streak,
             permissions=validated.permissions,
             group=validated.group,
+            password_hash=password_hash,
         )
         session.add(user)
         session.commit()
@@ -564,8 +645,12 @@ async def webui_users_create(request: Request) -> JSONResponse:
         created_user = user
         created_user_id = str(user.user_id)
         created_name = str(user.name)
+        # hash 已写入 DB，栈上可立刻清空
+        password_hash = ""
     except Exception as exc:
         session.rollback()
+        plaintext_password = ""
+        password_hash = ""
         logger.exception(
             f"创建用户异常：user_id={_mask_qq(validated.user_id)}，reason={exc} "
             f"client_ip={client_ip}"
@@ -578,21 +663,28 @@ async def webui_users_create(request: Request) -> JSONResponse:
     finally:
         session.close()
 
-    # commit 已成功，best-effort 同步 server 白名单；
+    # commit 已成功，best-effort 同步 server 白名单 + TShock 账号创建；
     # broadcast 失败不回滚 DB（用户已创建），仅在 server_results 中反映；
     # 内部异常单独捕获，避免吞掉已成功的创建。
     try:
-        server_results = await _sync_user_whitelist(created_user)
+        whitelist_results = await _sync_user_whitelist(created_user)
+        tshock_outcomes = await _create_tshock_user_on_all_servers(
+            created_name, plaintext_password
+        )
+        server_results = _combine_server_results(whitelist_results, tshock_outcomes)
     except Exception as broadcast_exc:
         logger.exception(
-            f"WebUI 创建用户白名单同步异常：user_id={_mask_qq(created_user_id)} "
+            f"WebUI 创建用户白名单 / TShock 同步异常：user_id={_mask_qq(created_user_id)} "
             f"name={created_name} reason={broadcast_exc} client_ip={client_ip}"
         )
         server_results = []
+    finally:
+        # plaintext 立即清空，无论 broadcast 成功还是异常
+        plaintext_password = ""
 
     success_count = sum(1 for r in server_results if r["success"])
     logger.info(
-        f"WebUI 创建用户白名单同步完成：user_id={_mask_qq(created_user_id)} "
+        f"WebUI 创建用户白名单 + TShock 同步完成：user_id={_mask_qq(created_user_id)} "
         f"name={created_name} success={success_count}/{len(server_results)} "
         f"client_ip={client_ip}"
     )

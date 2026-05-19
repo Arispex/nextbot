@@ -46,6 +46,9 @@
   const fieldSignStreak = document.getElementById("field-sign-streak");
   const fieldGroup = document.getElementById("field-group");
   const fieldPermissions = document.getElementById("field-permissions");
+  const fieldPassword = document.getElementById("field-password");
+  const fieldPasswordConfirm = document.getElementById("field-password-confirm");
+  const fieldPasswordGenerate = document.getElementById("field-password-generate");
   const permissionPreviewNode = document.getElementById("permission-preview-list");
 
   const requiredNodesReady = Boolean(
@@ -92,6 +95,9 @@
       fieldSignStreak &&
       fieldGroup &&
       fieldPermissions &&
+      fieldPassword &&
+      fieldPasswordConfirm &&
+      fieldPasswordGenerate &&
       permissionPreviewNode
   );
   if (!requiredNodesReady) {
@@ -715,6 +721,11 @@
     if (modalSaving) {
       return;
     }
+    // 关 modal 时清掉 reveal timer、把 input type 切回 password、并清空 DOM 中的 plaintext，
+    // 防止 cancel 后明文残留在 input.value 内存里
+    resetPasswordInputType();
+    fieldPassword.value = "";
+    fieldPasswordConfirm.value = "";
     closeModalAndRestoreFocus(modalNode);
   };
 
@@ -790,6 +801,45 @@
     renderPermissionBadges(permissionPreviewNode, fieldPermissions.value);
   };
 
+  // 生成按钮：浏览器 crypto 安全 RNG 生成 16 位 [A-Za-z0-9]，自动填两个 input，
+  // 临时把 type 切到 text 让 admin 一眼看到密码，3 秒后切回 password。
+  const PASSWORD_CHARSET =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  const PASSWORD_GENERATED_LENGTH = 16;
+  const PASSWORD_REVEAL_MS = 3000;
+  let passwordRevealTimer = null;
+
+  const resetPasswordInputType = () => {
+    if (passwordRevealTimer) {
+      clearTimeout(passwordRevealTimer);
+      passwordRevealTimer = null;
+    }
+    fieldPassword.type = "password";
+    fieldPasswordConfirm.type = "password";
+  };
+
+  const generatePassword = () => {
+    const buf = new Uint8Array(PASSWORD_GENERATED_LENGTH);
+    crypto.getRandomValues(buf);
+    let pwd = "";
+    for (let i = 0; i < buf.length; i++) {
+      pwd += PASSWORD_CHARSET[buf[i] % PASSWORD_CHARSET.length];
+    }
+    fieldPassword.value = pwd;
+    fieldPasswordConfirm.value = pwd;
+    // 临时显示明文，让 admin 看到生成的密码
+    if (passwordRevealTimer) {
+      clearTimeout(passwordRevealTimer);
+    }
+    fieldPassword.type = "text";
+    fieldPasswordConfirm.type = "text";
+    passwordRevealTimer = setTimeout(() => {
+      fieldPassword.type = "password";
+      fieldPasswordConfirm.type = "password";
+      passwordRevealTimer = null;
+    }, PASSWORD_REVEAL_MS);
+  };
+
   const openModal = (mode, user = null) => {
     modalMode = mode;
     editingUserDbId = mode === "edit" && user ? user.id : null;
@@ -818,12 +868,24 @@
       fieldPermissions.value = "";
     }
 
+    // 创建模式显示密码区，编辑模式隐藏；进入 modal 前永远清空两个 password 输入
+    fieldPassword.value = "";
+    fieldPasswordConfirm.value = "";
+    // 进入 modal 前重置 input type 为 password（前一次"生成"可能临时切到 text）
+    resetPasswordInputType();
+    const isCreate = mode !== "edit";
+    document.querySelectorAll("[data-create-only]").forEach((el) => {
+      if (el instanceof HTMLElement) {
+        el.style.display = isCreate ? "" : "none";
+      }
+    });
+
     updatePermissionPreview();
     // M-10 / M-11 / M-12：modal stack + focus trap + body scroll lock；首焦点由 openModalWithFocus 处理
     openModalWithFocus(modalNode);
   };
 
-  const buildPayloadFromModal = () => {
+  const buildPayloadFromModal = (isEdit) => {
     const userId = String(fieldUserId.value || "").trim();
     const name = String(fieldName.value || "").trim();
     const coinsText = String(fieldCoins.value || "").trim();
@@ -876,7 +938,7 @@
       throw new Error("身份组不能为空");
     }
 
-    return {
+    const payload = {
       user_id: userId,
       name,
       coins: coinsNumber,
@@ -885,6 +947,24 @@
       group,
       permissions,
     };
+
+    // 创建模式必须带密码；编辑模式 payload 不带 password（后端 update 路径也不接收）
+    if (!isEdit) {
+      const pwd = String(fieldPassword.value || "");
+      const pwdConfirm = String(fieldPasswordConfirm.value || "");
+      if (!pwd) {
+        throw new Error("密码不能为空");
+      }
+      if (pwd.length < 8) {
+        throw new Error("密码长度至少 8 位");
+      }
+      if (pwd !== pwdConfirm) {
+        throw new Error("两次输入的密码不一致");
+      }
+      payload.password = pwd;
+    }
+
+    return payload;
   };
 
   const saveUser = async () => {
@@ -896,7 +976,7 @@
 
     let payload;
     try {
-      payload = buildPayloadFromModal();
+      payload = buildPayloadFromModal(isEdit);
     } catch (error) {
       const message = error instanceof Error ? error.message : "表单校验失败";
       setModalAlert(`${isEdit ? "更新失败" : "创建失败"}，${message}`, "error");
@@ -923,6 +1003,15 @@
         expectedStatus: isEdit ? 200 : 201,
       });
 
+      // 提交成功后立即清空密码输入，避免 plaintext 在 DOM 残留
+      fieldPassword.value = "";
+      fieldPasswordConfirm.value = "";
+      // 清掉可能存在的 reveal timer，并把 type 切回 password
+      resetPasswordInputType();
+      // 释放 payload 上的 plaintext 引用（GC 兜底）
+      if (payload && "password" in payload) {
+        payload.password = "";
+      }
       closeModalAndRestoreFocus(modalNode);
       const reloaded = await loadUsers({ clearStatus: false });
       if (reloaded) {
@@ -958,6 +1047,10 @@
     } finally {
       modalSaving = false;
       modalSaveButton.disabled = false;
+      // 无论成功 / 失败都释放 payload 上的 plaintext 引用（成功路径已清，失败路径补一次）
+      if (payload && "password" in payload) {
+        payload.password = "";
+      }
     }
   };
 
@@ -1216,6 +1309,9 @@
   modalCancelButton.addEventListener("click", closeModal);
   modalSaveButton.addEventListener("click", () => {
     void saveUser();
+  });
+  fieldPasswordGenerate.addEventListener("click", () => {
+    generatePassword();
   });
 
   modalNode.addEventListener("click", (event) => {
