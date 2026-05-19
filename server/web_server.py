@@ -19,6 +19,7 @@ from server.routes.webui_login_requests import router as webui_login_requests_ro
 from server.routes.webui_player_events import router as webui_player_events_router
 from server.routes.webui_servers import router as webui_servers_router
 from server.routes.webui_settings import router as webui_settings_router
+from server.routes.webui_sync import router as webui_sync_router
 from server.routes.webui_users import router as webui_users_router
 from server.routes.webui_lottery import router as webui_lottery_router
 from server.routes.webui_shop import router as webui_shop_router
@@ -42,6 +43,7 @@ _WEBUI_ROUTERS: tuple[APIRouter, ...] = (
     webui_users_router,
     webui_groups_router,
     webui_settings_router,
+    webui_sync_router,
     webui_warehouse_router,
     webui_shop_router,
     webui_lottery_router,
