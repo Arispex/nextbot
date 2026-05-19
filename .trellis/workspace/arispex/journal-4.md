@@ -1293,3 +1293,36 @@ User.password_hash (nullable) + ensure_user_password_hash_schema migration。新
 ### Next Steps
 
 - None - task complete
+
+
+## Session 194: feat: WebUI sync snapshot API (ETag-based pull sync)
+
+**Date**: 2026-05-19
+**Task**: feat: WebUI sync snapshot API (ETag-based pull sync)
+**Branch**: `main`
+
+### Summary
+
+新增 GET /webui/api/sync/snapshot 端点供 C# 插件拉模式同步。响应合并 users 数组（{name, banned, password_hash}），ETag = sha256(sorted canonical state)，支持 If-None-Match → 304；W/ weak validator 前缀也兼容。复用现有 webui auth 中间件（admin token via cookie/query）。仅 sync-relevant 字段进 ETag（coins/sign 等高频写不触发）。check 全 25 项 PASS（含 FastAPI TestClient 集成测试：401/200/304/W-prefix/顺序无关/0 用户 well-known）。修了一处 Row vs tuple 类型 issue。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d015756` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
