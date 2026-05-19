@@ -93,6 +93,7 @@
         <label class="form-item">
           <span class="form-label">用户名称</span>
           <input id="field-name" class="input" type="text" maxlength="16" placeholder="请输入用户名称" />
+          <span id="field-name-edit-hint" class="form-hint" hidden>改名请使用「修改用户名」按钮</span>
         </label>
         <label class="form-item">
           <span class="form-label">金币</span>
@@ -233,6 +234,40 @@
     <div class="modal-foot">
       <button id="change-password-modal-cancel-btn" type="button" class="btn">取消</button>
       <button id="change-password-modal-confirm-btn" type="button" class="btn btn-primary">保存</button>
+    </div>
+  </div>
+</div>
+
+<div id="change-name-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="change-name-modal-title">
+  <div class="modal-mask" data-change-name-modal-close="1"></div>
+  <div class="modal-card">
+    <div class="modal-head">
+      <h3 id="change-name-modal-title" class="modal-title">修改用户名</h3>
+      <button id="change-name-modal-close-btn" type="button" class="btn btn-icon modal-close-btn" aria-label="关闭">✕</button>
+    </div>
+    <div id="change-name-modal-alert" class="alert hidden modal-alert" role="status" aria-live="polite">
+      <span id="change-name-modal-alert-message" class="alert-message"></span>
+    </div>
+    <div class="modal-body">
+      <p class="confirm-modal-text">
+        目标用户：<span id="change-name-target-name"></span>
+        <span id="change-name-target-qq" class="meta-id"></span>
+      </p>
+      <label class="form-item">
+        <span class="form-label">新用户名 <span class="required">*</span></span>
+        <input
+          id="change-name-input"
+          class="input"
+          type="text"
+          maxlength="16"
+          autocomplete="off"
+          placeholder="请输入新用户名"
+        />
+      </label>
+    </div>
+    <div class="modal-foot">
+      <button id="change-name-modal-cancel-btn" type="button" class="btn">取消</button>
+      <button id="change-name-modal-confirm-btn" type="button" class="btn btn-primary">保存</button>
     </div>
   </div>
 </div>

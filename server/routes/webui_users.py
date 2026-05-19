@@ -763,19 +763,6 @@ async def webui_users_update(
                 details=[{"field": "user_id", "message": "用户 QQ 已存在"}],
             )
 
-        if (
-            session.query(User)
-            .filter(func.lower(User.name) == validated.name.lower(), User.id != user_id)
-            .first()
-            is not None
-        ):
-            return api_error(
-                status_code=409,
-                code="conflict",
-                message="用户名称已被占用",
-                details=[{"field": "name", "message": "用户名称已被占用"}],
-            )
-
         if session.query(Group).filter(Group.name == validated.group).first() is None:
             return api_error(
                 status_code=422,
@@ -784,11 +771,10 @@ async def webui_users_update(
                 details=[{"field": "group", "message": "身份组不存在"}],
             )
 
-        # 在 mutation 前捕获旧 name，commit 成功后判断是否需要 broadcast rename
-        original_name = str(user.name)
-
+        # 改名拎到独立 endpoint /change-name；本 endpoint 不再写 user.name，
+        # 也不再 broadcast 白名单 rename。validated.name 仍由 _validate_payload 校验，
+        # 但此处刻意忽略，保持前端传 name 字段兼容（接受但不应用）。
         user.user_id = validated.user_id
-        user.name = validated.name
         user.coins = validated.coins
         user.sign_total = validated.sign_total
         user.sign_streak = validated.sign_streak
@@ -800,7 +786,6 @@ async def webui_users_update(
             f"client_ip={client_ip} user_agent={user_agent!r}"
         )
         serialized_user = _serialize_user(user)
-        new_name = str(user.name)
     except Exception as exc:
         session.rollback()
         logger.exception(
@@ -815,21 +800,7 @@ async def webui_users_update(
     finally:
         session.close()
 
-    # commit 已成功，name 变化时 best-effort 同步 server 白名单；
-    # broadcast 失败不回滚 DB，仅在 server_results 中反映。
-    server_results: list[dict[str, Any]] | None = None
-    if new_name != original_name:
-        server_results = await _broadcast_whitelist_rename(original_name, new_name)
-        success_count = sum(1 for r in server_results if r["success"])
-        logger.info(
-            f"WebUI 改名白名单同步完成：old_name={original_name} new_name={new_name} "
-            f"success={success_count}/{len(server_results)} client_ip={client_ip}"
-        )
-
-    response_data: dict[str, Any] = {"user": serialized_user}
-    if server_results is not None:
-        response_data["server_results"] = server_results
-    return api_success(data=response_data)
+    return api_success(data={"user": serialized_user})
 
 
 @router.delete("/webui/api/users/{user_id}")
@@ -1212,6 +1183,129 @@ async def webui_users_unban(
         session.close()
 
     return api_success(data={"user": user_data, "server_results": server_results})
+
+
+@router.post("/webui/api/users/{user_id}/change-name")
+async def webui_users_change_name(
+    request: Request,
+    user_id: int = Path(..., ge=1),
+) -> JSONResponse:
+    """修改用户名：DB user.name 改写 + broadcast 白名单 rename。
+
+    Q2=A 决策：本 endpoint **不**做 owner 保护，允许 admin 改 owner 名字
+    （与 change-password / ban / unban / delete 一致）。
+    """
+    payload, error_response = await read_json_object(request)
+    if error_response is not None:
+        return error_response
+    assert payload is not None
+
+    try:
+        new_name = _normalize_user_name(payload.get("name"))
+    except UserPayloadValidationError as exc:
+        return _validation_error(exc)
+
+    client_ip = _client_ip(request)
+    user_agent = _user_agent(request)
+
+    session = get_session()
+    serialized_user: dict[str, Any] = {}
+    server_results: list[dict[str, Any]] = []
+    original_name = ""
+    target_user_id_str = ""
+    name_changed = False
+    try:
+        user = session.query(User).filter(User.id == user_id).first()
+        if user is None:
+            logger.warning(
+                f"WebUI 修改用户名失败：user_id={user_id}，reason=用户不存在 "
+                f"client_ip={client_ip}"
+            )
+            return api_error(
+                status_code=404,
+                code="not_found",
+                message="用户不存在",
+            )
+
+        # 注意：本 endpoint 不检查 owner 保护（Q2=A 决策）
+
+        original_name = str(user.name)
+        target_user_id_str = str(user.user_id)
+
+        # 检查 name 唯一（其他 user 同名 → 409）
+        if (
+            session.query(User)
+            .filter(
+                func.lower(User.name) == new_name.lower(),
+                User.id != user_id,
+            )
+            .first()
+            is not None
+        ):
+            logger.warning(
+                f"WebUI 修改用户名失败：user_id={user_id}，reason=name_conflict "
+                f"new_name={new_name} client_ip={client_ip}"
+            )
+            return api_error(
+                status_code=409,
+                code="conflict",
+                message="用户名称已被占用",
+                details=[{"field": "name", "message": "用户名称已被占用"}],
+            )
+
+        user.name = new_name
+        session.commit()
+        serialized_user = _serialize_user(user)
+        name_changed = new_name != original_name
+        logger.info(
+            f"WebUI 修改用户名成功：user_id={_mask_qq(target_user_id_str)} "
+            f"old_name={original_name} new_name={new_name} "
+            f"client_ip={client_ip} user_agent={user_agent!r}"
+        )
+    except Exception as exc:
+        session.rollback()
+        logger.exception(
+            f"WebUI 修改用户名异常：user_id={user_id}，reason={exc} "
+            f"client_ip={client_ip}"
+        )
+        return api_error(
+            status_code=500,
+            code="internal_error",
+            message="内部错误",
+        )
+    finally:
+        session.close()
+
+    # DB commit 成功后，name 实际变化时 best-effort broadcast 白名单 rename；
+    # broadcast 异常不回滚 DB，仅在 server_results 中反映。
+    if name_changed:
+        try:
+            server_results = await _broadcast_whitelist_rename(
+                original_name, new_name
+            )
+            success_count = sum(1 for r in server_results if r["success"])
+            logger.info(
+                f"WebUI 修改用户名白名单同步完成：user_id={_mask_qq(target_user_id_str)} "
+                f"old_name={original_name} new_name={new_name} "
+                f"success={success_count}/{len(server_results)} "
+                f"client_ip={client_ip}"
+            )
+        except Exception as broadcast_exc:
+            logger.exception(
+                f"WebUI 修改用户名 broadcast 异常：user_id={_mask_qq(target_user_id_str)} "
+                f"old_name={original_name} new_name={new_name} "
+                f"reason={broadcast_exc} client_ip={client_ip}"
+            )
+            server_results = []
+    else:
+        logger.info(
+            f"WebUI 修改用户名跳过白名单同步：user_id={_mask_qq(target_user_id_str)} "
+            f"name={new_name} action=noop client_ip={client_ip}"
+        )
+
+    return api_success(
+        data={"user": serialized_user, "server_results": server_results}
+    )
 
 
 @router.post("/webui/api/users/{user_id}/change-password")

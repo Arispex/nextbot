@@ -39,6 +39,16 @@
   const deleteModalCancelButton = document.getElementById("delete-modal-cancel-btn");
   const deleteModalConfirmButton = document.getElementById("delete-modal-confirm-btn");
 
+  const changeNameModalNode = document.getElementById("change-name-modal");
+  const changeNameModalAlertNode = document.getElementById("change-name-modal-alert");
+  const changeNameModalAlertMessageNode = document.getElementById("change-name-modal-alert-message");
+  const changeNameModalCloseButton = document.getElementById("change-name-modal-close-btn");
+  const changeNameModalCancelButton = document.getElementById("change-name-modal-cancel-btn");
+  const changeNameModalConfirmButton = document.getElementById("change-name-modal-confirm-btn");
+  const changeNameTargetNameNode = document.getElementById("change-name-target-name");
+  const changeNameTargetQqNode = document.getElementById("change-name-target-qq");
+  const changeNameInput = document.getElementById("change-name-input");
+
   const changePasswordModalNode = document.getElementById("change-password-modal");
   const changePasswordModalAlertNode = document.getElementById("change-password-modal-alert");
   const changePasswordModalAlertMessageNode = document.getElementById("change-password-modal-alert-message");
@@ -53,6 +63,7 @@
 
   const fieldUserId = document.getElementById("field-user-id");
   const fieldName = document.getElementById("field-name");
+  const fieldNameEditHint = document.getElementById("field-name-edit-hint");
   const fieldCoins = document.getElementById("field-coins");
   const fieldSignTotal = document.getElementById("field-sign-total");
   const fieldSignStreak = document.getElementById("field-sign-streak");
@@ -111,6 +122,15 @@
       changePasswordInput &&
       changePasswordConfirmInput &&
       changePasswordGenerateButton &&
+      changeNameModalNode &&
+      changeNameModalAlertNode &&
+      changeNameModalAlertMessageNode &&
+      changeNameModalCloseButton &&
+      changeNameModalCancelButton &&
+      changeNameModalConfirmButton &&
+      changeNameTargetNameNode &&
+      changeNameTargetQqNode &&
+      changeNameInput &&
       fieldUserId &&
       fieldName &&
       fieldCoins &&
@@ -145,6 +165,8 @@
   let changePasswordUser = null;
   let changePasswordSaving = false;
   let changePasswordRevealTimer = null;
+  let changeNameUser = null;
+  let changeNameSaving = false;
   let currentPage = 1;
   let currentPerPage = Number(perPageSelect.value || 10);
   let currentMeta = { total: 0, page: 1, per_page: currentPerPage, total_pages: 0 };
@@ -593,6 +615,17 @@
         window.location.href = "/webui/warehouse?user_id=" + encodeURIComponent(user.user_id);
       });
 
+      const changeNameButton = document.createElement("button");
+      changeNameButton.type = "button";
+      changeNameButton.className = "btn action-btn";
+      changeNameButton.textContent = "修改用户名";
+      changeNameButton.title = "修改用户名";
+      changeNameButton.dataset.action = "change-name";
+      changeNameButton.dataset.userId = String(user.id);
+      changeNameButton.addEventListener("click", () => {
+        openChangeNameModal(user);
+      });
+
       const changePasswordButton = document.createElement("button");
       changePasswordButton.type = "button";
       changePasswordButton.className = "btn action-btn";
@@ -614,6 +647,7 @@
       actions.appendChild(syncButton);
       actions.appendChild(warehouseButton);
       actions.appendChild(banButton);
+      actions.appendChild(changeNameButton);
       actions.appendChild(changePasswordButton);
       actions.appendChild(deleteButton);
       actionCell.appendChild(actions);
@@ -911,6 +945,132 @@
     }
   };
 
+  const setChangeNameModalAlert = (message = "", type = "info") => {
+    const text = String(message || "").trim();
+    if (!text) {
+      changeNameModalAlertNode.className = "alert hidden modal-alert";
+      changeNameModalAlertMessageNode.textContent = "";
+      return;
+    }
+    const normalizedType = ["success", "error", "warning", "info"].includes(type)
+      ? type
+      : "info";
+    changeNameModalAlertNode.className = `alert ${normalizedType} modal-alert`;
+    changeNameModalAlertMessageNode.textContent = text;
+  };
+
+  const openChangeNameModal = (user) => {
+    changeNameUser = user;
+    changeNameSaving = false;
+    changeNameModalConfirmButton.disabled = false;
+    setChangeNameModalAlert("");
+    changeNameTargetNameNode.textContent = user.name || "未命名用户";
+    changeNameTargetQqNode.textContent = user.user_id ? `（QQ：${maskQq(user.user_id)}）` : "";
+    changeNameInput.value = user.name || "";
+    openModalWithFocus(changeNameModalNode);
+  };
+
+  const closeChangeNameModal = (force = false) => {
+    if (changeNameSaving && !force) {
+      return;
+    }
+    changeNameInput.value = "";
+    setChangeNameModalAlert("");
+    closeModalAndRestoreFocus(changeNameModalNode);
+    if (force || !changeNameSaving) {
+      changeNameUser = null;
+    }
+  };
+
+  const confirmChangeName = async () => {
+    if (!changeNameUser || changeNameSaving) {
+      return;
+    }
+    const targetUser = changeNameUser;
+    const newName = String(changeNameInput.value || "").trim();
+
+    if (!newName) {
+      setChangeNameModalAlert("修改失败，用户名不能为空", "error");
+      changeNameInput.focus();
+      return;
+    }
+    if (newName.length > MAX_USER_NAME_LENGTH) {
+      setChangeNameModalAlert(`修改失败，用户名称过长，最多 ${MAX_USER_NAME_LENGTH} 个字符`, "error");
+      changeNameInput.focus();
+      return;
+    }
+    if (/^\d+$/.test(newName)) {
+      setChangeNameModalAlert("修改失败，用户名称不能为纯数字", "error");
+      changeNameInput.focus();
+      return;
+    }
+    if (!USER_NAME_PATTERN.test(newName)) {
+      setChangeNameModalAlert("修改失败，用户名称不能包含符号，只能使用中文、英文和数字", "error");
+      changeNameInput.focus();
+      return;
+    }
+
+    changeNameSaving = true;
+    changeNameModalConfirmButton.disabled = true;
+    setChangeNameModalAlert("保存中…", "info");
+
+    try {
+      const responsePayload = await api.apiRequest(
+        `/webui/api/users/${targetUser.id}/change-name`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify({ name: newName }),
+          action: "修改",
+          expectedStatus: 200,
+        }
+      );
+
+      const result = api.unwrapData(responsePayload) || {};
+      const serverResults = Array.isArray(result.server_results) ? result.server_results : [];
+
+      const lines = ["修改成功"];
+      if (serverResults.length) {
+        lines.push("服务器白名单：");
+        for (let i = 0; i < serverResults.length; i++) {
+          const item = serverResults[i];
+          const serverId = String(item.server_id || "?");
+          const serverName = String(item.server_name || "未知服务器");
+          if (item.success) {
+            const extra = item.reason ? "（" + item.reason + "）" : "";
+            lines.push(serverId + "." + serverName + "：成功" + extra);
+          } else {
+            const failReason = String(item.reason || "");
+            if (failReason) {
+              lines.push(serverId + "." + serverName + "：失败，" + failReason);
+            } else {
+              lines.push(serverId + "." + serverName + "：失败");
+            }
+          }
+        }
+      }
+
+      closeChangeNameModal(true);
+      setStatus(lines.join("\n"), "success");
+
+      // 用返回 user 局部更新对应行，避免触发 loadUsers 全表重拉
+      if (result && result.user && updateUserStateById(result.user)) {
+        renderTable();
+      } else {
+        await loadUsers({ clearStatus: false });
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "修改失败";
+      setChangeNameModalAlert(message, "error");
+    } finally {
+      changeNameSaving = false;
+      changeNameModalConfirmButton.disabled = false;
+    }
+  };
+
   const confirmChangePassword = async () => {
     if (!changePasswordUser || changePasswordSaving) {
       return;
@@ -1059,6 +1219,11 @@
       modalSaveButton.textContent = "保存";
       fieldUserId.value = user.user_id;
       fieldName.value = user.name;
+      // 改名拎到独立 dialog，编辑 dialog 中 name 字段仅展示（readonly）
+      fieldName.readOnly = true;
+      if (fieldNameEditHint) {
+        fieldNameEditHint.hidden = false;
+      }
       fieldCoins.value = String(user.coins);
       fieldSignTotal.value = String(user.sign_total);
       fieldSignStreak.value = String(user.sign_streak);
@@ -1069,6 +1234,11 @@
       modalSaveButton.textContent = "创建";
       fieldUserId.value = "";
       fieldName.value = "";
+      // 创建模式 name 可编辑
+      fieldName.readOnly = false;
+      if (fieldNameEditHint) {
+        fieldNameEditHint.hidden = true;
+      }
       fieldCoins.value = "0";
       fieldSignTotal.value = "0";
       fieldSignStreak.value = "0";
@@ -1620,11 +1790,31 @@
     }
   });
 
+  changeNameModalCloseButton.addEventListener("click", () => {
+    closeChangeNameModal();
+  });
+  changeNameModalCancelButton.addEventListener("click", () => {
+    closeChangeNameModal();
+  });
+  changeNameModalConfirmButton.addEventListener("click", () => {
+    void confirmChangeName();
+  });
+  changeNameModalNode.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+    if (target.dataset.changeNameModalClose === "1") {
+      closeChangeNameModal();
+    }
+  });
+
   // M-10：modal 注册到统一 ESC dispatcher，仅栈顶 modal 响应
   registerModalCloser(modalNode, () => closeModal());
   registerModalCloser(deleteModalNode, () => closeDeleteModal());
   registerModalCloser(banModalNode, () => closeBanModal());
   registerModalCloser(changePasswordModalNode, () => closeChangePasswordModal());
+  registerModalCloser(changeNameModalNode, () => closeChangeNameModal());
 
   window.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") return;
