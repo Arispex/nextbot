@@ -138,6 +138,9 @@ class User(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     user_id: Mapped[str] = mapped_column(String, nullable=False, unique=True)
     name: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    # BCrypt hash（与 TShock 同款 cost=7），可空：旧用户尚未 backfill 时为 NULL。
+    # 明文密码不在 bot 侧持久化；注册时 hash 后丢弃，临时私聊推送一次给用户自存。
+    password_hash: Mapped[Optional[str]] = mapped_column(String, nullable=True, default=None)
     coins: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     last_sign_date: Mapped[str] = mapped_column(String, nullable=False, default="")
     sign_streak: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
@@ -463,6 +466,7 @@ def init_db() -> None:
     Base.metadata.create_all(engine)
     _run_migration("command_config", ensure_command_config_schema)
     _run_migration("user_signin", ensure_user_signin_schema)
+    _run_migration("user_password_hash", ensure_user_password_hash_schema)
     _run_migration("sign_record", ensure_sign_record_schema)
     _run_migration("sign_record_unique", ensure_sign_record_unique_schema)
     _run_migration("user_sign_record_index", ensure_user_sign_record_index_schema)
@@ -680,6 +684,30 @@ def ensure_user_signin_schema() -> None:
                 f"清理 user.signed_today 字段失败（SQLite 版本={sqlite3.sqlite_version}，"
                 f"需要 ≥ 3.35），保留列不阻断启动: {exc}"
             )
+
+
+def ensure_user_password_hash_schema() -> None:
+    """启动时确保 user 表上有 password_hash 列（旧库升级）。
+
+    SQLite ALTER TABLE ADD COLUMN 幂等：先 PRAGMA 检查再 ALTER，缺列才加。
+    新建库由 Base.metadata.create_all 直接带上该列，本函数 no-op。
+
+    失败仅 logger.warning 不阻断启动（_run_migration 包装层兜底）。
+    """
+    if not DB_PATH.exists():
+        return
+
+    engine = get_engine()
+    with engine.begin() as conn:
+        rows = conn.execute(sa_text('PRAGMA table_info("user")')).fetchall()
+        if not rows:
+            return
+
+        columns = {str(row[1]) for row in rows}
+        if "password_hash" not in columns:
+            conn.execute(sa_text(
+                'ALTER TABLE "user" ADD COLUMN "password_hash" TEXT'
+            ))
 
 
 def ensure_sign_record_schema() -> None:
