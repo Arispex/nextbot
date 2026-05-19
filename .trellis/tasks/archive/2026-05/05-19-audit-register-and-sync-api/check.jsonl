@@ -1,0 +1,2 @@
+{"file": ".trellis/tasks/05-19-audit-register-and-sync-api/prd.md", "reason": "Full audit scope + exclusion list + self-fix policy."}
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend quality baseline."}

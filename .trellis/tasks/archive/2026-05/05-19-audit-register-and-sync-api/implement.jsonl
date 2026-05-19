@@ -1,0 +1,2 @@
+{"file": ".trellis/tasks/05-19-audit-register-and-sync-api/prd.md", "reason": "Audit scope: 2 commits, 4 files; exclude intentional ADR decisions; self-fix or write findings."}
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend quality baseline for review."}
