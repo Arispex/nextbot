@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-4.md`
-- **Total Sessions**: 192
-- **Last Active**: 2026-05-18
+- **Total Sessions**: 193
+- **Last Active**: 2026-05-19
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-4.md` | ~1262 | Active |
+| `journal-4.md` | ~1295 | Active |
 | `journal-3.md` | ~1984 | Archived |
 | `journal-2.md` | ~1973 | Archived |
 | `journal-1.md` | ~1999 | Archived |
@@ -32,6 +32,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 193 | 2026-05-19 | feat: 注册账号自动创建 TShock 账号 + 旧用户 hash 迁移 | `1aa4bff` | `main` |
 | 192 | 2026-05-18 | fix: WebUI 创建用户补 push + 修复 _sync_user_whitelist 错误端点 | `62af1f9` | `main` |
 | 191 | 2026-05-18 | fix: WebUI 删除/改名用户补 server 白名单 push | `46a3692` | `main` |
 | 190 | 2026-05-17 | refactor: 删除 我的背包/用户背包 的 send_link 参数 | `66fc472` | `main` |

@@ -1260,3 +1260,36 @@ webui_users_create 在 commit 后调 _sync_user_whitelist broadcast 白名单 ad
 ### Next Steps
 
 - None - task complete
+
+
+## Session 193: feat: 注册账号自动创建 TShock 账号 + 旧用户 hash 迁移
+
+**Date**: 2026-05-19
+**Task**: feat: 注册账号自动创建 TShock 账号 + 旧用户 hash 迁移
+**Branch**: `main`
+
+### Summary
+
+User.password_hash (nullable) + ensure_user_password_hash_schema migration。新注册流程：secrets 生成 16 位 [A-Za-z0-9] 随机密码 → bcrypt cost=7 hash 写 DB → 并行 broadcast 白名单 push + /v2/users/create push → OneBot 临时私聊推送明文密码 → 群仅回 注册成功 + 私聊提示。所有失败仅 console log。启动 hook _migrate_legacy_users_password_hash 静默 backfill 旧用户 (NULL hash → 随机 hash，不调 server / 不私聊)。bcrypt $2a$07$ 与 TShock 100% 互操作。check 全 18 项 PASS。私聊文案统一 emoji 风格 (✅/👤/🔑/🎮/ℹ️) + /login 命令模板嵌密码 + 服务器自动登入说明 + 修改密码救济提示。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `1aa4bff` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
