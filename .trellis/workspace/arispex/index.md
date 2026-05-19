@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-4.md`
-- **Total Sessions**: 198
+- **Total Sessions**: 199
 - **Last Active**: 2026-05-19
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-4.md` | ~1461 | Active |
+| `journal-4.md` | ~1494 | Active |
 | `journal-3.md` | ~1984 | Archived |
 | `journal-2.md` | ~1973 | Archived |
 | `journal-1.md` | ~1999 | Archived |
@@ -32,6 +32,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 199 | 2026-05-19 | refactor: 删除 WebUI ban/unban/delete 的 owner 保护 | `6dfcc92` | `main` |
 | 198 | 2026-05-19 | feat: WebUI 用户修改密码功能 | `06bf025` | `main` |
 | 197 | 2026-05-19 | feat: sync API users[] 加 ban_reason 字段 | `d5adb0d` | `main` |
 | 196 | 2026-05-19 | feat: WebUI 创建用户加密码字段 + TShock create push | `8825841`, `d3b1fa2` | `main` |

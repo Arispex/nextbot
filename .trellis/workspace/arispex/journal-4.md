@@ -1459,3 +1459,36 @@ WebUI 用户列表每行加 修改密码 按钮 → dialog（密码 + 确认 + �
 ### Next Steps
 
 - None - task complete
+
+
+## Session 199: refactor: 删除 WebUI ban/unban/delete 的 owner 保护
+
+**Date**: 2026-05-19
+**Task**: refactor: 删除 WebUI ban/unban/delete 的 owner 保护
+**Branch**: `main`
+
+### Summary
+
+webui_users.py 删除 delete / ban / unban 3 个 handler 的 owner 保护 if-return block（每段 if str(user.user_id) in get_owner_ids() → 403 owner_protected）。共 -27 行。update handler 的 owner 保护保留（不在 scope）。get_owner_ids import 保留（update 仍用）。行为变更：admin 现可在 WebUI 直接 ban/unban/delete owner。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `6dfcc92` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
