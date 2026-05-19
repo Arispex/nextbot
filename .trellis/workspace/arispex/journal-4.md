@@ -1426,3 +1426,36 @@ webui_sync.py 单文件 +12/-6：SQL projection 加 User.ban_reason；payload �
 ### Next Steps
 
 - None - task complete
+
+
+## Session 198: feat: WebUI 用户修改密码功能
+
+**Date**: 2026-05-19
+**Task**: feat: WebUI 用户修改密码功能
+**Branch**: `main`
+
+### Summary
+
+WebUI 用户列表每行加 修改密码 按钮 → dialog（密码 + 确认 + 生成按钮 crypto.getRandomValues 16 位 [A-Za-z0-9] 3s reveal）→ POST /webui/api/users/{id}/change-password → 后端 _hash_password 写 DB → broadcast _update_tshock_user_password_on_all_servers 调 /v2/users/update?user=name&type=name&password=plaintext → response {user, server_results}。Q3=B：endpoint 无 owner 保护（与 ban/unban/delete 模式偏离，故意如此）。check 22 项 PASS + 1 项 self-fix（前端 action 文案 修改密码 → 修改，遵循 动词不含对象名 规范）。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `06bf025` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
