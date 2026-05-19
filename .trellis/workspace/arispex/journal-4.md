@@ -1326,3 +1326,36 @@ User.password_hash (nullable) + ensure_user_password_hash_schema migration。新
 ### Next Steps
 
 - None - task complete
+
+
+## Session 195: audit + fixes: 注册账号 + sync API 复审（修 5/15 项）
+
+**Date**: 2026-05-19
+**Task**: audit + fixes: 注册账号 + sync API 复审（修 5/15 项）
+**Branch**: `main`
+
+### Summary
+
+trellis-check 审计 commit 1aa4bff + d015756 共发现 15 项 findings (2 Critical / 3 High / 5 Medium / 3 Low / 6 Info)。用户决定：跳过 Critical（明文密码进 URL/HTTP——部署边界可控）；修 F-3 私聊失败回执如实告知 + F-4 schema migration fail-fast + F-5 启动迁移改 NO-OP（保持 NULL 语义统一，废除占位 hash P1 决策）+ F-6 DEBUG log 警告注释 + F-9 Cache-Control 从 no-cache 收紧到 no-store private。Footprint 2 files +51 / -55。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `00dc194` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

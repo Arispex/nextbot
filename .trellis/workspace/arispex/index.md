@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-4.md`
-- **Total Sessions**: 194
+- **Total Sessions**: 195
 - **Last Active**: 2026-05-19
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-4.md` | ~1328 | Active |
+| `journal-4.md` | ~1361 | Active |
 | `journal-3.md` | ~1984 | Archived |
 | `journal-2.md` | ~1973 | Archived |
 | `journal-1.md` | ~1999 | Archived |
@@ -32,6 +32,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 195 | 2026-05-19 | audit + fixes: 注册账号 + sync API 复审（修 5/15 项） | `00dc194` | `main` |
 | 194 | 2026-05-19 | feat: WebUI sync snapshot API (ETag-based pull sync) | `d015756` | `main` |
 | 193 | 2026-05-19 | feat: 注册账号自动创建 TShock 账号 + 旧用户 hash 迁移 | `1aa4bff` | `main` |
 | 192 | 2026-05-18 | fix: WebUI 创建用户补 push + 修复 _sync_user_whitelist 错误端点 | `62af1f9` | `main` |
