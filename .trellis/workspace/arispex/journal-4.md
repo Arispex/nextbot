@@ -1393,3 +1393,36 @@ WebUI 创建用户 dialog 加 password / confirm 字段 + 生成按钮（crypto.
 ### Next Steps
 
 - None - task complete
+
+
+## Session 197: feat: sync API users[] 加 ban_reason 字段
+
+**Date**: 2026-05-19
+**Task**: feat: sync API users[] 加 ban_reason 字段
+**Branch**: `main`
+
+### Summary
+
+webui_sync.py 单文件 +12/-6：SQL projection 加 User.ban_reason；payload 每个 user 加 ban_reason 字段（"" 或封禁原因）；ETag canonical state 同步加入 ban_reason 让客户端能感知封禁原因变化。Behavior：所有 C# poll client 下次 If-None-Match 不命中 → 一次 200 全量响应 → 之后稳定 304，可接受的一次性冲击。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d5adb0d` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
