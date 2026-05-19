@@ -182,6 +182,10 @@ async def _send_temp_private_password(
     """通过 OneBot 临时会话私聊把账号密码推给用户。
 
     群成员临时会话无需加好友（共享群即可）。失败仅 log warn 不抛、不 log 密码本身。
+
+    ⚠️ 部署警告：本函数构造的 message 字符串含明文密码。NoneBot 在 LOG_LEVEL=DEBUG 时
+    会通过 OneBot adapter 将 outgoing call_api payload 写入日志。生产环境必须保持
+    LOG_LEVEL >= INFO；切勿在生产开启 DEBUG，否则明文密码会泄漏到 bot 日志文件。
     """
     masked = _mask_user_id(user_id)
     message = (
@@ -209,61 +213,28 @@ async def _send_temp_private_password(
 
 
 def _migrate_legacy_users_password_hash() -> None:
-    """启动时一次性把 `password_hash IS NULL` 的旧用户 backfill 一个随机 hash。
+    """旧用户 password_hash backfill —— 现已 NO-OP。
 
-    仅写 bot DB，不调任何 server API、不私聊。设计理由：旧用户可能已在各 server
-    手动注册过 TShock 账号，机器人不该用随机密码 overwrite。本步只把 DB schema
-    状态对齐（NULL → 有 hash 占位），实际密码协调留给未来的「修改密码」命令。
+    设计修订（F-5 audit findings）：
+    - 旧用户 / WebUI 创建用户保持 password_hash=NULL
+    - sync API 输出 NULL → C# 端跳过该用户的 TShock 账号同步
+    - 用户必须通过「修改密码」命令设置真实密码
 
-    幂等：再次启动时已 backfill 的用户 hash 不为 NULL，循环为空。
-    迁移失败（hash 写不进 DB）→ 跳过该用户，下次启动重试（仍 NULL）。
+    此函数保留作为占位 + 兼容 startup hook，不再做实际写入。仅 count + log
+    （运维可见多少用户尚未设密码）。
     """
     session = get_session()
-    total = 0
-    success_hash = 0
     try:
-        legacy_users = (
-            session.query(User).filter(User.password_hash.is_(None)).all()
+        null_count = (
+            session.query(User)
+            .filter(User.password_hash.is_(None))
+            .count()
         )
-        total = len(legacy_users)
-        if total == 0:
-            logger.info("旧用户密码迁移：total=0 跳过（无 NULL hash 用户）")
-            return
-
-        for user in legacy_users:
-            try:
-                plaintext = _generate_random_password()
-                user.password_hash = _hash_password(plaintext)
-                # 立即丢弃明文引用；不 log、不返回、不持久化
-                del plaintext
-                success_hash += 1
-                logger.info(
-                    f"旧用户密码迁移：user_id={_mask_user_id(str(user.user_id))} "
-                    f"name={user.name} hash_set=true"
-                )
-            except Exception as exc:  # noqa: BLE001
-                logger.warning(
-                    f"旧用户密码迁移失败：user_id={_mask_user_id(str(user.user_id))} "
-                    f"name={user.name} reason={exc!r}（下次启动重试）"
-                )
-        # 批量 commit 一次（即使部分用户 hash 失败，成功的也要落盘）
-        try:
-            session.commit()
-        except Exception as commit_exc:  # noqa: BLE001
-            try:
-                session.rollback()
-            except Exception:  # noqa: BLE001
-                logger.exception("旧用户密码迁移 rollback 自身抛错")
-            logger.warning(
-                f"旧用户密码迁移 commit 失败：reason={commit_exc!r}（下次启动重试）"
-            )
-            success_hash = 0
+        logger.info(
+            f"旧用户密码迁移：跳过（设计修订后保持 NULL）。null_hash_count={null_count}"
+        )
     finally:
         session.close()
-
-    logger.info(
-        f"旧用户密码迁移完成：total={total} success_hash={success_hash}"
-    )
 
 
 @nonebot.get_driver().on_startup
@@ -274,13 +245,28 @@ async def _run_legacy_users_password_hash_migration() -> None:
     迁移之后执行，否则 password_hash 列尚不存在会 SELECT 失败。
     NoneBot 按注册顺序触发 startup hooks，bot.py 在 import 阶段先注册
     `_init_database`，本 plugin 后被 `load_plugins` 加载注册本 hook，顺序保证正确。
+
+    F-4 fail-fast：先 PRAGMA 校验 password_hash 列存在；若 schema migration 失败，
+    raise 让 bot 启动彻底停下，避免在 schema 损坏状态下继续运行。
     """
     try:
+        session = get_session()
+        try:
+            from sqlalchemy import text as sa_text
+            rows = session.execute(sa_text('PRAGMA table_info("user")')).fetchall()
+            columns = {row[1] for row in rows}
+            if "password_hash" not in columns:
+                raise RuntimeError(
+                    "user.password_hash 列缺失 —— "
+                    "ensure_user_password_hash_schema migration 可能失败。请检查启动日志。"
+                )
+        finally:
+            session.close()
+
         _migrate_legacy_users_password_hash()
-    except Exception as exc:  # noqa: BLE001
-        logger.warning(
-            f"旧用户密码迁移异常（启动 hook 兜底）：reason={exc!r}（下次启动重试）"
-        )
+    except Exception as exc:
+        logger.exception(f"旧用户密码迁移启动失败：reason={exc}")
+        raise  # F-4: fail-fast，不允许 bot 在 schema 损坏状态下继续运行
 
 
 async def _sync_one_whitelist(
@@ -489,17 +475,27 @@ async def handle_add_whitelist(
             f"注册账号广播异常：user_id={_mask_user_id(user_id)} name={name} reason={exc!r}"
         )
 
-    # 临时私聊把明文密码推给用户；失败仅 log，不暴露给用户
+    # 临时私聊把明文密码推给用户；失败如实回执告知用户走「修改密码」重置
+    private_sent = False
     try:
-        await _send_temp_private_password(bot, user_id, name, plaintext_password)
+        private_sent = await _send_temp_private_password(
+            bot, user_id, name, plaintext_password
+        )
     except Exception as exc:  # noqa: BLE001
         logger.warning(
             f"临时私聊密码推送异常：user_id={_mask_user_id(user_id)} name={name} reason={exc!r}"
         )
+        private_sent = False
 
     # Defense-in-depth：明文密码已 hash 入库 + push + 私聊完成，立即释放栈上引用，
     # 防止后续 bot.send 异常被任何 capture-locals 的日志/采样工具一并落盘。
     plaintext_password = None
+
+    password_hint = (
+        "🔑 密码已通过私聊发送，请查收并妥善保存"
+        if private_sent
+        else "⚠️ 密码私聊发送失败（可能临时会话被屏蔽），请使用「修改密码」命令重置"
+    )
 
     logger.info(f"注册账号成功：user_id={user_id} name={name}")
     await bot.send(
@@ -509,7 +505,7 @@ async def handle_add_whitelist(
             [
                 f"{EMOJI_USER} 用户名称：{name}",
                 f"🆔 QQ：{user_id}",
-                "🔑 密码已通过私聊发送，请查收并妥善保存",
+                password_hint,
                 f"{STATUS_HINT} 如果进入服务器提示不在白名单中，群里发送「同步白名单」即可",
             ],
         ),

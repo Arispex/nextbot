@@ -100,7 +100,7 @@ async def webui_sync_snapshot(request: Request) -> Response:
     incoming = _parse_if_none_match(request.headers.get("if-none-match", ""))
     response_headers = {
         "ETag": f'"{etag}"',
-        "Cache-Control": "no-cache",
+        "Cache-Control": "no-store, private",
     }
 
     if incoming and incoming == etag:
