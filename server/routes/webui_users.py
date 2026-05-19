@@ -314,6 +314,44 @@ async def _sync_user_whitelist(user: User) -> list[dict[str, Any]]:
     ]
 
 
+async def _update_tshock_user_password_on_all_servers(
+    name: str, plaintext: str
+) -> list[BroadcastOutcome[str]]:
+    """对所有 server 调 /v2/users/update 改密码。返回 list[BroadcastOutcome[str]]。"""
+    session = get_session()
+    try:
+        servers = session.query(Server).order_by(Server.id.asc()).all()
+    finally:
+        session.close()
+    if not servers:
+        return []
+
+    async def _one(server: Server) -> BroadcastOutcome[str]:
+        try:
+            resp = await request_server_api(
+                server,
+                "/v2/users/update",
+                params={"user": name, "type": "name", "password": plaintext},
+            )
+        except TShockRequestError:
+            return BroadcastOutcome(
+                server=server, ok=False, detail="无法连接服务器", payload=None
+            )
+        if is_success(resp):
+            return BroadcastOutcome(
+                server=server, ok=True, detail="改密码成功", payload="updated"
+            )
+        return BroadcastOutcome(
+            server=server,
+            ok=False,
+            detail=get_error_reason(resp),
+            payload=None,
+        )
+
+    outcomes = await broadcast(servers, _one)
+    return outcomes
+
+
 async def _broadcast_whitelist_remove(name: str) -> list[dict[str, Any]]:
     """对所有 server 调用 /nextbot/whitelist/remove/<name>，返回 per-server 结果。
 
@@ -1201,3 +1239,107 @@ async def webui_users_unban(
         session.close()
 
     return api_success(data={"user": user_data, "server_results": server_results})
+
+
+@router.post("/webui/api/users/{user_id}/change-password")
+async def webui_users_change_password(
+    request: Request,
+    user_id: int = Path(..., ge=1),
+) -> JSONResponse:
+    """修改用户密码：bcrypt hash 写 DB + broadcast TShock /v2/users/update。
+
+    Q3=B 决策：本 endpoint **不**做 owner 保护，允许 admin 改 owner 密码。
+    """
+    payload, error_response = await read_json_object(request)
+    if error_response is not None:
+        return error_response
+    assert payload is not None
+
+    try:
+        plaintext_password = _normalize_password(payload.get("password"))
+    except UserPayloadValidationError as exc:
+        return _validation_error(exc)
+
+    client_ip = _client_ip(request)
+    user_agent = _user_agent(request)
+
+    # plaintext 立即 hash，缩短栈上 plaintext 生命周期；保留 plaintext 仅供 broadcast 用。
+    from nextbot.plugins.user_manager import _hash_password
+    password_hash = _hash_password(plaintext_password)
+
+    session = get_session()
+    serialized_user: dict[str, Any] = {}
+    tshock_results: list[dict[str, Any]] = []
+    target_name = ""
+    target_user_id_str = ""
+    try:
+        user = session.query(User).filter(User.id == user_id).first()
+        if user is None:
+            plaintext_password = ""
+            password_hash = ""
+            logger.warning(
+                f"WebUI 修改密码失败：user_id={user_id}，reason=用户不存在 "
+                f"client_ip={client_ip}"
+            )
+            return api_error(
+                status_code=404,
+                code="not_found",
+                message="用户不存在",
+            )
+
+        # 注意：本 endpoint 不检查 owner 保护（Q3=B 决策）
+
+        target_name = str(user.name)
+        target_user_id_str = str(user.user_id)
+        user.password_hash = password_hash
+        session.commit()
+        serialized_user = _serialize_user(user)
+        # hash 已落库，可清空
+        password_hash = ""
+        logger.info(
+            f"WebUI 修改密码成功：user_id={_mask_qq(target_user_id_str)} "
+            f"name={target_name} client_ip={client_ip} user_agent={user_agent!r}"
+        )
+    except Exception as exc:
+        session.rollback()
+        plaintext_password = ""
+        password_hash = ""
+        logger.exception(
+            f"WebUI 修改密码异常：user_id={user_id}，reason={exc} "
+            f"client_ip={client_ip}"
+        )
+        return api_error(
+            status_code=500,
+            code="internal_error",
+            message="内部错误",
+        )
+    finally:
+        session.close()
+
+    # DB commit 成功后，best-effort broadcast TShock update；
+    # broadcast 异常不回滚 DB，仅在 server_results 中反映。
+    try:
+        outcomes = await _update_tshock_user_password_on_all_servers(
+            target_name, plaintext_password
+        )
+        tshock_results = _outcomes_to_server_results(outcomes)
+        success_count = sum(1 for r in tshock_results if r["success"])
+        logger.info(
+            f"WebUI 修改密码 TShock 同步完成：user_id={_mask_qq(target_user_id_str)} "
+            f"name={target_name} "
+            f"tshock_success={success_count}/{len(tshock_results)} "
+            f"client_ip={client_ip}"
+        )
+    except Exception as broadcast_exc:
+        logger.exception(
+            f"WebUI 修改密码 broadcast 异常：user_id={_mask_qq(target_user_id_str)} "
+            f"name={target_name} reason={broadcast_exc} client_ip={client_ip}"
+        )
+        tshock_results = []
+    finally:
+        # plaintext 立即清空，无论 broadcast 成功还是异常
+        plaintext_password = ""
+
+    return api_success(
+        data={"user": serialized_user, "server_results": tshock_results}
+    )

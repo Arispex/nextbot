@@ -183,6 +183,60 @@
   </div>
 </div>
 
+<div id="change-password-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="change-password-modal-title">
+  <div class="modal-mask" data-change-password-modal-close="1"></div>
+  <div class="modal-card">
+    <div class="modal-head">
+      <h3 id="change-password-modal-title" class="modal-title">修改密码</h3>
+      <button id="change-password-modal-close-btn" type="button" class="btn btn-icon modal-close-btn" aria-label="关闭">✕</button>
+    </div>
+    <div id="change-password-modal-alert" class="alert hidden modal-alert" role="status" aria-live="polite">
+      <span id="change-password-modal-alert-message" class="alert-message"></span>
+    </div>
+    <div class="modal-body">
+      <p class="confirm-modal-text">
+        目标用户：<span id="change-password-target-name"></span>
+        <span id="change-password-target-qq" class="meta-id"></span>
+      </p>
+      <label class="form-item">
+        <span class="form-label">新密码 <span class="required">*</span></span>
+        <div class="input-with-action" style="display:flex;gap:8px;align-items:stretch;">
+          <input
+            id="change-password-input"
+            class="input"
+            type="password"
+            minlength="8"
+            autocomplete="new-password"
+            placeholder="至少 8 位"
+            style="flex:1;min-width:0;"
+          />
+          <button
+            id="change-password-generate-btn"
+            type="button"
+            class="btn"
+            title="随机生成 16 位密码"
+          >生成</button>
+        </div>
+      </label>
+      <label class="form-item">
+        <span class="form-label">确认密码 <span class="required">*</span></span>
+        <input
+          id="change-password-confirm"
+          class="input"
+          type="password"
+          minlength="8"
+          autocomplete="new-password"
+          placeholder="再次输入新密码"
+        />
+      </label>
+    </div>
+    <div class="modal-foot">
+      <button id="change-password-modal-cancel-btn" type="button" class="btn">取消</button>
+      <button id="change-password-modal-confirm-btn" type="button" class="btn btn-primary">保存</button>
+    </div>
+  </div>
+</div>
+
 <div id="ban-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="ban-modal-title">
   <div class="modal-mask" data-ban-modal-close="1"></div>
   <div class="modal-card confirm-modal-card">

@@ -39,6 +39,18 @@
   const deleteModalCancelButton = document.getElementById("delete-modal-cancel-btn");
   const deleteModalConfirmButton = document.getElementById("delete-modal-confirm-btn");
 
+  const changePasswordModalNode = document.getElementById("change-password-modal");
+  const changePasswordModalAlertNode = document.getElementById("change-password-modal-alert");
+  const changePasswordModalAlertMessageNode = document.getElementById("change-password-modal-alert-message");
+  const changePasswordModalCloseButton = document.getElementById("change-password-modal-close-btn");
+  const changePasswordModalCancelButton = document.getElementById("change-password-modal-cancel-btn");
+  const changePasswordModalConfirmButton = document.getElementById("change-password-modal-confirm-btn");
+  const changePasswordTargetNameNode = document.getElementById("change-password-target-name");
+  const changePasswordTargetQqNode = document.getElementById("change-password-target-qq");
+  const changePasswordInput = document.getElementById("change-password-input");
+  const changePasswordConfirmInput = document.getElementById("change-password-confirm");
+  const changePasswordGenerateButton = document.getElementById("change-password-generate-btn");
+
   const fieldUserId = document.getElementById("field-user-id");
   const fieldName = document.getElementById("field-name");
   const fieldCoins = document.getElementById("field-coins");
@@ -88,6 +100,17 @@
       deleteModalCloseButton &&
       deleteModalCancelButton &&
       deleteModalConfirmButton &&
+      changePasswordModalNode &&
+      changePasswordModalAlertNode &&
+      changePasswordModalAlertMessageNode &&
+      changePasswordModalCloseButton &&
+      changePasswordModalCancelButton &&
+      changePasswordModalConfirmButton &&
+      changePasswordTargetNameNode &&
+      changePasswordTargetQqNode &&
+      changePasswordInput &&
+      changePasswordConfirmInput &&
+      changePasswordGenerateButton &&
       fieldUserId &&
       fieldName &&
       fieldCoins &&
@@ -119,6 +142,9 @@
   let deleteSaving = false;
   let banningUser = null;
   let banSaving = false;
+  let changePasswordUser = null;
+  let changePasswordSaving = false;
+  let changePasswordRevealTimer = null;
   let currentPage = 1;
   let currentPerPage = Number(perPageSelect.value || 10);
   let currentMeta = { total: 0, page: 1, per_page: currentPerPage, total_pages: 0 };
@@ -567,6 +593,15 @@
         window.location.href = "/webui/warehouse?user_id=" + encodeURIComponent(user.user_id);
       });
 
+      const changePasswordButton = document.createElement("button");
+      changePasswordButton.type = "button";
+      changePasswordButton.className = "btn action-btn";
+      changePasswordButton.textContent = "修改密码";
+      changePasswordButton.title = "修改密码";
+      changePasswordButton.addEventListener("click", () => {
+        openChangePasswordModal(user);
+      });
+
       const deleteButton = document.createElement("button");
       deleteButton.type = "button";
       deleteButton.className = "btn action-btn action-btn-danger";
@@ -579,6 +614,7 @@
       actions.appendChild(syncButton);
       actions.appendChild(warehouseButton);
       actions.appendChild(banButton);
+      actions.appendChild(changePasswordButton);
       actions.appendChild(deleteButton);
       actionCell.appendChild(actions);
 
@@ -794,6 +830,178 @@
     closeModalAndRestoreFocus(deleteModalNode);
     if (force || !deleteSaving) {
       deletingUser = null;
+    }
+  };
+
+  const setChangePasswordModalAlert = (message = "", type = "info") => {
+    const text = String(message || "").trim();
+    if (!text) {
+      changePasswordModalAlertNode.className = "alert hidden modal-alert";
+      changePasswordModalAlertMessageNode.textContent = "";
+      return;
+    }
+    const normalizedType = ["success", "error", "warning", "info"].includes(type)
+      ? type
+      : "info";
+    changePasswordModalAlertNode.className = `alert ${normalizedType} modal-alert`;
+    changePasswordModalAlertMessageNode.textContent = text;
+  };
+
+  // QQ 中间打码：仅保留首尾 2 位，防止 plaintext QQ 全文显示
+  const maskQq = (qq) => {
+    const text = String(qq || "");
+    if (text.length < 4) return text;
+    return text.slice(0, 2) + "***" + text.slice(-2);
+  };
+
+  const resetChangePasswordInputType = () => {
+    if (changePasswordRevealTimer) {
+      clearTimeout(changePasswordRevealTimer);
+      changePasswordRevealTimer = null;
+    }
+    changePasswordInput.type = "password";
+    changePasswordConfirmInput.type = "password";
+  };
+
+  const generateChangePassword = () => {
+    const buf = new Uint8Array(PASSWORD_GENERATED_LENGTH);
+    crypto.getRandomValues(buf);
+    let pwd = "";
+    for (let i = 0; i < buf.length; i++) {
+      pwd += PASSWORD_CHARSET[buf[i] % PASSWORD_CHARSET.length];
+    }
+    changePasswordInput.value = pwd;
+    changePasswordConfirmInput.value = pwd;
+    if (changePasswordRevealTimer) {
+      clearTimeout(changePasswordRevealTimer);
+    }
+    changePasswordInput.type = "text";
+    changePasswordConfirmInput.type = "text";
+    changePasswordRevealTimer = setTimeout(() => {
+      changePasswordInput.type = "password";
+      changePasswordConfirmInput.type = "password";
+      changePasswordRevealTimer = null;
+    }, PASSWORD_REVEAL_MS);
+  };
+
+  const openChangePasswordModal = (user) => {
+    changePasswordUser = user;
+    changePasswordSaving = false;
+    changePasswordModalConfirmButton.disabled = false;
+    setChangePasswordModalAlert("");
+    changePasswordTargetNameNode.textContent = user.name || "未命名用户";
+    changePasswordTargetQqNode.textContent = user.user_id ? `（QQ：${maskQq(user.user_id)}）` : "";
+    changePasswordInput.value = "";
+    changePasswordConfirmInput.value = "";
+    resetChangePasswordInputType();
+    openModalWithFocus(changePasswordModalNode);
+  };
+
+  const closeChangePasswordModal = (force = false) => {
+    if (changePasswordSaving && !force) {
+      return;
+    }
+    // 关 modal 时清空 input 并切回 password type，防止 plaintext 残留在 DOM
+    resetChangePasswordInputType();
+    changePasswordInput.value = "";
+    changePasswordConfirmInput.value = "";
+    closeModalAndRestoreFocus(changePasswordModalNode);
+    if (force || !changePasswordSaving) {
+      changePasswordUser = null;
+    }
+  };
+
+  const confirmChangePassword = async () => {
+    if (!changePasswordUser || changePasswordSaving) {
+      return;
+    }
+    const targetUser = changePasswordUser;
+    const pwd = String(changePasswordInput.value || "");
+    const pwdConfirm = String(changePasswordConfirmInput.value || "");
+
+    if (!pwd) {
+      setChangePasswordModalAlert("修改失败，密码不能为空", "error");
+      changePasswordInput.focus();
+      return;
+    }
+    if (pwd.length < 8) {
+      setChangePasswordModalAlert("修改失败，密码长度至少 8 位", "error");
+      changePasswordInput.focus();
+      return;
+    }
+    if (pwd !== pwdConfirm) {
+      setChangePasswordModalAlert("修改失败，两次输入的密码不一致", "error");
+      changePasswordConfirmInput.focus();
+      return;
+    }
+
+    changePasswordSaving = true;
+    changePasswordModalConfirmButton.disabled = true;
+    setChangePasswordModalAlert("保存中…", "info");
+
+    const body = { password: pwd };
+    try {
+      const responsePayload = await api.apiRequest(
+        `/webui/api/users/${targetUser.id}/change-password`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify(body),
+          action: "修改",
+          expectedStatus: 200,
+        }
+      );
+
+      // 提交成功后立即清空 plaintext，避免在 DOM / 引用中残留
+      changePasswordInput.value = "";
+      changePasswordConfirmInput.value = "";
+      resetChangePasswordInputType();
+      body.password = "";
+
+      const result = api.unwrapData(responsePayload) || {};
+      const serverResults = Array.isArray(result.server_results) ? result.server_results : [];
+      // 文案规范：去对象名 + 原样透传后端 reason
+      const lines = ["修改成功"];
+      if (serverResults.length) {
+        lines.push("服务器账号：");
+        for (let i = 0; i < serverResults.length; i++) {
+          const item = serverResults[i];
+          const serverId = String(item.server_id || "?");
+          const serverName = String(item.server_name || "未知服务器");
+          if (item.success) {
+            const extra = item.reason ? "（" + item.reason + "）" : "";
+            lines.push(serverId + "." + serverName + "：成功" + extra);
+          } else {
+            const failReason = String(item.reason || "");
+            if (failReason) {
+              lines.push(serverId + "." + serverName + "：失败，" + failReason);
+            } else {
+              lines.push(serverId + "." + serverName + "：失败");
+            }
+          }
+        }
+      }
+
+      closeChangePasswordModal(true);
+      setStatus(lines.join("\n"), "success");
+
+      // 局部更新 user 行（user 字段如 name 可能已变，但本接口只改密码；用 returned user 做一次同步是稳妥的）
+      if (result && result.user && updateUserStateById(result.user)) {
+        renderTable();
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "修改失败";
+      setChangePasswordModalAlert(message, "error");
+    } finally {
+      changePasswordSaving = false;
+      changePasswordModalConfirmButton.disabled = false;
+      // 失败路径也释放 body 上的 plaintext 引用（GC 兜底）
+      if (body && "password" in body) {
+        body.password = "";
+      }
     }
   };
 
@@ -1390,10 +1598,33 @@
     }
   });
 
-  // M-10：3 个 modal 注册到统一 ESC dispatcher，仅栈顶 modal 响应
+  changePasswordModalCloseButton.addEventListener("click", () => {
+    closeChangePasswordModal();
+  });
+  changePasswordModalCancelButton.addEventListener("click", () => {
+    closeChangePasswordModal();
+  });
+  changePasswordModalConfirmButton.addEventListener("click", () => {
+    void confirmChangePassword();
+  });
+  changePasswordGenerateButton.addEventListener("click", () => {
+    generateChangePassword();
+  });
+  changePasswordModalNode.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+    if (target.dataset.changePasswordModalClose === "1") {
+      closeChangePasswordModal();
+    }
+  });
+
+  // M-10：modal 注册到统一 ESC dispatcher，仅栈顶 modal 响应
   registerModalCloser(modalNode, () => closeModal());
   registerModalCloser(deleteModalNode, () => closeDeleteModal());
   registerModalCloser(banModalNode, () => closeBanModal());
+  registerModalCloser(changePasswordModalNode, () => closeChangePasswordModal());
 
   window.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") return;
