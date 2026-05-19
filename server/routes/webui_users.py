@@ -854,18 +854,6 @@ async def webui_users_delete(
                 message="用户不存在",
             )
 
-        # H-4：Owner 不可被删除
-        if str(user.user_id) in get_owner_ids():
-            logger.warning(
-                f"删除用户被拒：user_id={user_id}，reason=owner_protected "
-                f"client_ip={client_ip}"
-            )
-            return api_error(
-                status_code=403,
-                code="owner_protected",
-                message="不能对管理员执行此操作",
-            )
-
         deleted_user_id = str(user.user_id)
         deleted_name = str(user.name)
         session.delete(user)
@@ -1004,13 +992,6 @@ async def webui_users_ban(
         if user is None:
             return api_error(status_code=404, code="not_found", message="用户不存在")
 
-        if str(user.user_id) in get_owner_ids():
-            return api_error(
-                status_code=403,
-                code="owner_protected",
-                message="不能对管理员执行此操作",
-            )
-
         if user.is_banned:
             return api_error(
                 status_code=409,
@@ -1134,14 +1115,6 @@ async def webui_users_unban(
         user = session.query(User).filter(User.id == user_id).first()
         if user is None:
             return api_error(status_code=404, code="not_found", message="用户不存在")
-
-        # H-4：Owner 在业务上不应处于"被封禁"状态，但仍补一道边界
-        if str(user.user_id) in get_owner_ids():
-            return api_error(
-                status_code=403,
-                code="owner_protected",
-                message="不能对管理员执行此操作",
-            )
 
         if not user.is_banned:
             return api_error(status_code=409, code="conflict", message="该用户未被封禁")
