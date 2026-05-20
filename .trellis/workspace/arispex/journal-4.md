@@ -1525,3 +1525,36 @@ webui_users.py 删除 delete / ban / unban 3 个 handler 的 owner 保护 if-ret
 ### Next Steps
 
 - None - task complete
+
+
+## Session 201: 签到新增要求在线开关
+
+**Date**: 2026-05-20
+**Task**: 签到新增要求在线开关
+**Branch**: `main`
+
+### Summary
+
+给 economy.sign 命令新增 require_online: bool 参数（默认关），开启后并行查询所有服务器 /v2/server/status?players=true，strip+casefold 匹配 User.name 与 players[].nickname，任意命中即视为在线，否则返回 ❌ 签到失败，请先进入服务器。新增 helper _check_player_online_anywhere、预检在主 session 之外完成、TOCTOU 由原子条件 UPDATE 兜底、单台失败/空服务器列表均按未命中保守处理。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `37730d7` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
