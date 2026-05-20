@@ -1,0 +1,6 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend spec 索引，重构涉及多个模块前必读"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "per-server 失败文案合规 + 重试策略；reply_failure 用法"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "sync 触发/聚合/per-server 结果的 key=value INFO 日志格式"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "代码质量基线"}
+{"file": ".claude/guides/code-reuse-thinking-guide.md", "reason": "重构清死代码、避免重复实现 broadcast/aggregate 逻辑"}
+{"file": ".claude/guides/cross-layer-thinking-guide.md", "reason": "命令端/WebUI 后端/前端三层数据流一致性（sync_outcomes 同结构透传）"}
