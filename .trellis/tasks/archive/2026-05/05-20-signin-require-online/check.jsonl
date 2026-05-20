@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend spec 索引"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "代码质量检查清单"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "失败回复文案合规检查"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "日志格式合规检查"}
