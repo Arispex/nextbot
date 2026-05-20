@@ -48,7 +48,7 @@ def beijing_filename_timestamp() -> str:
     return beijing_now().strftime(_FILENAME_TIMESTAMP_FORMAT)
 
 
-def format_online_seconds(seconds: int) -> str:
+def format_duration_seconds(seconds: int) -> str:
     if seconds < 60:
         return f"{seconds} 秒"
     if seconds < 3600:
@@ -62,6 +62,12 @@ def format_online_seconds(seconds: int) -> str:
     if s:
         parts.append(f"{s} 秒")
     return " ".join(parts)
+
+
+def format_online_seconds(seconds: int) -> str:
+    # 历史 alias，保留供 leaderboard / player_query 等现有调用方使用。
+    # 在线时长与冷却剩余均为 duration 语义，共享同一格式化逻辑。
+    return format_duration_seconds(seconds)
 
 
 def seconds_until_next_beijing_midnight() -> float:

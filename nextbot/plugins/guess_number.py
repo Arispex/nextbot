@@ -14,7 +14,7 @@ from nextbot.message_parser import parse_command_args_with_fallback
 from nextbot.permissions import require_permission
 from nextbot.plugins.economy import MAX_COINS_AMOUNT, add_coins_with_cap
 from nextbot.screenshot_render import render_and_send_screenshot
-from nextbot.time_utils import db_now_utc_naive
+from nextbot.time_utils import db_now_utc_naive, format_duration_seconds
 from nextbot.text_utils import reply_failure, safe_at_segment_or_empty
 from server.screenshot import ScreenshotOptions
 from server.web_server import create_guess_number_page
@@ -184,7 +184,7 @@ async def handle_guess_number(bot: Bot, event: Event, arg: Message = CommandArg(
             if elapsed < timedelta(seconds=cooldown_seconds):
                 remaining = timedelta(seconds=cooldown_seconds) - elapsed
                 remaining_s = int(remaining.total_seconds())
-                await bot.send(event, at + " " + reply_failure("猜数字", f"冷却中，还需等待 {remaining_s} 秒"))
+                await bot.send(event, at + " " + reply_failure("猜数字", f"冷却中，还需等待 {format_duration_seconds(remaining_s)}"))
                 return
 
     session = get_session()
