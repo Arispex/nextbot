@@ -1558,3 +1558,36 @@ webui_users.py 删除 delete / ban / unban 3 个 handler 的 owner 保护 if-ret
 ### Next Steps
 
 - None - task complete
+
+
+## Session 202: 掷骰子/猜数字冷却时间显示支持分钟与小时
+
+**Date**: 2026-05-20
+**Task**: 掷骰子/猜数字冷却时间显示支持分钟与小时
+**Branch**: `main`
+
+### Summary
+
+在 time_utils 抽出通用 format_duration_seconds（搬出原 format_online_seconds 的秒/分/时格式化逻辑），format_online_seconds 改为薄包装保持兼容。dice/guess_number 的冷却失败回复改用 format_duration_seconds(remaining_s)，30s 冷却字节级一致，长冷却自动切换为'5 分钟' / '1 小时 1 分 5 秒'。leaderboard / player_query 等现有调用方零影响。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `47c56f9` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
