@@ -18,7 +18,7 @@ from nextbot.command_config import (
     get_current_param,
     raise_command_usage,
 )
-from nextbot.db import User, UserSignRecord, execute_rowcount, get_session
+from nextbot.db import Server, User, UserSignRecord, execute_rowcount, get_session
 from nextbot.message_parser import parse_command_args_with_fallback, resolve_user_id_arg_with_fallback
 from nextbot.permissions import require_permission
 from nextbot.screenshot_render import render_and_send_screenshot
@@ -33,6 +33,7 @@ from nextbot.text_utils import (
     safe_at_segment_or_empty,
 )
 from nextbot.time_utils import beijing_today_text
+from nextbot.tshock_api import TShockRequestError, is_success, request_server_api
 from server.screenshot import ScreenshotOptions
 from server.web_server import create_signin_page
 
@@ -236,6 +237,78 @@ def _resolve_streak_reward(
     )
 
 
+async def _check_player_online_anywhere(
+    player_name: str,
+) -> tuple[bool, int | None, int]:
+    """并行查询所有服务器，判断玩家是否在任意一台在线。
+
+    返回 ``(is_online, hit_server_id, probed_count)``：
+        - is_online：是否在任意一台服务器命中
+        - hit_server_id：命中的 server.id（未命中则 None）
+        - probed_count：本次探测的服务器数量（用于日志/可观测）
+
+    匹配规则：strip + casefold 比较 ``User.name`` 与每台服务器
+    ``/v2/server/status?players=true`` 的 ``players[].nickname``。
+
+    异常 / 单台失败均按"未命中"处理，不抛。服务器列表为空直接返回
+    ``(False, None, 0)``，调用方按"不在线"分支处理（PRD 决策）。
+    """
+    session = get_session()
+    try:
+        servers = session.query(Server).order_by(Server.id.asc()).all()
+    finally:
+        session.close()
+
+    probed_count = len(servers)
+    if probed_count == 0:
+        return False, None, 0
+
+    normalized_target = player_name.strip().casefold()
+    if not normalized_target:
+        # 空 player_name 永远不会命中任何 nickname；跳过 HTTP 直接返回未命中
+        return False, None, probed_count
+
+    async def _probe(server: Server) -> int | None:
+        """命中返回 server.id；未命中或失败返回 None。异常不外抛。"""
+        try:
+            response = await request_server_api(
+                server,
+                "/v2/server/status",
+                params={"players": "true"},
+            )
+        except TShockRequestError:
+            return None
+
+        if not is_success(response):
+            return None
+
+        players = response.payload.get("players")
+        if not isinstance(players, list):
+            return None
+
+        for player in players:
+            if not isinstance(player, dict):
+                continue
+            nickname = str(player.get("nickname", "")).strip().casefold()
+            if nickname and nickname == normalized_target:
+                return server.id
+        return None
+
+    # 简单可读为先：gather 等所有结果后再判定（PRD 默认推荐方案）
+    raw_results = await asyncio.gather(
+        *(_probe(s) for s in servers), return_exceptions=True
+    )
+    for server, raw in zip(servers, raw_results, strict=True):
+        if isinstance(raw, BaseException):
+            logger.warning(
+                f"签到在线探测异常：server_id={server.id} reason={raw!r}"
+            )
+            continue
+        if raw is not None:
+            return True, raw, probed_count
+    return False, None, probed_count
+
+
 @sign_matcher.handle()
 @command_control(
     command_key="economy.sign",
@@ -283,6 +356,13 @@ def _resolve_streak_reward(
             "default": 140,
             "min": 0,
         },
+        "require_online": {
+            "type": "bool",
+            "label": "要求在线",
+            "description": "开启后玩家必须在任意服务器在线才能签到",
+            "required": False,
+            "default": False,
+        },
     },
     category="经济系统",
 )
@@ -298,6 +378,7 @@ async def handle_sign(bot: Bot, event: Event, arg: Message = CommandArg()) -> No
     enable_streak = bool(get_current_param("enable_streak", True))
     streak_bonus_per_day = int(get_current_param("streak_bonus_per_day", 5))
     max_streak_bonus = int(get_current_param("max_streak_bonus", 50))
+    require_online = bool(get_current_param("require_online", False))
 
     if min_coins < 0 or max_coins < 0 or streak_bonus_per_day < 0 or max_streak_bonus < 0:
         await bot.send(event, at + " " + reply_failure("签到", "签到奖励配置不能为负数"))
@@ -308,6 +389,38 @@ async def handle_sign(bot: Bot, event: Event, arg: Message = CommandArg()) -> No
 
     user_id = event.get_user_id()
     today_text = _today_text()
+
+    # require_online：注册检查 + 今日已签检查通过后，并行 fan-out 查询所有服务器，
+    # 任意一台命中 → 视为在线，进入下方主流程；全部未命中 / 空服务器列表 → 失败。
+    # 检查在主 session 之外完成，避免 HTTP fan-out 期间长时间持有 DB 连接。
+    if require_online:
+        precheck_session = get_session()
+        try:
+            precheck_user = (
+                precheck_session.query(User).filter(User.user_id == user_id).first()
+            )
+            if precheck_user is None:
+                await bot.send(event, at + " " + reply_failure("签到", "请先注册账号"))
+                return
+            if str(precheck_user.last_sign_date or "").strip() == today_text:
+                await bot.send(event, at + " " + reply_failure("签到", "今天已经签到过了"))
+                return
+            player_name_for_check = str(precheck_user.name or "").strip()
+        finally:
+            precheck_session.close()
+
+        is_online, hit_server_id, probed_count = await _check_player_online_anywhere(
+            player_name_for_check,
+        )
+        logger.info(
+            f"签到在线检查：user_id={user_id} name={player_name_for_check} "
+            f"online={is_online} hit_server_id={hit_server_id} "
+            f"probed_count={probed_count}"
+        )
+        if not is_online:
+            await bot.send(event, at + " " + reply_failure("签到", "请先进入服务器"))
+            return
+
     session = get_session()
     try:
         user = session.query(User).filter(User.user_id == user_id).first()
