@@ -14,7 +14,7 @@ from nextbot.message_parser import parse_command_args_with_fallback, resolve_use
 from nextbot.permissions import require_permission
 from nextbot.plugins.economy import add_coins_with_cap
 from nextbot.screenshot_render import render_and_send_screenshot
-from nextbot.time_utils import db_now_utc_naive
+from nextbot.time_utils import db_now_utc_naive, format_duration_seconds
 from nextbot.text_utils import reply_failure, safe_at_segment_or_empty
 from server.screenshot import ScreenshotOptions
 from server.web_server import create_rob_page
@@ -220,11 +220,10 @@ async def handle_rob(bot: Bot, event: Event, arg: Message = CommandArg()) -> Non
             elapsed = now - robber.last_rob_time
             if elapsed < timedelta(minutes=cooldown_minutes):
                 remaining = timedelta(minutes=cooldown_minutes) - elapsed
-                remaining_minutes = int(remaining.total_seconds() // 60)
-                remaining_seconds = int(remaining.total_seconds() % 60)
+                remaining_s = int(remaining.total_seconds())
                 await bot.send(
                     event,
-                    at + " " + reply_failure("抢劫", f"冷却中，还需等待 {remaining_minutes} 分 {remaining_seconds} 秒"),
+                    at + " " + reply_failure("抢劫", f"冷却中，还需等待 {format_duration_seconds(remaining_s)}"),
                 )
                 return
 
