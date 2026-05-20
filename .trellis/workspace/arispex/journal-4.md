@@ -1624,3 +1624,36 @@ rob.py 复用 time_utils.format_duration_seconds，替换手算的 'M 分 S 秒'
 ### Next Steps
 
 - None - task complete
+
+
+## Session 204: 黑白名单/账号管理统一走 sync API
+
+**Date**: 2026-05-20
+**Task**: 黑白名单/账号管理统一走 sync API
+**Branch**: `main`
+
+### Summary
+
+大重构：把命令端 / WebUI 所有细粒度 push（添加白名单 / 创建 TShock 账号 / 改密 / 改名 / 加黑 / 解黑）统一替换为 trigger_sync_all_servers()。新增 nextbot/sync_orchestrator.py（debounce 500ms + leading+trailing future coalescing + HTTP 400 busy 1s×3 重试 + per-server fan-out + key=value 日志）。命令端切换 user_manager / ban / group_member_notify；删除「同步白名单」命令；WebUI 后端 6 个 endpoint 改返回 {sync_outcomes}，新增 POST /webui/api/sync/trigger 全局触发；WebUI 前端删每行同步按钮、右上角加全局按钮、统一 per-server toast；删除 17 个老 helper / endpoint / 命令。净 +653 / -1344。AC 10 项全 PASS。保留事件 API（允许/拒绝登入、踢人、广播、在线查询）与 snapshot endpoint。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `c42dd91` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
