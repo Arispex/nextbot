@@ -1591,3 +1591,36 @@ webui_users.py 删除 delete / ban / unban 3 个 handler 的 owner 保护 if-ret
 ### Next Steps
 
 - None - task complete
+
+
+## Session 203: 抢劫冷却时间显示支持分钟与小时
+
+**Date**: 2026-05-20
+**Task**: 抢劫冷却时间显示支持分钟与小时
+**Branch**: `main`
+
+### Summary
+
+rob.py 复用 time_utils.format_duration_seconds，替换手算的 'M 分 S 秒' 拼接，与 dice / guess_number 对齐。长冷却（cooldown_minutes >= 120）自动切换为'2 小时' / '1 小时 1 分 5 秒'等可读格式，短冷却仍输出'1 分钟'。仅 +3 / -4，不动业务逻辑。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d4e4518` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
