@@ -4,7 +4,6 @@ import re
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
-from urllib.parse import quote
 
 from fastapi import APIRouter, Path, Request
 from fastapi.responses import JSONResponse
@@ -12,15 +11,9 @@ from nonebot.log import logger
 from sqlalchemy import func, or_
 
 from nextbot.access_control import get_owner_ids
-from nextbot.db import Group, Server, User, get_session
-from nextbot.server_broadcast import BroadcastOutcome, broadcast
+from nextbot.db import Group, User, get_session
+from nextbot.sync_orchestrator import SyncOutcome, trigger_sync_all_servers
 from nextbot.time_utils import db_now_utc_naive, format_beijing_datetime
-from nextbot.tshock_api import (
-    TShockRequestError,
-    get_error_reason,
-    is_success,
-    request_server_api,
-)
 from server.routes import (
     api_error,
     api_success,
@@ -199,19 +192,22 @@ def _normalize_password(raw_value: Any) -> str:
     return pwd
 
 
-def _outcomes_to_server_results(
-    outcomes: list[BroadcastOutcome[str]],
-) -> list[dict[str, Any]]:
-    """把 broadcast outcomes 转成 {server_id, server_name, success, reason} 列表。"""
-    return [
-        {
-            "server_id": int(o.server.id),
-            "server_name": str(o.server.name),
-            "success": bool(o.ok),
-            "reason": "" if o.ok else str(o.detail or ""),
-        }
-        for o in outcomes
-    ]
+def _serialize_outcome(outcome: SyncOutcome) -> dict[str, Any]:
+    """序列化 sync orchestrator 的 outcome 给前端使用。
+
+    raw_payload 不返回前端（含 added/removed 等运维诊断数字，仅走 console 日志）。
+    """
+    return {
+        "server_id": int(outcome.server_id),
+        "server_name": str(outcome.server_name),
+        "ok": bool(outcome.ok),
+        "status": str(outcome.status),
+        "detail": str(outcome.detail or ""),
+    }
+
+
+def _serialize_outcomes(outcomes: list[SyncOutcome]) -> list[dict[str, Any]]:
+    return [_serialize_outcome(o) for o in outcomes]
 
 
 def _validate_payload(payload: dict[str, Any]) -> ValidatedUserPayload:
@@ -252,240 +248,6 @@ def _serialize_user(user: User) -> dict[str, Any]:
         "ban_reason": str(user.ban_reason or ""),
         "created_at": _format_created_at(user.created_at),
     }
-
-
-async def _sync_user_whitelist(user: User) -> list[dict[str, Any]]:
-    session = get_session()
-    try:
-        servers = session.query(Server).order_by(Server.id.asc()).all()
-    finally:
-        session.close()
-
-    # R2-T-1：原 `for server in servers:` 串行（N×5s timeout）改为 broadcast 并行，
-    # 避免前端 15s timeout 在 N≥3 服务器场景必触发的回归。
-    user_name = str(user.name)
-    # PC-3.1：URL path segment quote(safe="") 防 / ? # 注入（与命令端
-    # `_sync_one_whitelist` 防御对齐）
-    encoded_name = quote(user_name, safe="")
-
-    async def _one(server: Server) -> BroadcastOutcome[str]:
-        try:
-            response = await request_server_api(
-                server,
-                f"/nextbot/whitelist/add/{encoded_name}",
-            )
-        except TShockRequestError:
-            return BroadcastOutcome(
-                server=server, ok=False, detail="无法连接服务器", payload=None
-            )
-
-        if is_success(response):
-            return BroadcastOutcome(
-                server=server, ok=True, detail="同步成功", payload="added"
-            )
-        # 幂等：白名单已存在该 name 视为成功（与 _broadcast_whitelist_remove 的
-        # not_present 幂等模式对齐）。仅匹配 "already" + ("exist" | "whitelist")
-        # 避免裸 "exist" 误判 "does not exist" 类反向语义。
-        reason = get_error_reason(response)
-        lowered = reason.lower()
-        if "already" in lowered and ("exist" in lowered or "whitelist" in lowered):
-            return BroadcastOutcome(
-                server=server,
-                ok=True,
-                detail="已存在于白名单",
-                payload="already_exists",
-            )
-        return BroadcastOutcome(
-            server=server,
-            ok=False,
-            detail=reason,
-            payload=None,
-        )
-
-    outcomes = await broadcast(servers, _one)
-    return [
-        {
-            "server_id": int(o.server.id),
-            "server_name": str(o.server.name),
-            "success": o.ok,
-            "reason": "" if o.ok else o.detail,
-        }
-        for o in outcomes
-    ]
-
-
-async def _update_tshock_user_password_on_all_servers(
-    name: str, plaintext: str
-) -> list[BroadcastOutcome[str]]:
-    """对所有 server 调 /v2/users/update 改密码。返回 list[BroadcastOutcome[str]]。"""
-    session = get_session()
-    try:
-        servers = session.query(Server).order_by(Server.id.asc()).all()
-    finally:
-        session.close()
-    if not servers:
-        return []
-
-    async def _one(server: Server) -> BroadcastOutcome[str]:
-        try:
-            resp = await request_server_api(
-                server,
-                "/v2/users/update",
-                params={"user": name, "type": "name", "password": plaintext},
-            )
-        except TShockRequestError:
-            return BroadcastOutcome(
-                server=server, ok=False, detail="无法连接服务器", payload=None
-            )
-        if is_success(resp):
-            return BroadcastOutcome(
-                server=server, ok=True, detail="改密码成功", payload="updated"
-            )
-        return BroadcastOutcome(
-            server=server,
-            ok=False,
-            detail=get_error_reason(resp),
-            payload=None,
-        )
-
-    outcomes = await broadcast(servers, _one)
-    return outcomes
-
-
-async def _broadcast_whitelist_remove(name: str) -> list[dict[str, Any]]:
-    """对所有 server 调用 /nextbot/whitelist/remove/<name>，返回 per-server 结果。
-
-    幂等语义：若 server 报告白名单中不存在该 name，视为成功（与 ban/unban handler 的
-    already_exists / not_present 行为对齐）。broadcast 永不抛异常，
-    失败仅反映在结果集中。
-    """
-    session = get_session()
-    try:
-        servers = session.query(Server).order_by(Server.id.asc()).all()
-    finally:
-        session.close()
-
-    if not servers:
-        return []
-
-    # PC-3.1：URL path segment quote(safe="") 防 / ? # 注入
-    encoded = quote(name, safe="")
-
-    async def _one(server: Server) -> BroadcastOutcome[str]:
-        try:
-            response = await request_server_api(
-                server, f"/nextbot/whitelist/remove/{encoded}"
-            )
-        except TShockRequestError:
-            return BroadcastOutcome(
-                server=server, ok=False, detail="无法连接服务器", payload=None
-            )
-
-        if is_success(response):
-            return BroadcastOutcome(
-                server=server, ok=True, detail="移除成功", payload="removed"
-            )
-
-        reason = get_error_reason(response)
-        lowered = reason.lower()
-        if "not" in lowered and (
-            "found" in lowered or "exist" in lowered or "present" in lowered
-        ):
-            return BroadcastOutcome(
-                server=server, ok=True, detail="白名单中不存在", payload="not_present"
-            )
-        return BroadcastOutcome(
-            server=server, ok=False, detail=reason, payload=None
-        )
-
-    outcomes = await broadcast(servers, _one)
-    return [
-        {
-            "server_id": int(o.server.id),
-            "server_name": str(o.server.name),
-            "success": o.ok,
-            "reason": o.detail,
-        }
-        for o in outcomes
-    ]
-
-
-async def _broadcast_whitelist_rename(
-    old_name: str, new_name: str
-) -> list[dict[str, Any]]:
-    """改名同步：对每个 server 先 remove(old) 再 add(new)，返回 per-server 综合结果。
-
-    per-server ok = True 仅当：remove 成功（或白名单本不存在）AND add 成功。
-    broadcast 永不抛异常，失败仅反映在结果集中。
-    """
-    session = get_session()
-    try:
-        servers = session.query(Server).order_by(Server.id.asc()).all()
-    finally:
-        session.close()
-
-    if not servers:
-        return []
-
-    # PC-3.1：URL path segment quote(safe="")
-    encoded_old = quote(old_name, safe="")
-    encoded_new = quote(new_name, safe="")
-
-    async def _one(server: Server) -> BroadcastOutcome[str]:
-        # Step 1：remove 旧名（幂等：白名单中不存在视为成功）
-        try:
-            rm_resp = await request_server_api(
-                server, f"/nextbot/whitelist/remove/{encoded_old}"
-            )
-        except TShockRequestError:
-            return BroadcastOutcome(
-                server=server, ok=False, detail="无法连接服务器", payload=None
-            )
-        if not is_success(rm_resp):
-            reason = get_error_reason(rm_resp)
-            lowered = reason.lower()
-            is_not_present = "not" in lowered and (
-                "found" in lowered or "exist" in lowered or "present" in lowered
-            )
-            if not is_not_present:
-                return BroadcastOutcome(
-                    server=server,
-                    ok=False,
-                    detail=f"移除旧名失败：{reason}",
-                    payload=None,
-                )
-
-        # Step 2：add 新名
-        try:
-            add_resp = await request_server_api(
-                server, f"/nextbot/whitelist/add/{encoded_new}"
-            )
-        except TShockRequestError:
-            return BroadcastOutcome(
-                server=server, ok=False, detail="无法连接服务器", payload=None
-            )
-
-        if is_success(add_resp):
-            return BroadcastOutcome(
-                server=server, ok=True, detail="改名同步成功", payload="renamed"
-            )
-        return BroadcastOutcome(
-            server=server,
-            ok=False,
-            detail=f"新名添加失败：{get_error_reason(add_resp)}",
-            payload=None,
-        )
-
-    outcomes = await broadcast(servers, _one)
-    return [
-        {
-            "server_id": int(o.server.id),
-            "server_name": str(o.server.name),
-            "success": o.ok,
-            "reason": o.detail,
-        }
-        for o in outcomes
-    ]
 
 
 def _validation_error(exc: UserPayloadValidationError) -> JSONResponse:
@@ -580,11 +342,8 @@ async def webui_users_create(request: Request) -> JSONResponse:
     except UserPayloadValidationError as exc:
         return _validation_error(exc)
 
-    # plaintext 立即 hash，不长时间持有；hash 后保留 plaintext 仅为 TShock create 调用。
-    from nextbot.plugins.user_manager import (
-        _create_tshock_user_on_all_servers,
-        _hash_password,
-    )
+    # plaintext 立即 hash，不长时间持有；hash 已落库后栈上清空 plaintext。
+    from nextbot.plugins.user_manager import _hash_password
 
     password_hash = _hash_password(plaintext_password)
 
@@ -639,13 +398,11 @@ async def webui_users_create(request: Request) -> JSONResponse:
             f"创建用户成功：user_id={_mask_qq(user.user_id)}，name={user.name} "
             f"client_ip={client_ip} user_agent={user_agent!r}"
         )
-        # 在 session 关闭前序列化 user 并捕获 broadcast 所需字段，
-        # 避免 detached instance 访问漂移
         serialized_user = _serialize_user(user)
-        created_user = user
         created_user_id = str(user.user_id)
         created_name = str(user.name)
-        # hash 已写入 DB，栈上可立刻清空
+        # plaintext / hash 已落库，立刻清空栈上引用
+        plaintext_password = ""
         password_hash = ""
     except Exception as exc:
         session.rollback()
@@ -663,44 +420,19 @@ async def webui_users_create(request: Request) -> JSONResponse:
     finally:
         session.close()
 
-    # commit 已成功，best-effort 同步 server 白名单 + TShock 账号创建；
-    # broadcast 失败不回滚 DB（用户已创建），仅在 whitelist_results / tshock_results 中反映；
-    # 内部异常单独捕获，避免吞掉已成功的创建。两段结果独立展示给 admin，
-    # 便于一眼看清"白名单同步"与"账号创建"两类操作分别的成败分布。
-    try:
-        whitelist_results = await _sync_user_whitelist(created_user)
-        tshock_outcomes = await _create_tshock_user_on_all_servers(
-            created_name, plaintext_password
-        )
-        tshock_results = _outcomes_to_server_results(tshock_outcomes)
-    except Exception as broadcast_exc:
-        logger.exception(
-            f"WebUI 创建用户白名单 / TShock 同步异常：user_id={_mask_qq(created_user_id)} "
-            f"name={created_name} reason={broadcast_exc} client_ip={client_ip}"
-        )
-        # 保持 response shape 稳定：异常路径也返回两个空列表
-        whitelist_results = []
-        tshock_results = []
-    finally:
-        # plaintext 立即清空，无论 broadcast 成功还是异常
-        plaintext_password = ""
-
-    wl_success = sum(1 for r in whitelist_results if r["success"])
-    ts_success = sum(1 for r in tshock_results if r["success"])
+    # DB commit 成功后，统一走 sync orchestrator 让插件端 pull 主库快照 apply
+    # 白名单 + TShock 账号差异。orchestrator 永不抛异常，per-server 失败转 outcome。
+    sync_outcomes = await trigger_sync_all_servers(caller="webui_create")
     logger.info(
-        f"WebUI 创建用户白名单 + TShock 同步完成：user_id={_mask_qq(created_user_id)} "
-        f"name={created_name} "
-        f"whitelist_success={wl_success}/{len(whitelist_results)} "
-        f"tshock_success={ts_success}/{len(tshock_results)} "
-        f"client_ip={client_ip}"
+        f"WebUI 创建用户 sync 完成：user_id={_mask_qq(created_user_id)} "
+        f"name={created_name} server_count={len(sync_outcomes)} client_ip={client_ip}"
     )
 
     return api_success(
         status_code=201,
         data={
             "user": serialized_user,
-            "whitelist_results": whitelist_results,
-            "tshock_results": tshock_results,
+            "sync_outcomes": _serialize_outcomes(sync_outcomes),
         },
         headers={"Location": f"/webui/api/users/{serialized_user['id']}"},
     )
@@ -847,85 +579,14 @@ async def webui_users_delete(
     finally:
         session.close()
 
-    # commit 已成功，best-effort 清理 server 白名单；
-    # broadcast 失败不回滚 DB，仅在 server_results 中反映。
-    server_results = await _broadcast_whitelist_remove(deleted_name)
-    success_count = sum(1 for r in server_results if r["success"])
+    # DB 已删除，统一走 sync orchestrator 让插件端 apply 白名单 / 账号差异
+    sync_outcomes = await trigger_sync_all_servers(caller="webui_delete")
     logger.info(
-        f"WebUI 删除用户白名单清理完成：name={deleted_name} "
-        f"success={success_count}/{len(server_results)} client_ip={client_ip}"
+        f"WebUI 删除用户 sync 完成：name={deleted_name} "
+        f"server_count={len(sync_outcomes)} client_ip={client_ip}"
     )
 
-    return api_success(data={"server_results": server_results})
-
-
-@router.post("/webui/api/users/{user_id}/sync-whitelist")
-async def webui_users_sync_whitelist(
-    request: Request,
-    user_id: int = Path(..., ge=1),  # H-5
-) -> JSONResponse:
-    # M-1：补 request 参数；H-1：日志补 client_ip / user_agent
-    client_ip = _client_ip(request)
-    user_agent = _user_agent(request)
-
-    session = get_session()
-    try:
-        user = session.query(User).filter(User.id == user_id).first()
-    except Exception as exc:
-        logger.exception(
-            f"同步用户白名单异常：user_id={user_id}，reason={exc} "
-            f"client_ip={client_ip}"
-        )
-        return api_error(
-            status_code=500,
-            code="internal_error",
-            message="内部错误",
-        )
-    finally:
-        session.close()
-
-    if user is None:
-        logger.warning(
-            f"同步用户白名单失败：user_id={user_id}，reason=用户不存在 "
-            f"client_ip={client_ip}"
-        )
-        return api_error(
-            status_code=404,
-            code="not_found",
-            message="用户不存在",
-        )
-
-    try:
-        results = await _sync_user_whitelist(user)
-    except Exception as exc:
-        logger.exception(
-            f"同步用户白名单异常：user_id={user_id}，reason={exc} "
-            f"client_ip={client_ip}"
-        )
-        return api_error(
-            status_code=500,
-            code="internal_error",
-            message="内部错误",
-        )
-
-    if not results:
-        logger.warning(
-            f"同步用户白名单失败：user_id={user_id}，reason=暂无可同步的服务器 "
-            f"client_ip={client_ip}"
-        )
-    else:
-        logger.info(
-            f"同步用户白名单完成：user_id={user_id}，server_count={len(results)} "
-            f"client_ip={client_ip} user_agent={user_agent!r}"
-        )
-
-    return api_success(
-        data={
-            "user_id": str(user.user_id),
-            "name": str(user.name),
-            "results": results,
-        }
-    )
+    return api_success(data={"sync_outcomes": _serialize_outcomes(sync_outcomes)})
 
 
 @router.post("/webui/api/users/{user_id}/ban")
@@ -994,68 +655,10 @@ async def webui_users_ban(
     finally:
         session.close()
 
-    session = get_session()
-    try:
-        servers = session.query(Server).order_by(Server.id.asc()).all()
-    finally:
-        session.close()
-
-    # R2-T-2：原串行 `for server in servers:` 改为 broadcast 并行，
-    # 避免 N≥4 服务器场景下前端 15s timeout 必触发的回归。
-    async def _ban_one(server: Server) -> BroadcastOutcome[str]:
-        try:
-            check_response = await request_server_api(server, "/nextbot/blacklist")
-        except TShockRequestError:
-            return BroadcastOutcome(
-                server=server, ok=False, detail="无法连接服务器", payload=None
-            )
-
-        if is_success(check_response):
-            payload = check_response.payload if isinstance(check_response.payload, dict) else {}
-            entries = payload.get("entries", [])
-            already_exists = any(
-                isinstance(e, dict)
-                and str(e.get("username", "")).lower() == user_name.lower()
-                for e in (entries if isinstance(entries, list) else [])
-            )
-            if already_exists:
-                return BroadcastOutcome(
-                    server=server, ok=True, detail="已存在于黑名单中", payload=None
-                )
-
-        try:
-            response = await request_server_api(
-                server,
-                f"/nextbot/blacklist/add/{user_name}",
-                params={"reason": reason},
-            )
-        except TShockRequestError:
-            return BroadcastOutcome(
-                server=server, ok=False, detail="无法连接服务器", payload=None
-            )
-
-        if is_success(response):
-            return BroadcastOutcome(
-                server=server, ok=True, detail="", payload=None
-            )
-        return BroadcastOutcome(
-            server=server, ok=False, detail=get_error_reason(response), payload=None
-        )
-
-    outcomes = await broadcast(servers, _ban_one)
-    server_results: list[dict[str, Any]] = [
-        {
-            "server_id": int(o.server.id),
-            "server_name": str(o.server.name),
-            "success": o.ok,
-            "reason": o.detail,
-        }
-        for o in outcomes
-    ]
-
+    sync_outcomes = await trigger_sync_all_servers(caller="webui_ban")
     logger.info(
-        f"WebUI 封禁用户黑名单同步完成：user_id={_mask_qq(user_qq)} name={user_name} "
-        f"server_count={len(servers)} client_ip={client_ip}"
+        f"WebUI 封禁用户 sync 完成：user_id={_mask_qq(user_qq)} name={user_name} "
+        f"server_count={len(sync_outcomes)} client_ip={client_ip}"
     )
 
     session = get_session()
@@ -1065,7 +668,12 @@ async def webui_users_ban(
     finally:
         session.close()
 
-    return api_success(data={"user": user_data, "server_results": server_results})
+    return api_success(
+        data={
+            "user": user_data,
+            "sync_outcomes": _serialize_outcomes(sync_outcomes),
+        }
+    )
 
 
 @router.post("/webui/api/users/{user_id}/unban")
@@ -1113,66 +721,10 @@ async def webui_users_unban(
     finally:
         session.close()
 
-    session = get_session()
-    try:
-        servers = session.query(Server).order_by(Server.id.asc()).all()
-    finally:
-        session.close()
-
-    # R2-T-2：原串行 `for server in servers:` 改为 broadcast 并行，
-    # 避免 N≥4 服务器场景下前端 15s timeout 必触发的回归。
-    async def _unban_one(server: Server) -> BroadcastOutcome[str]:
-        try:
-            check_response = await request_server_api(server, "/nextbot/blacklist")
-        except TShockRequestError:
-            return BroadcastOutcome(
-                server=server, ok=False, detail="无法连接服务器", payload=None
-            )
-
-        if is_success(check_response):
-            payload = check_response.payload if isinstance(check_response.payload, dict) else {}
-            entries = payload.get("entries", [])
-            exists = any(
-                isinstance(e, dict)
-                and str(e.get("username", "")).lower() == user_name.lower()
-                for e in (entries if isinstance(entries, list) else [])
-            )
-            if not exists:
-                return BroadcastOutcome(
-                    server=server, ok=True, detail="不在黑名单中", payload=None
-                )
-
-        try:
-            response = await request_server_api(
-                server, f"/nextbot/blacklist/remove/{user_name}"
-            )
-        except TShockRequestError:
-            return BroadcastOutcome(
-                server=server, ok=False, detail="无法连接服务器", payload=None
-            )
-
-        if is_success(response):
-            return BroadcastOutcome(
-                server=server, ok=True, detail="", payload=None
-            )
-        return BroadcastOutcome(
-            server=server, ok=False, detail=get_error_reason(response), payload=None
-        )
-
-    outcomes = await broadcast(servers, _unban_one)
-    server_results: list[dict[str, Any]] = [
-        {
-            "server_id": int(o.server.id),
-            "server_name": str(o.server.name),
-            "success": o.ok,
-            "reason": o.detail,
-        }
-        for o in outcomes
-    ]
-
+    sync_outcomes = await trigger_sync_all_servers(caller="webui_unban")
     logger.info(
-        f"WebUI 解封用户黑名单同步完成：user_id={_mask_qq(user_qq)} name={user_name} "
-        f"server_count={len(servers)} client_ip={client_ip}"
+        f"WebUI 解封用户 sync 完成：user_id={_mask_qq(user_qq)} name={user_name} "
+        f"server_count={len(sync_outcomes)} client_ip={client_ip}"
     )
 
     session = get_session()
@@ -1182,7 +734,12 @@ async def webui_users_unban(
     finally:
         session.close()
 
-    return api_success(data={"user": user_data, "server_results": server_results})
+    return api_success(
+        data={
+            "user": user_data,
+            "sync_outcomes": _serialize_outcomes(sync_outcomes),
+        }
+    )
 
 
 @router.post("/webui/api/users/{user_id}/change-name")
@@ -1210,7 +767,6 @@ async def webui_users_change_name(
 
     session = get_session()
     serialized_user: dict[str, Any] = {}
-    server_results: list[dict[str, Any]] = []
     original_name = ""
     target_user_id_str = ""
     name_changed = False
@@ -1276,35 +832,26 @@ async def webui_users_change_name(
     finally:
         session.close()
 
-    # DB commit 成功后，name 实际变化时 best-effort broadcast 白名单 rename；
-    # broadcast 异常不回滚 DB，仅在 server_results 中反映。
+    # DB commit 成功后，name 实际变化时统一走 sync orchestrator；name 没变则跳过 sync。
+    sync_outcomes: list[SyncOutcome] = []
     if name_changed:
-        try:
-            server_results = await _broadcast_whitelist_rename(
-                original_name, new_name
-            )
-            success_count = sum(1 for r in server_results if r["success"])
-            logger.info(
-                f"WebUI 修改用户名白名单同步完成：user_id={_mask_qq(target_user_id_str)} "
-                f"old_name={original_name} new_name={new_name} "
-                f"success={success_count}/{len(server_results)} "
-                f"client_ip={client_ip}"
-            )
-        except Exception as broadcast_exc:
-            logger.exception(
-                f"WebUI 修改用户名 broadcast 异常：user_id={_mask_qq(target_user_id_str)} "
-                f"old_name={original_name} new_name={new_name} "
-                f"reason={broadcast_exc} client_ip={client_ip}"
-            )
-            server_results = []
+        sync_outcomes = await trigger_sync_all_servers(caller="webui_change_name")
+        logger.info(
+            f"WebUI 修改用户名 sync 完成：user_id={_mask_qq(target_user_id_str)} "
+            f"old_name={original_name} new_name={new_name} "
+            f"server_count={len(sync_outcomes)} client_ip={client_ip}"
+        )
     else:
         logger.info(
-            f"WebUI 修改用户名跳过白名单同步：user_id={_mask_qq(target_user_id_str)} "
+            f"WebUI 修改用户名跳过 sync：user_id={_mask_qq(target_user_id_str)} "
             f"name={new_name} action=noop client_ip={client_ip}"
         )
 
     return api_success(
-        data={"user": serialized_user, "server_results": server_results}
+        data={
+            "user": serialized_user,
+            "sync_outcomes": _serialize_outcomes(sync_outcomes),
+        }
     )
 
 
@@ -1330,19 +877,19 @@ async def webui_users_change_password(
     client_ip = _client_ip(request)
     user_agent = _user_agent(request)
 
-    # plaintext 立即 hash，缩短栈上 plaintext 生命周期；保留 plaintext 仅供 broadcast 用。
+    # plaintext 立即 hash，hash 落库后栈上清空 plaintext / hash 引用。
     from nextbot.plugins.user_manager import _hash_password
     password_hash = _hash_password(plaintext_password)
+    # plaintext 不再被 broadcast 使用（sync API 改走 hash），立刻清空
+    plaintext_password = ""
 
     session = get_session()
     serialized_user: dict[str, Any] = {}
-    tshock_results: list[dict[str, Any]] = []
     target_name = ""
     target_user_id_str = ""
     try:
         user = session.query(User).filter(User.id == user_id).first()
         if user is None:
-            plaintext_password = ""
             password_hash = ""
             logger.warning(
                 f"WebUI 修改密码失败：user_id={user_id}，reason=用户不存在 "
@@ -1369,7 +916,6 @@ async def webui_users_change_password(
         )
     except Exception as exc:
         session.rollback()
-        plaintext_password = ""
         password_hash = ""
         logger.exception(
             f"WebUI 修改密码异常：user_id={user_id}，reason={exc} "
@@ -1383,30 +929,35 @@ async def webui_users_change_password(
     finally:
         session.close()
 
-    # DB commit 成功后，best-effort broadcast TShock update；
-    # broadcast 异常不回滚 DB，仅在 server_results 中反映。
-    try:
-        outcomes = await _update_tshock_user_password_on_all_servers(
-            target_name, plaintext_password
-        )
-        tshock_results = _outcomes_to_server_results(outcomes)
-        success_count = sum(1 for r in tshock_results if r["success"])
-        logger.info(
-            f"WebUI 修改密码 TShock 同步完成：user_id={_mask_qq(target_user_id_str)} "
-            f"name={target_name} "
-            f"tshock_success={success_count}/{len(tshock_results)} "
-            f"client_ip={client_ip}"
-        )
-    except Exception as broadcast_exc:
-        logger.exception(
-            f"WebUI 修改密码 broadcast 异常：user_id={_mask_qq(target_user_id_str)} "
-            f"name={target_name} reason={broadcast_exc} client_ip={client_ip}"
-        )
-        tshock_results = []
-    finally:
-        # plaintext 立即清空，无论 broadcast 成功还是异常
-        plaintext_password = ""
+    # DB commit 成功后，统一走 sync orchestrator 让插件端 apply hash 差异
+    sync_outcomes = await trigger_sync_all_servers(caller="webui_change_password")
+    logger.info(
+        f"WebUI 修改密码 sync 完成：user_id={_mask_qq(target_user_id_str)} "
+        f"name={target_name} server_count={len(sync_outcomes)} client_ip={client_ip}"
+    )
 
     return api_success(
-        data={"user": serialized_user, "server_results": tshock_results}
+        data={
+            "user": serialized_user,
+            "sync_outcomes": _serialize_outcomes(sync_outcomes),
+        }
     )
+
+
+@router.post("/webui/api/sync/trigger")
+async def webui_sync_trigger(request: Request) -> JSONResponse:
+    """全局同步触发器：供 WebUI 右上角"同步"按钮使用。
+
+    与每行同步按钮的差别：本 endpoint 仅触发 sync 不依赖具体 user，让 admin 在不
+    需要操作具体用户的情况下也能把主库快照推到全部 server（例如修复偶发漂移）。
+
+    权限：与其它 webui /api/* 路由相同，由 webui auth middleware 兜底。
+    """
+    client_ip = _client_ip(request)
+    user_agent = _user_agent(request)
+    outcomes = await trigger_sync_all_servers(caller="webui_global_sync")
+    logger.info(
+        f"WebUI 全局 sync 完成：server_count={len(outcomes)} "
+        f"client_ip={client_ip} user_agent={user_agent!r}"
+    )
+    return api_success(data={"sync_outcomes": _serialize_outcomes(outcomes)})

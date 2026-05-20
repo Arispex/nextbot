@@ -2,8 +2,7 @@ import asyncio
 import re
 import secrets
 import string
-from typing import Any, Literal
-from urllib.parse import quote
+from typing import Any
 
 import bcrypt
 import nonebot
@@ -19,7 +18,10 @@ from nextbot.message_parser import (
 )
 from nextbot.permissions import require_permission
 from nextbot.screenshot_render import render_and_send_screenshot
-from nextbot.server_broadcast import BroadcastOutcome, broadcast
+from nextbot.sync_orchestrator import (
+    format_sync_outcomes_for_user,
+    trigger_sync_all_servers,
+)
 from nextbot.time_utils import format_beijing_datetime
 from server.screenshot import ScreenshotOptions
 from server.web_server import create_user_info_page
@@ -28,16 +30,9 @@ from sqlalchemy import func, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from nextbot.db import Server, User, UserSignRecord, execute_rowcount, get_session
-from nextbot.tshock_api import (
-    TShockRequestError,
-    get_error_reason,
-    is_success,
-    request_server_api,
-)
+from nextbot.db import User, UserSignRecord, execute_rowcount, get_session
 from nextbot.text_utils import (
     EMOJI_USER,
-    STATUS_HINT,
     reply_block,
     reply_failure,
     reply_success,
@@ -57,13 +52,10 @@ USER_INFO_SCREENSHOT_OPTIONS = ScreenshotOptions(
 _user_info_screenshot_semaphore = asyncio.Semaphore(2)
 
 add_matcher = on_command("注册账号")
-sync_matcher = on_command("同步白名单")
 info_matcher = on_command("用户信息")
 self_info_matcher = on_command("我的信息")
 rename_matcher = on_command("更改用户名称")
 MAX_USER_NAME_LENGTH = 16
-
-SyncStatus = Literal["new", "exists", "fail"]
 
 
 def _validate_user_name(name: str) -> str | None:
@@ -112,68 +104,6 @@ def _mask_user_id(user_id: str) -> str:
     if len(text) < 4:
         return text
     return text[:2] + "***" + text[-2:]
-
-
-async def _create_tshock_user_on_server(
-    server: Server, name: str, plaintext: str
-) -> BroadcastOutcome[str]:
-    """在单个 TShock server 上调 `/v2/users/create` 创建账号。
-
-    httpx 自动对 params 做 URL 编码，无需手动 quote。
-    """
-    try:
-        response = await request_server_api(
-            server,
-            "/v2/users/create",
-            params={"user": name, "group": "default", "password": plaintext},
-        )
-    except TShockRequestError as exc:
-        return BroadcastOutcome(
-            server=server, ok=False, detail=str(exc) or "无法连接服务器", payload=None
-        )
-
-    if is_success(response):
-        return BroadcastOutcome(
-            server=server, ok=True, detail="", payload=""
-        )
-
-    reason = get_error_reason(response)
-    return BroadcastOutcome(
-        server=server, ok=False, detail=reason, payload=None
-    )
-
-
-async def _create_tshock_user_on_all_servers(
-    name: str, plaintext: str
-) -> list[BroadcastOutcome[str]]:
-    """向所有 server 广播 `/v2/users/create`，失败仅 log，不抛。
-
-    与 `_sync_whitelist_to_all_servers` 对齐：失败用户视角不可见，仅 console log。
-    """
-    session = get_session()
-    try:
-        servers = session.query(Server).order_by(Server.id.asc()).all()
-    finally:
-        session.close()
-
-    if not servers:
-        return []
-
-    outcomes = await broadcast(
-        servers,
-        lambda srv: _create_tshock_user_on_server(srv, name, plaintext),
-    )
-    for outcome in outcomes:
-        if outcome.ok:
-            logger.info(
-                f"TShock 账号创建成功：server_id={outcome.server.id} name={name} result=ok"
-            )
-        else:
-            logger.warning(
-                f"TShock 账号创建失败：server_id={outcome.server.id} name={name} "
-                f"result=failed reason={outcome.detail}"
-            )
-    return outcomes
 
 
 async def _send_temp_private_password(
@@ -269,131 +199,6 @@ async def _run_legacy_users_password_hash_migration() -> None:
         raise  # F-4: fail-fast，不允许 bot 在 schema 损坏状态下继续运行
 
 
-async def _sync_one_whitelist(
-    server: Server, user_id: str, name: str
-) -> tuple[Server, SyncStatus, str]:
-    # 先查询白名单，判断用户名是否已存在
-    try:
-        wl_response = await request_server_api(server, "/nextbot/whitelist")
-    except TShockRequestError:
-        logger.info(
-            f"白名单同步失败：server_id={server.id} user_id={user_id} name={name} reason=无法连接服务器"
-        )
-        return server, "fail", "无法连接服务器"
-
-    if not is_success(wl_response):
-        reason = get_error_reason(wl_response)
-        logger.info(
-            f"白名单查询失败：server_id={server.id} user_id={user_id} name={name} "
-            f"http_status={wl_response.http_status} api_status={wl_response.api_status} reason={reason}"
-        )
-        return server, "fail", reason
-
-    existing_users = wl_response.payload.get("users", [])
-    if name in existing_users:
-        logger.info(
-            f"白名单已存在：server_id={server.id} user_id={user_id} name={name}"
-        )
-        return server, "exists", ""
-
-    # 添加白名单
-    # PC-3.1：URL path segment quote(safe="")，与 ban_core / player_query 加固对齐
-    encoded_name = quote(name, safe="")
-    try:
-        response = await request_server_api(
-            server,
-            f"/nextbot/whitelist/add/{encoded_name}",
-        )
-    except TShockRequestError:
-        logger.info(
-            f"白名单同步失败：server_id={server.id} user_id={user_id} name={name} reason=无法连接服务器"
-        )
-        return server, "fail", "无法连接服务器"
-
-    if is_success(response):
-        return server, "new", ""
-
-    reason = get_error_reason(response)
-    logger.info(
-        "白名单同步失败："
-        f"server_id={server.id} user_id={user_id} name={name} "
-        f"http_status={response.http_status} api_status={response.api_status} reason={reason}"
-    )
-    return server, "fail", reason
-
-
-async def _sync_whitelist_to_all_servers(
-    user_id: str, name: str
-) -> list[tuple[Server, SyncStatus, str]]:
-    session = get_session()
-    try:
-        servers = session.query(Server).order_by(Server.id.asc()).all()
-    finally:
-        session.close()
-
-    if not servers:
-        return []
-
-    # R4R-B.1：return_exceptions=True 防止任一 task 抛非 TShockRequestError 异常
-    # （如 CancelledError、内部 bug）时整个 gather cancel 其他任务，
-    # 与 shop / lottery 的 fan-out 模板对齐。
-    raw_results = await asyncio.gather(
-        *(_sync_one_whitelist(server, user_id, name) for server in servers),
-        return_exceptions=True,
-    )
-    results: list[tuple[Server, SyncStatus, str]] = []
-    for server, raw in zip(servers, raw_results, strict=True):
-        if isinstance(raw, BaseException):
-            logger.warning(
-                f"白名单同步异常：server_id={server.id} user_id={user_id} name={name} reason={raw!r}"
-            )
-            results.append((server, "fail", "同步异常"))
-        else:
-            results.append(raw)
-    return results
-
-
-async def _rename_one_whitelist(
-    server: Server, old_name: str, new_name: str
-) -> tuple[Server, bool, bool, str, str]:
-    """对单个服务器执行白名单 remove(old) + add(new)。
-
-    返回 (server, remove_ok, add_ok, remove_msg, add_msg)。
-    """
-    remove_ok = False
-    add_ok = False
-    remove_msg = ""
-    add_msg = ""
-
-    # 删除旧白名单
-    # PC-3.1：URL path segment quote(safe="")
-    encoded_old_name = quote(old_name, safe="")
-    try:
-        response = await request_server_api(
-            server, f"/nextbot/whitelist/remove/{encoded_old_name}",
-        )
-        remove_ok = is_success(response)
-        if not remove_ok:
-            remove_msg = get_error_reason(response)
-    except TShockRequestError:
-        remove_msg = "无法连接服务器"
-
-    # 添加新白名单
-    # PC-3.1：URL path segment quote(safe="")
-    encoded_new_name = quote(new_name, safe="")
-    try:
-        response = await request_server_api(
-            server, f"/nextbot/whitelist/add/{encoded_new_name}",
-        )
-        add_ok = is_success(response)
-        if not add_ok:
-            add_msg = get_error_reason(response)
-    except TShockRequestError:
-        add_msg = "无法连接服务器"
-
-    return server, remove_ok, add_ok, remove_msg, add_msg
-
-
 @add_matcher.handle()
 @command_control(
     command_key="user.register",
@@ -462,18 +267,10 @@ async def handle_add_whitelist(
     finally:
         session.close()
 
-    # 并行：白名单 push（旧逻辑保留）+ TShock 账号创建 push（新逻辑）。
-    # 任一失败仅 console log，不影响用户视角的"注册成功"。
-    try:
-        await asyncio.gather(
-            _sync_whitelist_to_all_servers(user_id, name),
-            _create_tshock_user_on_all_servers(name, plaintext_password),
-            return_exceptions=True,
-        )
-    except Exception as exc:  # noqa: BLE001
-        logger.warning(
-            f"注册账号广播异常：user_id={_mask_user_id(user_id)} name={name} reason={exc!r}"
-        )
+    # DB 已写入（含 password_hash），统一走 sync orchestrator 让插件端 pull 主库快照
+    # 并 apply 白名单 + TShock 账号差异。orchestrator 永不抛异常，per-server 异常会
+    # 转成 ok=False outcome，用户可见文案由 format_sync_outcomes_for_user 统一渲染。
+    sync_outcomes = await trigger_sync_all_servers(caller="register")
 
     # 临时私聊把明文密码推给用户；失败如实回执告知用户走「修改密码」重置
     private_sent = False
@@ -498,6 +295,7 @@ async def handle_add_whitelist(
     )
 
     logger.info(f"注册账号成功：user_id={user_id} name={name}")
+    sync_text = format_sync_outcomes_for_user(sync_outcomes)
     await bot.send(
         event,
         at + "\n" + reply_block(
@@ -506,59 +304,10 @@ async def handle_add_whitelist(
                 f"{EMOJI_USER} 用户名称：{name}",
                 f"🆔 QQ：{user_id}",
                 password_hint,
-                f"{STATUS_HINT} 如果进入服务器提示不在白名单中，群里发送「同步白名单」即可",
+                sync_text,
             ],
         ),
     )
-
-
-@sync_matcher.handle()
-@command_control(
-    command_key="user.whitelist.sync",
-    display_name="同步白名单",
-    permission="user.whitelist.sync",
-    description="将当前用户同步到所有服务器白名单",
-    usage="同步白名单",
-    category="用户系统",
-)
-@require_permission("user.whitelist.sync")
-async def handle_sync_whitelist(
-    bot: Bot, event: Event, arg: Message = CommandArg()
-):
-    args = parse_command_args_with_fallback(event, arg, "同步白名单")
-    if args:
-        raise_command_usage()
-
-    user_id = event.get_user_id()
-    at = safe_at_segment_or_empty(user_id)
-    session = get_session()
-    try:
-        user = session.query(User).filter(User.user_id == user_id).first()
-    finally:
-        session.close()
-
-    if user is None:
-        await bot.send(event, at + " " + reply_failure("同步", "未注册账号"))
-        return
-
-    results = await _sync_whitelist_to_all_servers(user_id, user.name)
-    if not results:
-        await bot.send(event, at + " " + reply_failure("同步", "暂无可同步的服务器"))
-        return
-
-    lines: list[str] = []
-    for server, status, reason in results:
-        if status == "exists":
-            lines.append(f"{server.id}.{server.name}：ℹ️ 已在白名单中")
-        elif status == "new":
-            lines.append(f"{server.id}.{server.name}：✅ 同步成功")
-        else:
-            lines.append(f"{server.id}.{server.name}：❌ 同步失败，{reason}")
-
-    logger.info(
-        f"同步白名单完成：user_id={user_id} name={user.name} server_count={len(results)}"
-    )
-    await bot.send(event, at + "\n" + reply_success("同步白名单") + "\n" + "\n".join(lines))
 
 
 def _get_sign_dates(session: Session, user_id: str, days: int) -> list[str]:
@@ -817,50 +566,14 @@ async def handle_rename(bot: Bot, event: Event, arg: Message = CommandArg()) -> 
         after={"name": new_name},
     )
 
-    session = get_session()
-    try:
-        servers = session.query(Server).order_by(Server.id.asc()).all()
-    finally:
-        session.close()
+    # DB 已写入新 name，统一走 sync orchestrator 让插件端 apply 白名单 rename。
+    sync_outcomes = await trigger_sync_all_servers(caller="rename")
 
     lines: list[str] = [
         reply_success("更改"),
         f"{EMOJI_USER} 用户 QQ：{target_user_id}",
         f"📝 旧名称：{old_name}",
         f"📝 新名称：{new_name}",
+        format_sync_outcomes_for_user(sync_outcomes),
     ]
-    if not servers:
-        lines.append("🖥️ 同步服务器白名单结果：ℹ️ 暂无服务器")
-    else:
-        lines.append("🖥️ 同步服务器白名单结果：")
-        # R4R-B.1：return_exceptions=True 防止任一 task 抛非 TShockRequestError
-        # 异常（如 CancelledError、内部 bug）时整个 gather cancel 其他任务。
-        raw_rename_results = await asyncio.gather(
-            *(_rename_one_whitelist(s, old_name, new_name) for s in servers),
-            return_exceptions=True,
-        )
-        for server, raw in zip(servers, raw_rename_results, strict=True):
-            if isinstance(raw, BaseException):
-                logger.warning(
-                    f"更改用户名称白名单同步异常：server_id={server.id} "
-                    f"old_name={old_name} new_name={new_name} reason={raw!r}"
-                )
-                lines.append(f"{server.id}.{server.name}：❌ 同步异常")
-                continue
-            _, remove_ok, add_ok, remove_msg, add_msg = raw
-            if remove_ok and add_ok:
-                lines.append(f"{server.id}.{server.name}：✅ 同步成功")
-            else:
-                details = []
-                details.append(
-                    f"移除旧白名单 {'✅ 成功' if remove_ok else '❌ 失败，' + remove_msg}"
-                )
-                details.append(
-                    f"添加新白名单 {'✅ 成功' if add_ok else '❌ 失败，' + add_msg}"
-                )
-                lines.append(f"{server.id}.{server.name}：{'；'.join(details)}")
-
-        logger.info(
-            f"更改用户名称白名单同步完成：user_id={target_user_id} old_name={old_name} new_name={new_name} server_count={len(servers)}"
-        )
     await bot.send(event, at + "\n" + "\n".join(lines))

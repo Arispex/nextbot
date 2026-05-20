@@ -10,10 +10,10 @@ from nextbot.audit import audit_permission_change
 from nextbot.ban_core import (
     apply_ban_to_db,
     apply_unban_to_db,
-    format_blacklist_add_lines,
-    format_blacklist_remove_lines,
-    sync_user_blacklist_remove,
-    sync_user_to_blacklist,
+)
+from nextbot.sync_orchestrator import (
+    format_sync_outcomes_for_user,
+    trigger_sync_all_servers,
 )
 from nextbot.command_config import (
     command_control,
@@ -116,20 +116,14 @@ async def handle_ban(bot: Bot, event: Event, arg: Message = CommandArg()) -> Non
         context={"target_name": result.user_name},
     )
 
-    outcomes = await sync_user_to_blacklist(result.user_name, reason)
+    sync_outcomes = await trigger_sync_all_servers(caller="ban")
 
     lines: list[str] = [
         reply_success("封禁"),
         f"{EMOJI_USER} 用户：{result.user_name}（{result.user_qq}）",
         f"📋 原因：{reason}",
+        format_sync_outcomes_for_user(sync_outcomes),
     ]
-    lines.extend(format_blacklist_add_lines(outcomes))
-
-    success_count = sum(1 for o in outcomes if o.ok)
-    logger.info(
-        f"封禁用户黑名单同步完成：operator_id={operator_id} target_user_id={result.user_qq} "
-        f"target_name={result.user_name} success={success_count}/{len(outcomes)}"
-    )
     await bot.send(event, at + "\n" + "\n".join(lines))
 
 
@@ -290,17 +284,11 @@ async def handle_unban(bot: Bot, event: Event, arg: Message = CommandArg()) -> N
         context={"target_name": result.user_name},
     )
 
-    outcomes = await sync_user_blacklist_remove(result.user_name)
+    sync_outcomes = await trigger_sync_all_servers(caller="unban")
 
     lines: list[str] = [
         reply_success("解封"),
         f"{EMOJI_USER} 用户：{result.user_name}（{result.user_qq}）",
+        format_sync_outcomes_for_user(sync_outcomes),
     ]
-    lines.extend(format_blacklist_remove_lines(outcomes))
-
-    success_count = sum(1 for o in outcomes if o.ok)
-    logger.info(
-        f"解封用户黑名单同步完成：operator_id={operator_id} target_user_id={result.user_qq} "
-        f"target_name={result.user_name} success={success_count}/{len(outcomes)}"
-    )
     await bot.send(event, at + "\n" + "\n".join(lines))

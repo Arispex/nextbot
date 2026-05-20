@@ -1,5 +1,6 @@
 (() => {
   const reloadButton = document.getElementById("reload-btn");
+  const globalSyncButton = document.getElementById("global-sync-btn");
   const addUserButton = document.getElementById("add-user-btn");
   const searchInput = document.getElementById("user-search");
 
@@ -76,6 +77,7 @@
 
   const requiredNodesReady = Boolean(
     reloadButton &&
+      globalSyncButton &&
       addUserButton &&
       searchInput &&
       statusNode &&
@@ -171,8 +173,7 @@
   let currentPerPage = Number(perPageSelect.value || 10);
   let currentMeta = { total: 0, page: 1, per_page: currentPerPage, total_pages: 0 };
   let reloadInFlight = false;
-
-  const syncResultMap = new Map();
+  let globalSyncInFlight = false;
 
   // M-5 / M-6 / M-7：搜索 debounce + AbortController + beforeunload 清理
   let searchDebounceTimer = null;
@@ -389,6 +390,39 @@
     }
   };
 
+  // 统一渲染 sync orchestrator 返回的 per-server outcomes 为 toast 多行文案。
+  // outcomes 元素结构：{server_id, server_name, ok, status, detail}
+  const renderSyncOutcomes = (outcomes) => {
+    if (!Array.isArray(outcomes) || outcomes.length === 0) {
+      return [];
+    }
+    const lines = ["同步服务器结果："];
+    for (const o of outcomes) {
+      const serverId = String(o?.server_id ?? "?");
+      const serverName = String(o?.server_name || "未知服务器");
+      if (o?.ok) {
+        if (o.status === "skipped") {
+          lines.push(`${serverId}.${serverName}：同步成功，无需同步`);
+        } else {
+          lines.push(`${serverId}.${serverName}：同步成功`);
+        }
+      } else {
+        const reason = String(o?.detail || "");
+        if (reason) {
+          lines.push(`${serverId}.${serverName}：同步失败，${reason}`);
+        } else {
+          lines.push(`${serverId}.${serverName}：同步失败`);
+        }
+      }
+    }
+    return lines;
+  };
+
+  const allSyncOk = (outcomes) =>
+    Array.isArray(outcomes) &&
+    outcomes.length > 0 &&
+    outcomes.every((o) => Boolean(o?.ok));
+
   const normalizeUser = (item) => ({
     id: Number(item?.id || 0),
     user_id: String(item?.user_id || ""),
@@ -575,22 +609,6 @@
         }
       });
 
-      const syncButton = document.createElement("button");
-      syncButton.type = "button";
-      syncButton.className = "btn action-btn action-btn-sync";
-      // M-13：sync 按钮 disable / textContent 与 syncResultMap 状态局部对齐
-      syncButton.dataset.role = "sync";
-      const syncState = syncResultMap.get(user.id);
-      if (syncState?.status === "loading") {
-        syncButton.disabled = true;
-        syncButton.textContent = "同步中…";
-      } else {
-        syncButton.textContent = "同步";
-      }
-      syncButton.addEventListener("click", () => {
-        void syncWhitelist(user);
-      });
-
       const banButton = document.createElement("button");
       banButton.type = "button";
       if (user.is_banned) {
@@ -644,7 +662,6 @@
       });
 
       actions.appendChild(editButton);
-      actions.appendChild(syncButton);
       actions.appendChild(warehouseButton);
       actions.appendChild(banButton);
       actions.appendChild(changeNameButton);
@@ -667,22 +684,6 @@
     }
 
     updatePagination();
-  };
-
-  // M-8 / M-13：局部更新某 user 行的 sync 按钮，避免 sync 状态切换触发全表重渲染
-  const updateSyncButtonForUser = (userId) => {
-    const row = tableBodyNode.querySelector(`tr[data-user-id="${CSS.escape(String(userId))}"]`);
-    if (!row) return;
-    const button = row.querySelector('button[data-role="sync"]');
-    if (!button) return;
-    const state = syncResultMap.get(userId);
-    if (state?.status === "loading") {
-      button.disabled = true;
-      button.textContent = "同步中…";
-    } else {
-      button.disabled = false;
-      button.textContent = "同步";
-    }
   };
 
   // M-9：用返回 user 局部更新 userStates 中对应一行，避免 ban/unban 后全表重拉
@@ -731,13 +732,6 @@
       currentPage = currentMeta.page;
       currentPerPage = currentMeta.per_page;
       userStates = users.map(normalizeUser);
-
-      const validIds = new Set(userStates.map((item) => item.id));
-      for (const key of [...syncResultMap.keys()]) {
-        if (!validIds.has(key)) {
-          syncResultMap.delete(key);
-        }
-      }
 
       renderTable();
       return true;
@@ -1030,31 +1024,16 @@
       );
 
       const result = api.unwrapData(responsePayload) || {};
-      const serverResults = Array.isArray(result.server_results) ? result.server_results : [];
+      const syncOutcomes = Array.isArray(result.sync_outcomes)
+        ? result.sync_outcomes
+        : [];
 
-      const lines = ["修改成功"];
-      if (serverResults.length) {
-        lines.push("服务器白名单：");
-        for (let i = 0; i < serverResults.length; i++) {
-          const item = serverResults[i];
-          const serverId = String(item.server_id || "?");
-          const serverName = String(item.server_name || "未知服务器");
-          if (item.success) {
-            const extra = item.reason ? "（" + item.reason + "）" : "";
-            lines.push(serverId + "." + serverName + "：成功" + extra);
-          } else {
-            const failReason = String(item.reason || "");
-            if (failReason) {
-              lines.push(serverId + "." + serverName + "：失败，" + failReason);
-            } else {
-              lines.push(serverId + "." + serverName + "：失败");
-            }
-          }
-        }
-      }
+      const lines = ["修改成功", ...renderSyncOutcomes(syncOutcomes)];
+      const toastType =
+        syncOutcomes.length && !allSyncOk(syncOutcomes) ? "warning" : "success";
 
       closeChangeNameModal(true);
-      setStatus(lines.join("\n"), "success");
+      setStatus(lines.join("\n"), toastType);
 
       // 用返回 user 局部更新对应行，避免触发 loadUsers 全表重拉
       if (result && result.user && updateUserStateById(result.user)) {
@@ -1122,31 +1101,15 @@
       body.password = "";
 
       const result = api.unwrapData(responsePayload) || {};
-      const serverResults = Array.isArray(result.server_results) ? result.server_results : [];
-      // 文案规范：去对象名 + 原样透传后端 reason
-      const lines = ["修改成功"];
-      if (serverResults.length) {
-        lines.push("服务器账号：");
-        for (let i = 0; i < serverResults.length; i++) {
-          const item = serverResults[i];
-          const serverId = String(item.server_id || "?");
-          const serverName = String(item.server_name || "未知服务器");
-          if (item.success) {
-            const extra = item.reason ? "（" + item.reason + "）" : "";
-            lines.push(serverId + "." + serverName + "：成功" + extra);
-          } else {
-            const failReason = String(item.reason || "");
-            if (failReason) {
-              lines.push(serverId + "." + serverName + "：失败，" + failReason);
-            } else {
-              lines.push(serverId + "." + serverName + "：失败");
-            }
-          }
-        }
-      }
+      const syncOutcomes = Array.isArray(result.sync_outcomes)
+        ? result.sync_outcomes
+        : [];
+      const lines = ["修改成功", ...renderSyncOutcomes(syncOutcomes)];
+      const toastType =
+        syncOutcomes.length && !allSyncOk(syncOutcomes) ? "warning" : "success";
 
       closeChangePasswordModal(true);
-      setStatus(lines.join("\n"), "success");
+      setStatus(lines.join("\n"), toastType);
 
       // 局部更新 user 行（user 字段如 name 可能已变，但本接口只改密码；用 returned user 做一次同步是稳妥的）
       if (result && result.user && updateUserStateById(result.user)) {
@@ -1393,58 +1356,18 @@
       closeModalAndRestoreFocus(modalNode);
       const reloaded = await loadUsers({ clearStatus: false });
       if (reloaded) {
-        // L-8：create 路径走双段独立展示（whitelist_results + tshock_results），
-        // update 路径继续 fallback 到 server_results（改名同步）
+        // create 路径：返回 sync_outcomes；update 路径无 sync_outcomes（编辑不触发 sync）
         const result = api.unwrapData(responsePayload) || {};
-        const whitelistResults = Array.isArray(result.whitelist_results)
-          ? result.whitelist_results
+        const syncOutcomes = Array.isArray(result.sync_outcomes)
+          ? result.sync_outcomes
           : [];
-        const tshockResults = Array.isArray(result.tshock_results)
-          ? result.tshock_results
-          : [];
-        const lines = [isEdit ? "更新成功" : "创建成功"];
-
-        const appendServerLines = (items) => {
-          for (let i = 0; i < items.length; i++) {
-            const item = items[i];
-            const serverId = String(item.server_id || "?");
-            const serverName = String(item.server_name || "未知服务器");
-            if (item.success) {
-              const extra = item.reason ? "（" + item.reason + "）" : "";
-              lines.push(serverId + "." + serverName + "：成功" + extra);
-            } else {
-              // L-9：原样透传后端 reason，detail 空时不拼"未知错误"
-              const failReason = String(item.reason || "");
-              if (failReason) {
-                lines.push(serverId + "." + serverName + "：失败，" + failReason);
-              } else {
-                lines.push(serverId + "." + serverName + "：失败");
-              }
-            }
-          }
-        };
-
-        if (whitelistResults.length || tshockResults.length) {
-          // create 路径：双段独立展示
-          if (whitelistResults.length) {
-            lines.push("服务器白名单：");
-            appendServerLines(whitelistResults);
-          }
-          if (tshockResults.length) {
-            lines.push("服务器账号：");
-            appendServerLines(tshockResults);
-          }
-        } else {
-          // update 路径（改名同步等）继续走 server_results
-          const serverResults = Array.isArray(result.server_results)
-            ? result.server_results
-            : [];
-          if (serverResults.length) {
-            lines.push("服务器白名单：");
-            appendServerLines(serverResults);
-          }
-        }
-        setStatus(lines.join("\n"), "success");
+        const lines = [
+          isEdit ? "更新成功" : "创建成功",
+          ...renderSyncOutcomes(syncOutcomes),
+        ];
+        const toastType =
+          syncOutcomes.length && !allSyncOk(syncOutcomes) ? "warning" : "success";
+        setStatus(lines.join("\n"), toastType);
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : isEdit ? "更新失败" : "创建失败";
@@ -1479,34 +1402,16 @@
       });
       const result = api.unwrapData(payload) || {};
 
-      syncResultMap.delete(targetUser.id);
       closeDeleteModal(true);
       const reloaded = await loadUsers({ clearStatus: false });
       if (reloaded) {
-        // L-8：toast 文案去对象名（CLAUDE.md 规范），mirror ban/unban 的 server_results 展示
-        var serverResults = Array.isArray(result.server_results) ? result.server_results : [];
-        var lines = ["删除成功"];
-        if (serverResults.length) {
-          lines.push("服务器白名单：");
-          for (var i = 0; i < serverResults.length; i++) {
-            var item = serverResults[i];
-            var serverId = String(item.server_id || "?");
-            var serverName = String(item.server_name || "未知服务器");
-            if (item.success) {
-              var extra = item.reason ? "（" + item.reason + "）" : "";
-              lines.push(serverId + "." + serverName + "：成功" + extra);
-            } else {
-              // L-9：原样透传后端 reason，detail 空时不拼"未知错误"
-              var failReason = String(item.reason || "");
-              if (failReason) {
-                lines.push(serverId + "." + serverName + "：失败，" + failReason);
-              } else {
-                lines.push(serverId + "." + serverName + "：失败");
-              }
-            }
-          }
-        }
-        setStatus(lines.join("\n"), "success");
+        const syncOutcomes = Array.isArray(result.sync_outcomes)
+          ? result.sync_outcomes
+          : [];
+        const lines = ["删除成功", ...renderSyncOutcomes(syncOutcomes)];
+        const toastType =
+          syncOutcomes.length && !allSyncOk(syncOutcomes) ? "warning" : "success";
+        setStatus(lines.join("\n"), toastType);
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : "删除失败";
@@ -1538,30 +1443,13 @@
       var payload = await api.apiRequest("/webui/api/users/" + user.id + "/" + endpoint, options);
       var result = api.unwrapData(payload);
 
-      var serverResults = Array.isArray(result.server_results) ? result.server_results : [];
-      // L-8：toast 文案去对象名（CLAUDE.md 规范）
-      var lines = [actionText + "成功"];
-      if (serverResults.length) {
-        lines.push("服务器黑名单：");
-        for (var i = 0; i < serverResults.length; i++) {
-          var item = serverResults[i];
-          var serverId = String(item.server_id || "?");
-          var serverName = String(item.server_name || "未知服务器");
-          if (item.success) {
-            var extra = item.reason ? "（" + item.reason + "）" : "";
-            lines.push(serverId + "." + serverName + "：成功" + extra);
-          } else {
-            // L-9：原样透传后端 reason，detail 空时不拼"未知错误"
-            var failReason = String(item.reason || "");
-            if (failReason) {
-              lines.push(serverId + "." + serverName + "：失败，" + failReason);
-            } else {
-              lines.push(serverId + "." + serverName + "：失败");
-            }
-          }
-        }
-      }
-      setStatus(lines.join("\n"), "success");
+      var syncOutcomes = Array.isArray(result.sync_outcomes)
+        ? result.sync_outcomes
+        : [];
+      var lines = [actionText + "成功"].concat(renderSyncOutcomes(syncOutcomes));
+      var toastType =
+        syncOutcomes.length && !allSyncOk(syncOutcomes) ? "warning" : "success";
+      setStatus(lines.join("\n"), toastType);
 
       // M-9：用返回 user 局部更新对应行，避免触发 loadUsers 全表重拉
       if (result && result.user && updateUserStateById(result.user)) {
@@ -1575,81 +1463,47 @@
     }
   };
 
-  const syncWhitelist = async (user) => {
-    // L-1：同步开始前重置该 user 的 entry，避免上一轮 failed 状态污染本轮显示
-    syncResultMap.set(user.id, {
-      status: "loading",
-      successCount: 0,
-      failedCount: 0,
-    });
-    // M-8：局部更新 sync 按钮，避免全表重渲染
-    updateSyncButtonForUser(user.id);
-    // M-14：进行时文案去对象名 + unicode 省略号
+  const triggerGlobalSync = async () => {
+    if (globalSyncInFlight) {
+      return;
+    }
+    globalSyncInFlight = true;
+    const originalText = globalSyncButton.textContent;
+    globalSyncButton.disabled = true;
+    globalSyncButton.textContent = "同步中…";
     setStatus("同步中…", "warning");
 
     try {
-      const payload = await api.apiRequest(`/webui/api/users/${user.id}/sync-whitelist`, {
+      const payload = await api.apiRequest("/webui/api/sync/trigger", {
         method: "POST",
         headers: { Accept: "application/json" },
         action: "同步",
         expectedStatus: 200,
       });
-      const result = api.unwrapData(payload);
-
-      const userName = String(result.name || user.name);
-      const syncResults = Array.isArray(result.results) ? result.results : [];
-      const lines = [`用户 ${userName} 白名单同步结果：`];
-      let successCount = 0;
-      let failedCount = 0;
-
-      if (!syncResults.length) {
-        lines.push("同步失败，暂无可同步的服务器");
+      const result = api.unwrapData(payload) || {};
+      const syncOutcomes = Array.isArray(result.sync_outcomes)
+        ? result.sync_outcomes
+        : [];
+      const lines = renderSyncOutcomes(syncOutcomes);
+      if (lines.length === 0) {
+        setStatus("同步成功，暂无服务器", "success");
       } else {
-        for (const item of syncResults) {
-          const serverId = String(item?.server_id ?? "?");
-          const serverName = String(item?.server_name || "未知服务器");
-          const success = Boolean(item?.success);
-          if (success) {
-            successCount += 1;
-            lines.push(`${serverId}.${serverName}：同步成功`);
-          } else {
-            failedCount += 1;
-            // L-9：原样透传后端 reason，detail 空时不拼"未知错误"
-            const reason = String(item?.reason || "");
-            if (reason) {
-              lines.push(`${serverId}.${serverName}：同步失败，${reason}`);
-            } else {
-              lines.push(`${serverId}.${serverName}：同步失败`);
-            }
-          }
-        }
+        const toastType = allSyncOk(syncOutcomes) ? "success" : "warning";
+        setStatus(lines.join("\n"), toastType);
       }
-
-      const hasFailure = failedCount > 0 || !syncResults.length;
-      if (hasFailure) {
-        syncResultMap.set(user.id, {
-          status: "failed",
-          successCount,
-          failedCount,
-        });
-      } else {
-        // L-1：完全成功后清理 entry，避免常驻 Map 占用内存
-        syncResultMap.delete(user.id);
-      }
-      setStatus(lines.join("\n"), hasFailure ? "error" : "success");
-      // M-8：仅局部更新 sync 按钮
-      updateSyncButtonForUser(user.id);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "同步失败";
-      syncResultMap.set(user.id, {
-        status: "failed",
-        successCount: 0,
-        failedCount: 0,
-      });
-      setStatus(message, "error");
-      updateSyncButtonForUser(user.id);
+      const message = error instanceof Error ? error.message : "未知错误";
+      setStatus(`同步失败，${message}`, "error");
+    } finally {
+      globalSyncInFlight = false;
+      globalSyncButton.disabled = false;
+      globalSyncButton.textContent = originalText;
     }
   };
+
+  globalSyncButton.addEventListener("click", () => {
+    void triggerGlobalSync();
+  });
 
   reloadButton.addEventListener("click", async () => {
     // L-7：reload 按钮 loading 状态 + 取消 pending search，避免点击连发 / debounce 风暴

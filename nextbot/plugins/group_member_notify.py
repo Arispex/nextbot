@@ -23,10 +23,10 @@ from nonebot.rule import Rule
 
 from nextbot.access_control import get_group_ids
 from nextbot.audit import audit_permission_change
-from nextbot.ban_core import (
-    apply_ban_to_db,
-    format_blacklist_add_lines,
-    sync_user_to_blacklist,
+from nextbot.ban_core import apply_ban_to_db
+from nextbot.sync_orchestrator import (
+    format_sync_outcomes_for_user,
+    trigger_sync_all_servers,
 )
 from nextbot.text_utils import EMOJI_USER, reply_success
 
@@ -213,7 +213,7 @@ async def handle_auto_ban_on_leave(bot: Bot, event: Event) -> None:
         },
     )
 
-    outcomes = await sync_user_to_blacklist(result.user_name, reason)
+    sync_outcomes = await trigger_sync_all_servers(caller="auto_ban_on_leave")
     logger.info(
         f"退群自动封禁完成：group_id={event.group_id}，user_id={user_id}，"
         f"name={result.user_name}，sub_type={sub_type}"
@@ -226,8 +226,8 @@ async def handle_auto_ban_on_leave(bot: Bot, event: Event) -> None:
         reply_success("封禁"),
         f"{EMOJI_USER} 用户：{result.user_name}（{result.user_qq}）",
         f"📋 原因：{reason}",
+        format_sync_outcomes_for_user(sync_outcomes),
     ]
-    lines.extend(format_blacklist_add_lines(outcomes))
     try:
         await bot.call_api(
             "send_group_msg", group_id=event.group_id, message="\n".join(lines)

@@ -217,18 +217,6 @@ html, body { overflow-x: hidden; }
   color: var(--on-primary);
 }
 
-/* Sync button: same outline as action-btn but neutral. */
-.action-btn-sync {
-  color: var(--text);
-  border-color: var(--line-strong);
-}
-
-.action-btn-sync:hover {
-  color: var(--accent-teal);
-  border-color: var(--accent-teal);
-  background-color: var(--surface-soft);
-}
-
 .btn-danger {
   background-color: var(--primary);
   border-color: var(--primary);
