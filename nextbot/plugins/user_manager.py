@@ -107,17 +107,22 @@ def _mask_user_id(user_id: str) -> str:
 
 
 async def _send_temp_private_password(
-    bot: Bot, user_id: str, name: str, password: str
+    bot: Bot, user_id: str, name: str, password: str, group_id: int | None = None
 ) -> bool:
-    """通过 OneBot 临时会话私聊把账号密码推给用户。
+    """通过 OneBot 群临时会话推送密码；无 group_id 时回落到好友私聊。
 
-    群成员临时会话无需加好友（共享群即可）。失败仅 log warn 不抛、不 log 密码本身。
+    带 group_id 时：OneBot 走"群临时会话"通道，非好友也能收到（共享群即可），
+    已是好友会优先走好友通道，体验无差。
+    不带 group_id 时：只走好友私聊，非好友会失败。
+
+    失败仅 log warn 不抛、不 log 密码本身。
 
     ⚠️ 部署警告：本函数构造的 message 字符串含明文密码。NoneBot 在 LOG_LEVEL=DEBUG 时
     会通过 OneBot adapter 将 outgoing call_api payload 写入日志。生产环境必须保持
     LOG_LEVEL >= INFO；切勿在生产开启 DEBUG，否则明文密码会泄漏到 bot 日志文件。
     """
     masked = _mask_user_id(user_id)
+    channel = "group_temp" if group_id is not None else "friend"
     message = (
         "✅ 注册成功，请妥善保存以下服务器登入账号信息：\n"
         f"👤 用户名：{name}\n"
@@ -125,19 +130,21 @@ async def _send_temp_private_password(
         f"🎮 在服务器内输入「/login {password}」登入（如果服务器已开启自动登入可忽略）\n"
         "ℹ️ 密码仅推送一次，丢失请使用「修改密码」命令重置"
     )
+    payload: dict[str, Any] = {
+        "user_id": int(user_id),
+        "message": message,
+    }
+    if group_id is not None:
+        payload["group_id"] = int(group_id)
     try:
-        await bot.call_api(
-            "send_private_msg",
-            user_id=int(user_id),
-            message=message,
-        )
+        await bot.call_api("send_private_msg", **payload)
     except Exception as exc:  # noqa: BLE001
         logger.warning(
-            f"临时私聊密码发送失败：user_id={masked} name={name} reason={exc!r}"
+            f"临时私聊密码发送失败：user_id={masked} name={name} 通道={channel} reason={exc!r}"
         )
         return False
     logger.info(
-        f"临时私聊密码已发送：user_id={masked} name={name} 临时会话=success"
+        f"临时私聊密码已发送：user_id={masked} name={name} 通道={channel}"
     )
     return True
 
@@ -276,7 +283,8 @@ async def handle_add_whitelist(
     private_sent = False
     try:
         private_sent = await _send_temp_private_password(
-            bot, user_id, name, plaintext_password
+            bot, user_id, name, plaintext_password,
+            group_id=getattr(event, "group_id", None),
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning(
