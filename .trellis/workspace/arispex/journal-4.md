@@ -1657,3 +1657,36 @@ rob.py 复用 time_utils.format_duration_seconds，替换手算的 'M 分 S 秒'
 ### Next Steps
 
 - None - task complete
+
+
+## Session 205: 清理 sync 重构遗留 (tutorial 文案 + 死权限项)
+
+**Date**: 2026-05-21
+**Task**: 清理 sync 重构遗留 (tutorial 文案 + 死权限项)
+**Branch**: `main`
+
+### Summary
+
+sync 重构 c42dd91 下线了「同步白名单」命令，清理两处残留：tutorial_data.py 删除新手教程第 4 步，原 5-7 步重新编号为 4-6 步，第 3 步 tip 改为联系群管理员；db.py 从 DEFAULT_GUEST_PERMISSIONS 删 user.whitelist.sync，新增 ensure_purge_user_whitelist_sync_permission_schema migration（LIKE+strict equality 严格去除，保留其他 token 顺序与重复，prefix collision-safe，幂等）；permissions.py 从 DANGEROUS_PERMISSION_PREFIXES 删 user.whitelist.sync。+57/-16，AC 8 项全 PASS。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `88be0b0` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

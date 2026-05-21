@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-4.md`
-- **Total Sessions**: 204
-- **Last Active**: 2026-05-20
+- **Total Sessions**: 205
+- **Last Active**: 2026-05-21
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-4.md` | ~1659 | Active |
+| `journal-4.md` | ~1692 | Active |
 | `journal-3.md` | ~1984 | Archived |
 | `journal-2.md` | ~1973 | Archived |
 | `journal-1.md` | ~1999 | Archived |
@@ -32,6 +32,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 205 | 2026-05-21 | 清理 sync 重构遗留 (tutorial 文案 + 死权限项) | `88be0b0` | `main` |
 | 204 | 2026-05-20 | 黑白名单/账号管理统一走 sync API | `c42dd91` | `main` |
 | 203 | 2026-05-20 | 抢劫冷却时间显示支持分钟与小时 | `d4e4518` | `main` |
 | 202 | 2026-05-20 | 掷骰子/猜数字冷却时间显示支持分钟与小时 | `47c56f9` | `main` |
