@@ -121,7 +121,6 @@ DANGEROUS_PERMISSION_PREFIXES: frozenset[str] = frozenset({
     "admin.rename",           # 改名同步白名单（影响所有 server）
     "economy.coins.add",      # 凭空创造金币
     "economy.coins.remove",   # 凭空销毁金币
-    "user.whitelist.sync",    # 影响所有服务器白名单
 })
 
 

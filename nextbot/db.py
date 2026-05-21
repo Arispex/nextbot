@@ -86,7 +86,6 @@ DEFAULT_GUEST_PERMISSIONS: frozenset[str] = frozenset({
     "user.info.self",
     "user.info.user",
     "user.register",
-    "user.whitelist.sync",
     "warehouse.claim_self",
     "warehouse.drop_self",
     "warehouse.gift_self",
@@ -481,6 +480,10 @@ def init_db() -> None:
     _run_migration("user_name_unique", ensure_user_name_unique_schema)
     _run_migration("user_leaderboard_indexes", ensure_user_leaderboard_indexes_schema)
     _run_migration("warehouse_fk", ensure_warehouse_fk_schema)
+    _run_migration(
+        "purge_user_whitelist_sync_permission",
+        ensure_purge_user_whitelist_sync_permission_schema,
+    )
     # ensure_default_* 是 seeding 不是 migration，失败必须阻断启动（业务需要这些行）
     ensure_default_groups()
     ensure_default_stats()
@@ -884,6 +887,55 @@ def ensure_warehouse_fk_schema() -> None:
             logger.info("warehouse_item.user_id 索引已就绪")
         except Exception as exc:  # noqa: BLE001
             logger.warning(f"warehouse_item.user_id 索引创建失败: {exc}")
+
+
+def ensure_purge_user_whitelist_sync_permission_schema() -> None:
+    """从 user / user_group 表的 permissions 列中清理已下线的 user.whitelist.sync 权限。
+
+    sync 重构（commit c42dd91）下线了「同步白名单」命令，但 DEFAULT_GUEST_PERMISSIONS
+    曾经把这个权限授予所有新 guest，现存 DB 行的 permissions 字段里残留无意义条目。
+    本 migration 把所有受影响行的字符串重建，移除该 token。
+
+    幂等：第二次运行 affected_rows = 0。
+    """
+    if not DB_PATH.exists():
+        return
+
+    target_token = "user.whitelist.sync"
+    engine = get_engine()
+    with engine.begin() as conn:
+        for table_name in ("user", "user_group"):
+            rows = conn.execute(
+                sa_text(
+                    f'SELECT rowid, permissions FROM "{table_name}" '
+                    'WHERE permissions LIKE :pat'
+                ),
+                {"pat": f"%{target_token}%"},
+            ).fetchall()
+
+            affected = 0
+            for row in rows:
+                rowid = row[0]
+                old_perms = row[1] or ""
+                # 严格等值过滤：避免误删 user.whitelist.sync.foo 这类前缀同名 token；
+                # 顺手 strip 空 token 防御 ",user.whitelist.sync," 这种边界产物。
+                # 不做 sort / dedupe，保留未命中 token 的原始顺序与重复结构。
+                tokens = [p.strip() for p in old_perms.split(",")]
+                new_tokens = [p for p in tokens if p and p != target_token]
+                new_perms = ",".join(new_tokens)
+                if new_perms != old_perms:
+                    conn.execute(
+                        sa_text(
+                            f'UPDATE "{table_name}" SET permissions = :p '
+                            'WHERE rowid = :r'
+                        ),
+                        {"p": new_perms, "r": rowid},
+                    )
+                    affected += 1
+
+            logger.info(
+                f"migration 清理：table={table_name} affected_rows={affected}"
+            )
 
 
 def ensure_user_leaderboard_indexes_schema() -> None:
