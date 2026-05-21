@@ -85,6 +85,7 @@ DEFAULT_GUEST_PERMISSIONS: frozenset[str] = frozenset({
     "system.tutorial",
     "user.info.self",
     "user.info.user",
+    "user.password.change",
     "user.register",
     "warehouse.claim_self",
     "warehouse.drop_self",

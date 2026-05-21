@@ -55,7 +55,9 @@ add_matcher = on_command("注册账号")
 info_matcher = on_command("用户信息")
 self_info_matcher = on_command("我的信息")
 rename_matcher = on_command("更改用户名称")
+change_password_matcher = on_command("修改密码")
 MAX_USER_NAME_LENGTH = 16
+MIN_PASSWORD_LENGTH = 8
 
 
 def _validate_user_name(name: str) -> str | None:
@@ -315,6 +317,98 @@ async def handle_add_whitelist(
                 sync_text,
             ],
         ),
+    )
+
+
+@change_password_matcher.handle()
+@command_control(
+    command_key="user.password.change",
+    display_name="修改密码",
+    permission="user.password.change",
+    description="修改当前账号密码（仅私聊可用）",
+    usage="修改密码 <新密码>",
+    category="用户系统",
+)
+@require_permission("user.password.change")
+async def handle_change_password(
+    bot: Bot, event: Event, arg: Message = CommandArg()
+) -> None:
+    user_id = event.get_user_id()
+
+    # R2 私聊门面：仅 message_type=="private" 放行（含好友 / 群临时会话）。
+    # 用 getattr 防御性提取，避免在非 OneBot v11 适配器环境下硬依赖。
+    message_type = str(getattr(event, "message_type", "")).strip()
+    if message_type != "private":
+        await bot.send(event, reply_failure("修改", "请私聊机器人使用此命令"))
+        return
+
+    # R3 参数 / 密码强度校验
+    args = parse_command_args_with_fallback(event, arg, "修改密码")
+    if len(args) != 1:
+        raise_command_usage()
+
+    plaintext = args[0].strip()
+    if not plaintext:
+        await bot.send(event, reply_failure("修改", "密码不能为空"))
+        return
+    if len(plaintext) < MIN_PASSWORD_LENGTH:
+        await bot.send(
+            event, reply_failure("修改", f"密码长度至少 {MIN_PASSWORD_LENGTH} 位")
+        )
+        return
+
+    # 与 handle_add_whitelist 风格一致：DB 事务外先 hash，缩短事务持锁时间。
+    try:
+        password_hash = _hash_password(plaintext)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            f"修改密码 hash 计算失败：user_id={_mask_user_id(user_id)} reason={exc!r}"
+        )
+        await bot.send(event, reply_failure("修改", "内部错误，请稍后重试"))
+        return
+
+    # R4 注册校验 + R5 写 DB
+    name: str | None = None
+    session = get_session()
+    try:
+        user = session.query(User).filter(User.user_id == user_id).first()
+        if user is None:
+            await bot.send(event, reply_failure("修改", "请先注册账号"))
+            return
+        name = str(user.name)
+        rowcount = execute_rowcount(
+            session,
+            update(User)
+            .where(User.user_id == user_id)
+            .values(password_hash=password_hash),
+        )
+        if rowcount == 0:
+            session.rollback()
+            masked = _mask_user_id(user_id)
+            logger.info(
+                f"修改密码并发竞态：user_id={masked} 已被另一并发请求修改"
+            )
+            await bot.send(event, reply_failure("修改", "并发冲突，请重试"))
+            return
+        session.commit()
+    finally:
+        session.close()
+
+    # Defense-in-depth：明文已 hash 入库，立即释放栈引用，避免后续 await
+    # 异常被任何 capture-locals 的日志/采样工具一并落盘。
+    plaintext = None
+
+    logger.info(
+        f"修改密码成功：user_id={_mask_user_id(user_id)} name={name}"
+    )
+
+    # R5 后段：DB 已写入新 password_hash，统一走 sync orchestrator 推到所有服务器。
+    sync_outcomes = await trigger_sync_all_servers(caller="change_password_command")
+    sync_text = format_sync_outcomes_for_user(sync_outcomes)
+
+    await bot.send(
+        event,
+        reply_block(reply_success("修改"), [sync_text]),
     )
 
 
