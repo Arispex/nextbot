@@ -1723,3 +1723,36 @@ _send_temp_private_password 调 send_private_msg 没传 group_id，OneBot 实际
 ### Next Steps
 
 - None - task complete
+
+
+## Session 207: 允许白名单群成员发起群临时会话
+
+**Date**: 2026-05-21
+**Task**: 允许白名单群成员发起群临时会话
+**Branch**: `main`
+
+### Summary
+
+bot.py _filter_allowed_messages 之前把所有 private 一刀切只放行 owner，白名单群成员的「临时消息」对话框消息被拒。修复：识别 PrivateMessageEvent.sub_type='group'（群临时会话），用新 helper _extract_temp_source_group_id 跨 OneBot 实现提取来源群 ID（依次尝试 sender.group_id / sender.model_extra['group_id'] / event.group_id），匹配 GROUP_ID 白名单则放行。owner 短路保留任何形态都放行。无 PrivateMessageEvent 硬依赖，跨 adapter 安全。8 AC + 8 helper 边界全 PASS。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `93d194a` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
