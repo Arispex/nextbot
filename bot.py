@@ -104,6 +104,32 @@ else:
     logger.warning("未配置 ONEBOT_WS_URLS，已跳过 OneBot V11 连接")
 
 
+def _extract_temp_source_group_id(event: Event) -> str | None:
+    """从 OneBot v11 PrivateMessageEvent 中提取群临时会话的来源群 ID。
+
+    OneBot v11 spec 临时会话事件（sub_type='group'）没有顶层 group_id 字段，
+    但 NapCat / Lagrange 等实现把它放在 sender.group_id（Sender pydantic
+    extra='allow' 保留扩展字段）；少数实现放在事件顶层 group_id。本 helper
+    依次尝试两个位置，返回非空 str 或 None。'0' 视为 absent。
+    """
+    sender = getattr(event, "sender", None)
+    if sender is not None:
+        gid = getattr(sender, "group_id", None)
+        if gid is None:
+            extra = getattr(sender, "model_extra", None) or {}
+            gid = extra.get("group_id")
+        if gid is not None:
+            text = str(gid).strip()
+            if text and text != "0":
+                return text
+    gid = getattr(event, "group_id", None)
+    if gid is not None:
+        text = str(gid).strip()
+        if text and text != "0":
+            return text
+    return None
+
+
 @event_preprocessor
 async def _filter_allowed_messages(bot: Bot, event: Event) -> None:
     if event.get_type() != "message":
@@ -114,9 +140,31 @@ async def _filter_allowed_messages(bot: Bot, event: Event) -> None:
     message_type = getattr(event, "message_type", "")
     if message_type == "private":
         user_id = event.get_user_id()
+        # owner 任何形态私聊都放行（含好友、群临时会话）
         if user_id in owner_ids:
             return
-        logger.info(f"消息被过滤：type=private user_id={user_id}")
+
+        sub_type = str(getattr(event, "sub_type", "")).strip()
+        if sub_type == "group":
+            # 群临时会话：源群必须在 GROUP_ID 白名单
+            source_group_id = _extract_temp_source_group_id(event)
+            if source_group_id is not None and source_group_id in group_ids:
+                logger.info(
+                    f"消息放行：type=private sub_type=group user_id={user_id} "
+                    f"source_group_id={source_group_id}"
+                )
+                return
+            logger.info(
+                f"消息被过滤：type=private sub_type=group user_id={user_id} "
+                f"source_group_id={source_group_id}"
+            )
+            raise IgnoredException("group temp message blocked by group_id allowlist")
+
+        # 好友私聊或其它子类型：仍仅 owner 可用
+        logger.info(
+            f"消息被过滤：type=private sub_type={sub_type or 'friend'} "
+            f"user_id={user_id}"
+        )
         raise IgnoredException("private message blocked by owner_id allowlist")
 
     if message_type == "group":
