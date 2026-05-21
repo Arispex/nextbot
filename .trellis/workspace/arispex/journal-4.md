@@ -1690,3 +1690,36 @@ sync 重构 c42dd91 下线了「同步白名单」命令，清理两处残留：
 ### Next Steps
 
 - None - task complete
+
+
+## Session 206: 注册密码私聊改走群临时会话
+
+**Date**: 2026-05-21
+**Task**: 注册密码私聊改走群临时会话
+**Branch**: `main`
+
+### Summary
+
+_send_temp_private_password 调 send_private_msg 没传 group_id，OneBot 实际走的是好友私聊（非好友收不到），名实不符。修复：handle_add_whitelist 从 event 提取 group_id 透传，_send_temp_private_password 按需把 group_id 插入 call_api payload，OneBot 走「群临时会话」通道，非好友共享群即可送达；已是好友照常走好友通道，体验无差。私聊里发命令 fallback 好友私聊。日志加 通道=group_temp|friend 字段便于诊断。无 GroupMessageEvent 硬依赖。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `e4e1c35` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
