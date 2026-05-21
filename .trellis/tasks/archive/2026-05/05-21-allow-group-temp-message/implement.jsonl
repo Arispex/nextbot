@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend spec 索引"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "IgnoredException 用法 + 拒绝路径规范"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "消息放行/过滤 INFO 日志 key=value 格式"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "代码质量基线"}
