@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-4.md`
-- **Total Sessions**: 207
+- **Total Sessions**: 208
 - **Last Active**: 2026-05-21
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-4.md` | ~1758 | Active |
+| `journal-4.md` | ~1791 | Active |
 | `journal-3.md` | ~1984 | Archived |
 | `journal-2.md` | ~1973 | Archived |
 | `journal-1.md` | ~1999 | Archived |
@@ -32,6 +32,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 208 | 2026-05-21 | 新增「修改密码」命令（私聊专用） | `e3a8584` | `main` |
 | 207 | 2026-05-21 | 允许白名单群成员发起群临时会话 | `93d194a` | `main` |
 | 206 | 2026-05-21 | 注册密码私聊改走群临时会话 | `e4e1c35` | `main` |
 | 205 | 2026-05-21 | 清理 sync 重构遗留 (tutorial 文案 + 死权限项) | `88be0b0` | `main` |

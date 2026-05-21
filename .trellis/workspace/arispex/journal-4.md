@@ -1756,3 +1756,36 @@ bot.py _filter_allowed_messages 之前把所有 private 一刀切只放行 owner
 ### Next Steps
 
 - None - task complete
+
+
+## Session 208: 新增「修改密码」命令（私聊专用）
+
+**Date**: 2026-05-21
+**Task**: 新增「修改密码」命令（私聊专用）
+**Branch**: `main`
+
+### Summary
+
+新命令「修改密码 <新密码>」让已注册用户自助改 TShock 账号密码。仅私聊放行（含好友 / 白名单群临时会话），群里使用返回「请私聊机器人使用此命令」。流程：私聊门面 → 密码 ≥8 位校验 → bcrypt hash → DB UPDATE → close session → trigger_sync_all_servers → reply_success + format_sync_outcomes_for_user。明文 hash 后立即 plaintext=None 释放栈引用，不入日志。权限 user.password.change 加入 DEFAULT_GUEST_PERMISSIONS（字母序在 user.info.user 与 user.register 间）。AC 9 项全 PASS，self-fix 2 个 lint。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `e3a8584` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
