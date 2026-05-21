@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend spec 索引"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "命令失败文案 / reply_failure 用法"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "key=value INFO 日志、不打印密码"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "User.password_hash 更新 + session 生命周期"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "代码质量基线"}
