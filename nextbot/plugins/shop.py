@@ -692,19 +692,6 @@ async def _buy_command(
     command_template: str,
     require_online: bool,
 ) -> None:
-    # SF-4.3：拒绝 require_online=False + target_server_id=None 配置——
-    # 玩家不在线时 TShock /give silent fail，用户付 N 倍价格只拿到 1 倍东西。
-    # 强制管理员明确 target_server_id 或开启 require_online=True。
-    if not require_online and target_server_id is None:
-        await bot.send(
-            event,
-            at + " " + reply_failure(
-                "购买",
-                "命令商品配置错误，必须设置 require_online=True 或指定 target_server_id",
-            ),
-        )
-        return
-
     # Load player + servers; optionally verify online
     session = get_session()
     try:
