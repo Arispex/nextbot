@@ -1789,3 +1789,36 @@ bot.py _filter_allowed_messages 之前把所有 private 一刀切只放行 owner
 ### Next Steps
 
 - None - task complete
+
+
+## Session 209: 商店指令商品 全部服务器+不要求在线 不再强制报错
+
+**Date**: 2026-05-22
+**Task**: 商店指令商品 全部服务器+不要求在线 不再强制报错
+**Branch**: `main`
+
+### Summary
+
+shop.py _buy_command 顶部的 SF-4.3 守卫强拒 require_online=False + target_server_id=None 配置，但同等配置在 lottery 早就放行——两边行为不一致。删除 13 行守卫块，让此配置 fallthrough 到 load-all-servers → 并行 broadcast 全部服务器，对齐 lottery 模型。指令商品的「是否依赖玩家在线」由指令本身决定，与「目标范围」无关，作为配置正确性问题应由管理员承担。require_online=True / 单服务器 / give 类商品零回归。AC 7/7 PASS，pyright -1，ruff -1。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `0e1bb53` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
