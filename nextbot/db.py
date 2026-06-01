@@ -327,6 +327,24 @@ class ShopItem(Base):
     )
 
 
+class KeywordReply(Base):
+    __tablename__ = "keyword_reply"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    # 关键词长度上限 50：与 WebUI 校验对齐；不区分大小写匹配在 plugin 侧处理。
+    keyword: Mapped[str] = mapped_column(String, nullable=False)
+    # 回复内容长度上限 500：与 WebUI 校验对齐；支持换行（不做转义）。
+    reply: Mapped[str] = mapped_column(String, nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # 命中后是否在回复前追加 @<user>。私聊场景 plugin 会自动跳过 at 渲染。
+    at_user: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # 命中后是否以 OneBot v11 reply 引用原消息。
+    quote_reply: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=db_now_utc_naive
+    )
+
+
 class LotteryPool(Base):
     __tablename__ = "lottery_pool"
 
@@ -485,6 +503,7 @@ def init_db() -> None:
         "purge_user_whitelist_sync_permission",
         ensure_purge_user_whitelist_sync_permission_schema,
     )
+    _run_migration("keyword_reply", ensure_keyword_reply_schema)
     # ensure_default_* 是 seeding 不是 migration，失败必须阻断启动（业务需要这些行）
     ensure_default_groups()
     ensure_default_stats()
@@ -1015,6 +1034,35 @@ def ensure_red_packet_schema() -> None:
                 "amount" INTEGER NOT NULL,
                 "claimed_at" DATETIME NOT NULL,
                 CONSTRAINT "uq_redpacket_claimer" UNIQUE ("red_packet_id", "claimer_user_id")
+            )
+            """
+        ))
+
+
+def ensure_keyword_reply_schema() -> None:
+    """启动时确保 keyword_reply 表存在（旧库升级补建）。
+
+    新建库由 Base.metadata.create_all 直接创建，本函数 no-op；
+    旧库（升级到含本模型的版本）通过 CREATE TABLE IF NOT EXISTS 补建。
+    幂等：可重复调用。
+
+    失败仅 logger.warning 不阻断启动（_run_migration 包装层兜底）。
+    """
+    if not DB_PATH.exists():
+        return
+
+    engine = get_engine()
+    with engine.begin() as conn:
+        conn.execute(sa_text(
+            """
+            CREATE TABLE IF NOT EXISTS "keyword_reply" (
+                "id" INTEGER PRIMARY KEY AUTOINCREMENT,
+                "keyword" TEXT NOT NULL,
+                "reply" TEXT NOT NULL,
+                "enabled" BOOLEAN NOT NULL DEFAULT 1,
+                "at_user" BOOLEAN NOT NULL DEFAULT 1,
+                "quote_reply" BOOLEAN NOT NULL DEFAULT 1,
+                "created_at" DATETIME NOT NULL
             )
             """
         ))

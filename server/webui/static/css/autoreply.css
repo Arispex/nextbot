@@ -1,0 +1,293 @@
+/* ── Auto Reply (warm-canvas, CRUD page) ─────────────────
+ * Mirrors users.css layout / table / modal / form rules so
+ * autoreply page visuals match /webui/users 1:1. Shared base
+ * (.modal*, .btn*, .input) lives in app-shell.css; this file
+ * provides the page-scoped layout + table + form + alert +
+ * action-btn rules that users.css carries for its own page. */
+
+html, body { overflow-x: hidden; }
+
+.app-content {
+  max-width: none;
+  overflow-x: hidden;
+}
+
+.autoreply-layout {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+
+/* ── Toolbar ─────────────────────────────────────────── */
+.autoreply-toolbar {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  flex-wrap: nowrap;
+}
+
+.autoreply-toolbar-search {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 420px;
+}
+
+.panel-head-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  flex-shrink: 0;
+}
+
+.search-input { width: 100%; height: 34px; }
+
+/* ── Status / empty ──────────────────────────────────── */
+.alert {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background-color: var(--surface-soft);
+  color: var(--text-muted);
+}
+
+.alert.info,
+.alert.success { border-color: var(--accent-teal); color: var(--accent-teal); }
+.alert.error { border-color: var(--primary); color: var(--primary); }
+.alert.warning { border-color: var(--accent-amber); color: var(--accent-amber); }
+
+.alert-message {
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.alert .alert-message { white-space: pre-line; }
+
+.empty {
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-lg);
+  padding: var(--space-xxl);
+  text-align: center;
+  color: var(--text-muted);
+  background-color: var(--surface-soft);
+}
+
+/* ── Table ───────────────────────────────────────────── */
+.table-wrap {
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background-color: var(--surface);
+}
+
+.autoreply-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 920px;
+  background: transparent;
+}
+
+.autoreply-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  background-color: var(--surface-cream-strong);
+  padding: var(--space-sm) var(--space-md);
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.autoreply-table tbody td {
+  padding: var(--space-sm) var(--space-md);
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.autoreply-table tbody tr:last-child td { border-bottom: none; }
+
+.autoreply-table tbody tr:hover { background-color: var(--bg-layout); }
+
+/* ── Page-specific cells ─────────────────────────────── */
+.id-cell {
+  width: 52px;
+  color: var(--text-muted-soft);
+  font-family: var(--font-code);
+  font-feature-settings: "tnum";
+}
+
+.created-cell {
+  color: var(--text-muted);
+  font-size: 12px;
+  white-space: nowrap;
+  font-feature-settings: "tnum";
+}
+
+.keyword-cell {
+  min-width: 120px;
+  max-width: 240px;
+  font-weight: 600;
+  word-break: break-all;
+}
+
+.reply-cell {
+  min-width: 220px;
+  max-width: 460px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.toggle-cell {
+  width: 64px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+/* ── Inline checkbox toggle ─────────────────────────── */
+.inline-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 4px;
+}
+
+.inline-toggle > input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+
+/* ── Row actions ─────────────────────────────────────── */
+.actions-cell { min-width: 200px; }
+
+.row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.action-btn {
+  height: 24px;
+  min-width: 50px;
+  padding: 0 var(--space-xs);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  line-height: 1;
+}
+
+.action-btn-danger {
+  color: var(--primary);
+  border-color: var(--primary);
+}
+
+.action-btn-danger:hover {
+  background-color: var(--primary);
+  border-color: var(--primary);
+  color: var(--on-primary);
+}
+
+/* ── Form (inside modal) ─────────────────────────────── */
+.form-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.form-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.form-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.55;
+}
+
+/* ── Modal close button — override .btn height so it stays
+ * 28×28 (matches users / shop / lottery modal chrome). The
+ * shared .btn rule in app-shell.css sets 34px, so each CRUD
+ * page re-asserts the smaller size for its own modal. */
+.modal-close-btn {
+  width: 28px;
+  height: 28px;
+}
+
+/* ── Modal form: textarea ────────────────────────────── */
+.autoreply-textarea {
+  min-height: 96px;
+  resize: vertical;
+  font-family: var(--font-body);
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ── Checkbox row (inside modal body) ────────────────── */
+.form-checkbox-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-xs);
+  cursor: pointer;
+  min-height: 34px;
+  padding: 6px 0;
+}
+
+.form-checkbox-row > input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--primary);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.form-checkbox-row > span {
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.5;
+}
+
+/* utility class — app-shell.css only ships [hidden] attribute. */
+.hidden { display: none !important; }
+
+/* ── Responsive ──────────────────────────────────────── */
+@media (max-width: 1080px) {
+  .autoreply-toolbar {
+    flex-wrap: wrap;
+    align-items: stretch;
+  }
+
+  .autoreply-toolbar-search {
+    width: 100%;
+    max-width: none;
+  }
+
+  .panel-head-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+}

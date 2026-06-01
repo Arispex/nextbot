@@ -12,6 +12,7 @@ from nonebot.log import logger
 from server.page_store import create_page
 from server.pages import about_page, admin_list_page, ban_list_page, dice_page, guess_number_page, inventory_page, leaderboard_page, lottery_list_page, lottery_result_page, lottery_view_page, menu_page, progress_page, red_packet_all_page, red_packet_own_page, rob_page, shop_list_page, shop_view_page, signin_page, tutorial_page, user_info_page, warehouse_page
 from server.routes.render import router as render_router
+from server.routes.webui_autoreply import router as webui_autoreply_router
 from server.routes.webui_commands import router as webui_commands_router
 from server.routes.webui_dashboard import router as webui_dashboard_router
 from server.routes.webui_groups import router as webui_groups_router
@@ -47,6 +48,7 @@ _WEBUI_ROUTERS: tuple[APIRouter, ...] = (
     webui_warehouse_router,
     webui_shop_router,
     webui_lottery_router,
+    webui_autoreply_router,
 )
 
 # H-2：graceful shutdown 支持

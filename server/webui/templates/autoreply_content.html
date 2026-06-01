@@ -1,0 +1,126 @@
+<section class="autoreply-layout">
+  <div class="autoreply-toolbar">
+    <div class="autoreply-toolbar-search">
+      <div class="search-input-wrap">
+        <span class="search-input-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="7"></circle>
+            <path d="m20 20-3.5-3.5"></path>
+          </svg>
+        </span>
+        <input id="autoreply-search" class="input search-input" type="text" placeholder="搜索关键词 / 回复内容" />
+      </div>
+    </div>
+    <div class="panel-head-actions">
+      <button id="reload-btn" type="button" class="btn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path d="M21 12a9 9 0 1 1-2.64-6.36"></path>
+          <path d="M21 3v6h-6"></path>
+        </svg>
+        刷新
+      </button>
+      <button id="add-rule-btn" type="button" class="btn btn-primary">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path d="M12 5v14"></path>
+          <path d="M5 12h14"></path>
+        </svg>
+        新建
+      </button>
+    </div>
+  </div>
+
+  <div id="status" class="alert hidden" role="status" aria-live="polite">
+    <span id="status-message" class="alert-message"></span>
+  </div>
+  <div id="loading" class="empty">正在加载自动回复规则…</div>
+  <div id="empty" class="empty hidden">暂无自动回复规则</div>
+
+  <div id="table-wrap" class="table-wrap hidden">
+    <table class="autoreply-table" aria-label="自动回复规则表格">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>关键词</th>
+          <th>回复内容</th>
+          <th>艾特</th>
+          <th>引用</th>
+          <th>启用</th>
+          <th>创建时间</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody id="autoreply-table-body"></tbody>
+    </table>
+  </div>
+</section>
+
+<div id="autoreply-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="autoreply-modal-title">
+  <div class="modal-mask" data-modal-close="1"></div>
+  <div class="modal-card">
+    <div class="modal-head">
+      <h3 id="autoreply-modal-title" class="modal-title">创建自动回复规则</h3>
+      <button id="modal-close-btn" type="button" class="btn btn-icon modal-close-btn" aria-label="关闭">✕</button>
+    </div>
+    <div id="modal-alert" class="alert hidden modal-alert" role="status" aria-live="polite">
+      <span id="modal-alert-message" class="alert-message"></span>
+    </div>
+    <div class="modal-body">
+      <label class="form-item">
+        <span class="form-label">关键词 <span class="required">*</span></span>
+        <input id="field-keyword" class="input" type="text" maxlength="50" placeholder="例如：你好" />
+        <span class="form-hint">不区分大小写；消息包含该关键词即触发，1-50 个字符。</span>
+      </label>
+
+      <label class="form-item">
+        <span class="form-label">回复内容 <span class="required">*</span></span>
+        <textarea
+          id="field-reply"
+          class="input autoreply-textarea"
+          maxlength="500"
+          rows="4"
+          placeholder="例如：你好呀～"
+        ></textarea>
+        <span class="form-hint">支持换行，最多 500 个字符。</span>
+      </label>
+
+      <label class="form-checkbox-row">
+        <input id="field-at-user" type="checkbox" checked />
+        <span>艾特用户（仅群消息有效，私聊场景自动跳过）</span>
+      </label>
+
+      <label class="form-checkbox-row">
+        <input id="field-quote-reply" type="checkbox" checked />
+        <span>引用原消息</span>
+      </label>
+
+      <label class="form-checkbox-row">
+        <input id="field-enabled" type="checkbox" checked />
+        <span>启用</span>
+      </label>
+    </div>
+    <div class="modal-foot">
+      <button id="modal-cancel-btn" type="button" class="btn">取消</button>
+      <button id="modal-save-btn" type="button" class="btn btn-primary">保存</button>
+    </div>
+  </div>
+</div>
+
+<div id="delete-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="delete-modal-title">
+  <div class="modal-mask" data-delete-modal-close="1"></div>
+  <div class="modal-card confirm-modal-card">
+    <div class="modal-head">
+      <h3 id="delete-modal-title" class="modal-title">删除自动回复规则</h3>
+      <button id="delete-modal-close-btn" type="button" class="btn btn-icon modal-close-btn" aria-label="关闭">✕</button>
+    </div>
+    <div id="delete-modal-alert" class="alert hidden modal-alert" role="status" aria-live="polite">
+      <span id="delete-modal-alert-message" class="alert-message"></span>
+    </div>
+    <div class="modal-body confirm-modal-body">
+      <p id="delete-modal-text" class="confirm-modal-text"></p>
+    </div>
+    <div class="modal-foot">
+      <button id="delete-modal-cancel-btn" type="button" class="btn">取消</button>
+      <button id="delete-modal-confirm-btn" type="button" class="btn btn-danger">删除</button>
+    </div>
+  </div>
+</div>

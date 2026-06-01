@@ -17,11 +17,12 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Resp
 from nonebot.log import logger
 
 from server.pages.console_page import (
+    render_autoreply_page,
     render_console_page,
     render_groups_page,
     render_login_page,
-    render_servers_page,
     render_lottery_page,
+    render_servers_page,
     render_shop_page,
     render_users_page,
     render_warehouse_page,
@@ -340,6 +341,11 @@ async def webui_shop_page(request: Request) -> HTMLResponse:
 @router.get("/webui/lottery", response_class=HTMLResponse)
 async def webui_lottery_page(request: Request) -> HTMLResponse:
     return HTMLResponse(content=render_lottery_page())
+
+
+@router.get("/webui/autoreply", response_class=HTMLResponse)
+async def webui_autoreply_page(request: Request) -> HTMLResponse:
+    return HTMLResponse(content=render_autoreply_page())
 
 
 @router.get("/webui/static/{file_path:path}")

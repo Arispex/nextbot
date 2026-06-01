@@ -17,6 +17,7 @@ AppShellMenu = Literal[
     "warehouse",
     "shop",
     "lottery",
+    "autoreply",
     "settings",
 ]
 
@@ -87,6 +88,7 @@ def _render_app_shell_page(  # noqa: PLR0913
     warehouse_active, warehouse_aria = _nav_attrs("warehouse")
     shop_active, shop_aria = _nav_attrs("shop")
     lottery_active, lottery_aria = _nav_attrs("lottery")
+    autoreply_active, autoreply_aria = _nav_attrs("autoreply")
     settings_active, settings_aria = _nav_attrs("settings")
 
     return (
@@ -109,6 +111,8 @@ def _render_app_shell_page(  # noqa: PLR0913
         .replace("__NAV_SHOP_ARIA__", shop_aria)
         .replace("__NAV_LOTTERY_ACTIVE__", lottery_active)
         .replace("__NAV_LOTTERY_ARIA__", lottery_aria)
+        .replace("__NAV_AUTOREPLY_ACTIVE__", autoreply_active)
+        .replace("__NAV_AUTOREPLY_ARIA__", autoreply_aria)
         .replace("__NAV_SETTINGS_ACTIVE__", settings_active)
         .replace("__NAV_SETTINGS_ARIA__", settings_aria)
         .replace("__MAIN_CONTENT__", content_html)
@@ -264,6 +268,22 @@ def render_lottery_page() -> str:
         ),
         page_script_urls=(
             _asset_url("js/lottery.js"),
+        ),
+    )
+
+
+def render_autoreply_page() -> str:
+    return _render_app_shell_page(
+        page_title="NextBot WebUI - 自动回复",
+        header_title="自动回复",
+        active_menu="autoreply",
+        content_template="autoreply_content.html",
+        page_style_urls=(
+            _asset_url("css/app-shell.css"),
+            _asset_url("css/autoreply.css"),
+        ),
+        page_script_urls=(
+            _asset_url("js/autoreply.js"),
         ),
     )
 
