@@ -151,27 +151,40 @@ html, body { overflow-x: hidden; }
   text-overflow: ellipsis;
 }
 
-.toggle-cell {
+.status-cell {
   width: 64px;
   text-align: center;
   white-space: nowrap;
 }
 
-/* ── Inline checkbox toggle ─────────────────────────── */
-.inline-toggle {
+/* ── Inline status badge (read-only state pill) ───────
+ * 与 /webui/shop、/webui/lottery 状态徽章风格一致：
+ * pill 形状 + 边框 + 极小高度（22px）+ 11px 文字。
+ * 开（is-on）：teal 描边/文字
+ * 关（is-off）：虚线边框 + muted 文字
+ */
+.status-badge {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  padding: 4px;
+  min-height: 22px;
+  padding: 0 var(--space-sm);
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--line);
+  background-color: var(--bg-layout);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
 }
 
-.inline-toggle > input[type="checkbox"] {
-  width: 16px;
-  height: 16px;
-  margin: 0;
-  accent-color: var(--primary);
-  cursor: pointer;
+.status-badge.is-on {
+  color: var(--accent-teal);
+  border-color: var(--accent-teal);
+}
+
+.status-badge.is-off {
+  color: var(--text-muted-soft);
+  border-style: dashed;
 }
 
 /* ── Row actions ─────────────────────────────────────── */

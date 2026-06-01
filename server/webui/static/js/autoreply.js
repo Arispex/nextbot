@@ -253,58 +253,12 @@
     return value.slice(0, max) + "…";
   };
 
-  const buildInlineToggle = (rule, fieldName) => {
-    const label = document.createElement("label");
-    label.className = "inline-toggle";
-    const input = document.createElement("input");
-    input.type = "checkbox";
-    input.checked = Boolean(rule[fieldName]);
-    input.dataset.ruleId = String(rule.id);
-    input.dataset.field = fieldName;
-    input.addEventListener("change", () => {
-      void toggleField(rule, fieldName, input.checked, input);
-    });
-    label.appendChild(input);
-    return label;
-  };
-
-  const toggleField = async (rule, fieldName, nextValue, inputEl) => {
-    const originalValue = Boolean(rule[fieldName]);
-    if (originalValue === Boolean(nextValue)) {
-      return;
-    }
-    if (inputEl) inputEl.disabled = true;
-    setStatus("更新中…", "info");
-    try {
-      const responsePayload = await api.apiRequest(
-        `/webui/api/autoreply/${rule.id}`,
-        {
-          method: "PUT",
-          headers: { Accept: "application/json" },
-          body: JSON.stringify({ [fieldName]: Boolean(nextValue) }),
-          action: "更新",
-          expectedStatus: 200,
-        }
-      );
-      const result = api.unwrapData(responsePayload);
-      if (result && typeof result === "object") {
-        const updated = normalizeRule(result);
-        const idx = ruleStates.findIndex((item) => item.id === updated.id);
-        if (idx >= 0) {
-          ruleStates[idx] = updated;
-        }
-      } else {
-        rule[fieldName] = Boolean(nextValue);
-      }
-      setStatus("更新成功", "success");
-    } catch (error) {
-      // 回滚 UI 状态
-      if (inputEl) inputEl.checked = originalValue;
-      const message = error instanceof Error ? error.message : "更新失败";
-      setStatus(message, "error");
-    } finally {
-      if (inputEl) inputEl.disabled = false;
-    }
+  const buildStatusBadge = (value) => {
+    const on = Boolean(value);
+    const span = document.createElement("span");
+    span.className = "status-badge " + (on ? "is-on" : "is-off");
+    span.textContent = on ? "是" : "否";
+    return span;
   };
 
   const renderTable = () => {
@@ -350,16 +304,16 @@
       replyCell.title = rule.reply;
 
       const atCell = document.createElement("td");
-      atCell.className = "toggle-cell";
-      atCell.appendChild(buildInlineToggle(rule, "at_user"));
+      atCell.className = "status-cell";
+      atCell.appendChild(buildStatusBadge(rule.at_user));
 
       const quoteCell = document.createElement("td");
-      quoteCell.className = "toggle-cell";
-      quoteCell.appendChild(buildInlineToggle(rule, "quote_reply"));
+      quoteCell.className = "status-cell";
+      quoteCell.appendChild(buildStatusBadge(rule.quote_reply));
 
       const enabledCell = document.createElement("td");
-      enabledCell.className = "toggle-cell";
-      enabledCell.appendChild(buildInlineToggle(rule, "enabled"));
+      enabledCell.className = "status-cell";
+      enabledCell.appendChild(buildStatusBadge(rule.enabled));
 
       const createdCell = document.createElement("td");
       createdCell.className = "created-cell";
