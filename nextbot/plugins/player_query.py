@@ -11,7 +11,10 @@ from nonebot.params import CommandArg
 
 from server.screenshot import ScreenshotOptions
 from server.server_config import get_server_settings
-from server.web_server import create_inventory_page, create_progress_page
+from server.web_server import (
+    create_inventory_page,
+    create_progress_page,
+)
 from nextbot.command_config import (
     command_control,
     get_current_param,
@@ -31,6 +34,7 @@ from nextbot.message_parser import (
 from nextbot.permissions import require_permission
 from nextbot.screenshot_render import render_and_send_screenshot
 from nextbot.screenshot_temp import temp_screenshot_path
+from nextbot.terraria_render import render_character
 from nextbot.time_utils import format_online_seconds
 from nextbot.tshock_api import (
     TShockRequestError,
@@ -178,6 +182,81 @@ def _to_public_render_url(url: str) -> str:
 # PQB-X.4 / PC-4.1：_safe_at_segment 已提升到 nextbot.text_utils.safe_at_segment，
 # 此处保留模块级 alias，避免本文件其它 callsite 大改。
 _safe_at_segment = safe_at_segment
+
+
+async def _build_character_sprite_uri(
+    appearance_result: TShockResponse | BaseException,
+    *,
+    server_id: int,
+    target_user_id: str,
+    log_label: str,
+) -> str | None:
+    """背包卡片角色立绘：best-effort 解析 appearance 响应 → 本地合成 → data URI。
+
+    入参为背包 handler 三路并行 ``gather`` 里的 appearance 那一路结果（已
+    ``return_exceptions=True``）。角色立绘是背包卡片的「锦上添花」增强项，任何
+    失败都只记日志并返回 ``None``，由调用方以无立绘的方式渲染背包，绝不因角色
+    数据失败而阻断 / 报错背包本身：
+
+    - 连接级异常 / 非成功响应（如账号不存在 400）→ None
+    - ``appearance`` 为 null（无 SSC 存档）→ None
+    - ``render_character`` 抛错（脏 appearance）→ None
+
+    成功时返回 ``data:image/png;base64,...``（透明底 PNG，scale=1，由模板 CSS 放大）。
+    """
+    if isinstance(appearance_result, BaseException):
+        # TShockRequestError（连接级）或其它未预期异常都按 best-effort 跳过。
+        logger.info(
+            f"{log_label}立绘跳过：server_id={server_id} "
+            f"target_user_id={target_user_id} reason=fetch_failed"
+        )
+        return None
+
+    if not is_success(appearance_result):
+        # 账号不存在(400) 等：原样透传 API error.message 到日志，背包不受影响。
+        logger.info(
+            f"{log_label}立绘跳过：server_id={server_id} "
+            f"target_user_id={target_user_id} status={appearance_result.api_status} "
+            f"reason={get_error_reason(appearance_result)}"
+        )
+        return None
+
+    appearance = appearance_result.payload.get("appearance")
+    if not isinstance(appearance, dict):
+        # 账号存在但无 SSC 存档 → appearance 为 null。
+        logger.info(
+            f"{log_label}立绘跳过：server_id={server_id} "
+            f"target_user_id={target_user_id} reason=no_appearance"
+        )
+        return None
+
+    # 装备 / 装饰 / 染料各块可能为 null；保留 API 原始字段直传渲染模块。
+    # 配饰（accessories / vanityAccessories / accessoryDyes）本期不渲染，忽略。
+    equipment = appearance_result.payload.get("equipment")
+    vanity = appearance_result.payload.get("vanity")
+    dye = appearance_result.payload.get("dye")
+
+    try:
+        # 本地 numpy 合成是 CPU-bound，推到线程池避免阻塞事件循环。
+        png = await asyncio.to_thread(
+            render_character,
+            appearance,
+            equipment if isinstance(equipment, dict) else None,
+            vanity if isinstance(vanity, dict) else None,
+            dye if isinstance(dye, dict) else None,
+        )
+    except Exception:  # noqa: BLE001 - 渲染层对脏 appearance 兜底，立绘失败不影响背包
+        logger.exception(
+            f"{log_label}立绘合成失败：server_id={server_id} "
+            f"target_user_id={target_user_id}（已跳过立绘，继续渲染背包）"
+        )
+        return None
+
+    logger.info(
+        f"{log_label}立绘合成成功：server_id={server_id} "
+        f"target_user_id={target_user_id} png_bytes={len(png)}"
+    )
+    return "data:image/png;base64," + base64.b64encode(png).decode("ascii")
 
 
 @online_matcher.handle()
@@ -438,6 +517,8 @@ async def handle_user_inventory(
     sem = _semaphore_for(_inventory_semaphores, server.id, max_concurrent=2)
     async with sem:
         # PQA-3.4：inventory + stats 两次 API 改并行（halve wall time）
+        # appearance 第三路并行拉取，用于背包卡片角色立绘
+        # （best-effort，失败不阻断背包）。
         # PQB-X.2 / PQA-3.6：URL 路径段插值前 quote(safe="") 防御 user.name 含 / 等字符
         encoded_name = quote(target_user.name, safe="")
         inv_task = request_server_api(
@@ -446,15 +527,19 @@ async def handle_user_inventory(
         stats_task = request_server_api(
             server, f"/nextbot/users/{encoded_name}/stats"
         )
+        appearance_task = request_server_api(
+            server, f"/nextbot/users/{encoded_name}/appearance"
+        )
         try:
-            inv_result, stats_result = await asyncio.gather(
-                inv_task, stats_task, return_exceptions=True
+            inv_result, stats_result, appearance_result = await asyncio.gather(
+                inv_task, stats_task, appearance_task, return_exceptions=True
             )
         except Exception:
             await bot.send(event, at + " " + reply_failure("查询", "无法连接服务器"))
             return
 
         # 任一连接级异常 → 统一回 "无法连接服务器"
+        # （appearance 不参与，立绘是 best-effort）
         if isinstance(inv_result, TShockRequestError) or isinstance(
             stats_result, TShockRequestError
         ):
@@ -487,6 +572,14 @@ async def handle_user_inventory(
             await bot.send(event, at + " " + reply_failure("查询", "返回数据格式错误"))
             return
 
+        # 角色立绘 best-effort：任何失败返回 None，背包卡片不显示头像区，照常渲染。
+        character_sprite_data_uri = await _build_character_sprite_uri(
+            appearance_result,
+            server_id=server.id,
+            target_user_id=target_user.user_id,
+            log_label="用户背包",
+        )
+
         page_url = create_inventory_page(
             user_id=target_user.user_id,
             user_name=target_user.name,
@@ -502,6 +595,7 @@ async def handle_user_inventory(
             show_stats=bool(get_current_param("show_stats", True)),
             show_index=bool(get_current_param("show_index", True)),
             slots=[item for item in inventory if isinstance(item, dict)],
+            character_sprite_data_uri=character_sprite_data_uri,
         )
         # PQA-3.7：日志不再记录完整 render URL（含 token），只保留诊断必要字段
         logger.info(
@@ -579,6 +673,8 @@ async def handle_my_inventory(
     sem = _semaphore_for(_inventory_semaphores, server.id, max_concurrent=2)
     async with sem:
         # PQA-4.4：inventory + stats 并行
+        # appearance 第三路并行拉取，用于背包卡片角色立绘
+        # （best-effort，失败不阻断背包）。
         # PQB-X.2：URL 路径段插值前 quote(safe="") 防御
         encoded_name = quote(user.name, safe="")
         inv_task = request_server_api(
@@ -587,14 +683,18 @@ async def handle_my_inventory(
         stats_task = request_server_api(
             server, f"/nextbot/users/{encoded_name}/stats"
         )
+        appearance_task = request_server_api(
+            server, f"/nextbot/users/{encoded_name}/appearance"
+        )
         try:
-            inv_result, stats_result = await asyncio.gather(
-                inv_task, stats_task, return_exceptions=True
+            inv_result, stats_result, appearance_result = await asyncio.gather(
+                inv_task, stats_task, appearance_task, return_exceptions=True
             )
         except Exception:
             await bot.send(event, at + " " + reply_failure("查询", "无法连接服务器"))
             return
 
+        # appearance 不参与连接级失败判定，立绘是 best-effort。
         if isinstance(inv_result, TShockRequestError) or isinstance(
             stats_result, TShockRequestError
         ):
@@ -626,6 +726,14 @@ async def handle_my_inventory(
             await bot.send(event, at + " " + reply_failure("查询", "返回数据格式错误"))
             return
 
+        # 角色立绘 best-effort：任何失败返回 None，背包卡片不显示头像区，照常渲染。
+        character_sprite_data_uri = await _build_character_sprite_uri(
+            appearance_result,
+            server_id=server.id,
+            target_user_id=user.user_id,
+            log_label="我的背包",
+        )
+
         page_url = create_inventory_page(
             user_id=user.user_id,
             user_name=user.name,
@@ -641,6 +749,7 @@ async def handle_my_inventory(
             show_stats=bool(get_current_param("show_stats", True)),
             show_index=bool(get_current_param("show_index", True)),
             slots=[item for item in inventory if isinstance(item, dict)],
+            character_sprite_data_uri=character_sprite_data_uri,
         )
         # PQA-3.7：日志不再记录完整 render URL（含 token）
         logger.info(

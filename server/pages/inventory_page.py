@@ -80,6 +80,7 @@ def build_payload(
     show_stats: bool = True,
     show_index: bool,
     slots: list[dict[str, Any]],
+    character_sprite_data_uri: str | None = None,
 ) -> dict[str, Any]:
     return {
         "generated_at": beijing_now_text(),
@@ -97,6 +98,10 @@ def build_payload(
         "show_stats": bool(show_stats),
         "show_index": bool(show_index),
         "slots": _normalize_slots(slots),
+        # 角色立绘 data URI（透明底 PNG，scale=1）；为 None 时模板不渲染头像区。
+        "character_sprite_data_uri": (
+            str(character_sprite_data_uri) if character_sprite_data_uri else ""
+        ),
     }
 
 
@@ -118,6 +123,7 @@ def render(payload: dict[str, Any]) -> bytes:
         "show_stats": bool(payload.get("show_stats", True)),
         "show_index": bool(payload.get("show_index", True)),
         "slots": payload.get("slots", []),
+        "character_sprite_data_uri": payload.get("character_sprite_data_uri", ""),
     }
     data_json = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
     content = template.replace("__INVENTORY_DATA_JSON__", data_json)

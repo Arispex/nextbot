@@ -52,6 +52,56 @@
       color: var(--color-muted-soft);
     }
 
+    /* ── Profile header (identity + portrait + stats) ──────────
+     * Default (no portrait): behaves as a plain vertical stack so the
+     * card renders exactly as before. When the character portrait is
+     * present, `.has-portrait` lays the portrait beside the identity +
+     * stats column so it reads as one cohesive profile block above the
+     * inventory grid. ──────────────────────────────────────────── */
+    .profile {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-xl);
+    }
+
+    .profile.has-portrait {
+      flex-direction: row;
+      align-items: stretch;
+      gap: var(--space-lg);
+    }
+
+    .profile-main {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-xl);
+      min-width: 0;
+      flex: 1 1 auto;
+    }
+
+    /* Portrait card: cream stage framing the pixel sprite, sized to sit
+     * flush with the identity + stats column to its right. */
+    .portrait {
+      flex: 0 0 auto;
+      align-self: stretch;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background-color: var(--color-surface-card);
+      border: 1px solid var(--color-hairline);
+      border-radius: var(--radius-md);
+      padding: var(--space-md) var(--space-lg);
+    }
+
+    .portrait img {
+      /* Source PNG is the 40×56 idle frame at scale=1; CSS-upscale ~6x and
+       * keep pixels crisp (no smoothing). */
+      width: 240px;
+      height: 336px;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+      display: block;
+    }
+
     .avatar {
       width: 48px;
       height: 48px;
@@ -264,48 +314,56 @@
 <body>
   <main class="page">
 
-    <header>
-      <div class="header-rule"></div>
-      <h1 class="header-title type-display-lg">用户背包</h1>
-      <div class="owner-bar">
-        <img id="wh-avatar" class="avatar" alt="avatar" />
-        <div class="owner-meta type-body-sm">
-          <span class="owner-name" id="meta-user-name"></span>
-          <span class="owner-id" id="meta-user-id"></span>
-          <span class="meta-divider" id="server-divider" hidden>·</span>
-          <span id="meta-server" hidden></span>
-          <span class="meta-divider">·</span>
-          <span id="meta-time"></span>
-        </div>
+    <div class="profile" id="profile">
+      <div class="portrait" id="portrait" hidden>
+        <img id="character-sprite" alt="character" />
       </div>
-    </header>
 
-    <section id="stats-tiles" class="stats-tiles">
-      <div class="stat-tile">
-        <span class="stat-label">生命值</span>
-        <span class="stat-value" id="meta-life"></span>
+      <div class="profile-main">
+        <header>
+          <div class="header-rule"></div>
+          <h1 class="header-title type-display-lg">用户背包</h1>
+          <div class="owner-bar">
+            <img id="wh-avatar" class="avatar" alt="avatar" />
+            <div class="owner-meta type-body-sm">
+              <span class="owner-name" id="meta-user-name"></span>
+              <span class="owner-id" id="meta-user-id"></span>
+              <span class="meta-divider" id="server-divider" hidden>·</span>
+              <span id="meta-server" hidden></span>
+              <span class="meta-divider">·</span>
+              <span id="meta-time"></span>
+            </div>
+          </div>
+        </header>
+
+        <section id="stats-tiles" class="stats-tiles">
+          <div class="stat-tile">
+            <span class="stat-label">生命值</span>
+            <span class="stat-value" id="meta-life"></span>
+          </div>
+          <div class="stat-tile">
+            <span class="stat-label">魔力值</span>
+            <span class="stat-value" id="meta-mana"></span>
+          </div>
+          <div class="stat-tile">
+            <span class="stat-label">渔夫任务</span>
+            <span class="stat-value" id="meta-fishing-tasks"></span>
+          </div>
+          <div class="stat-tile">
+            <span class="stat-label">PVE / PVP 死亡</span>
+            <span class="stat-value" id="meta-deaths"></span>
+          </div>
+          <div class="stat-tile" id="tile-online-time">
+            <span class="stat-label">在线时长</span>
+            <span class="stat-value" id="meta-online-time"></span>
+          </div>
+          <div class="stat-tile" id="tile-map-exploration">
+            <span class="stat-label">地图探索率</span>
+            <span class="stat-value" id="meta-map-exploration"></span>
+          </div>
+        </section>
       </div>
-      <div class="stat-tile">
-        <span class="stat-label">魔力值</span>
-        <span class="stat-value" id="meta-mana"></span>
-      </div>
-      <div class="stat-tile">
-        <span class="stat-label">渔夫任务</span>
-        <span class="stat-value" id="meta-fishing-tasks"></span>
-      </div>
-      <div class="stat-tile">
-        <span class="stat-label">PVE / PVP 死亡</span>
-        <span class="stat-value" id="meta-deaths"></span>
-      </div>
-      <div class="stat-tile" id="tile-online-time">
-        <span class="stat-label">在线时长</span>
-        <span class="stat-value" id="meta-online-time"></span>
-      </div>
-      <div class="stat-tile" id="tile-map-exploration">
-        <span class="stat-label">地图探索率</span>
-        <span class="stat-value" id="meta-map-exploration"></span>
-      </div>
-    </section>
+    </div>
 
     <section id="section-rows" class="section-rows"></section>
 
@@ -334,6 +392,18 @@
         ms.textContent = serverName;
       }
       document.getElementById("meta-time").textContent = data.generated_at || "";
+
+      // ── Character portrait (optional profile enrichment) ───
+      // Present only when the appearance fetch + local sprite render
+      // succeeded upstream; otherwise the card renders exactly as before
+      // (no empty box).
+      const spriteUri = String(data.character_sprite_data_uri || "").trim();
+      if (spriteUri) {
+        const portrait = document.getElementById("portrait");
+        document.getElementById("character-sprite").src = spriteUri;
+        portrait.hidden = false;
+        document.getElementById("profile").classList.add("has-portrait");
+      }
 
       // ── Stats tiles ────────────────────────────────────────
       const showStats = Boolean(data.show_stats ?? true);

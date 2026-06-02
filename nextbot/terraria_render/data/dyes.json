@@ -1,0 +1,635 @@
+{
+"1007": {
+"color": [
+1.0,
+0.0,
+0.0
+],
+"pass": "ArmorColored",
+"sat": 1.2
+},
+"1008": {
+"color": [
+1.0,
+0.5,
+0.0
+],
+"pass": "ArmorColored",
+"sat": 1.2
+},
+"1009": {
+"color": [
+1.0,
+1.0,
+0.0
+],
+"pass": "ArmorColored",
+"sat": 1.2
+},
+"1010": {
+"color": [
+0.5,
+1.0,
+0.0
+],
+"pass": "ArmorColored",
+"sat": 1.2
+},
+"1011": {
+"color": [
+0.0,
+1.0,
+0.0
+],
+"pass": "ArmorColored",
+"sat": 1.2
+},
+"1012": {
+"color": [
+0.0,
+1.0,
+0.5
+],
+"pass": "ArmorColored",
+"sat": 1.2
+},
+"1013": {
+"color": [
+0.0,
+1.0,
+1.0
+],
+"pass": "ArmorColored",
+"sat": 1.2
+},
+"1014": {
+"color": [
+0.2,
+0.5,
+1.0
+],
+"pass": "ArmorColored",
+"sat": 1.2
+},
+"1015": {
+"color": [
+0.0,
+0.0,
+1.0
+],
+"pass": "ArmorColored",
+"sat": 1.2
+},
+"1016": {
+"color": [
+0.5,
+0.0,
+1.0
+],
+"pass": "ArmorColored",
+"sat": 1.2
+},
+"1017": {
+"color": [
+1.0,
+0.0,
+1.0
+],
+"pass": "ArmorColored",
+"sat": 1.2
+},
+"1018": {
+"color": [
+1.0,
+0.1,
+0.5
+],
+"pass": "ArmorColored",
+"sat": 1.3
+},
+"1019": {
+"color": [
+1.0,
+0.0,
+0.0
+],
+"pass": "ArmorColoredAndBlack",
+"sat": 1.2
+},
+"1020": {
+"color": [
+1.0,
+0.5,
+0.0
+],
+"pass": "ArmorColoredAndBlack",
+"sat": 1.2
+},
+"1021": {
+"color": [
+1.0,
+1.0,
+0.0
+],
+"pass": "ArmorColoredAndBlack",
+"sat": 1.2
+},
+"1022": {
+"color": [
+0.5,
+1.0,
+0.0
+],
+"pass": "ArmorColoredAndBlack",
+"sat": 1.2
+},
+"1023": {
+"color": [
+0.0,
+1.0,
+0.0
+],
+"pass": "ArmorColoredAndBlack",
+"sat": 1.2
+},
+"1024": {
+"color": [
+0.0,
+1.0,
+0.5
+],
+"pass": "ArmorColoredAndBlack",
+"sat": 1.2
+},
+"1025": {
+"color": [
+0.0,
+1.0,
+1.0
+],
+"pass": "ArmorColoredAndBlack",
+"sat": 1.2
+},
+"1026": {
+"color": [
+0.2,
+0.5,
+1.0
+],
+"pass": "ArmorColoredAndBlack",
+"sat": 1.2
+},
+"1027": {
+"color": [
+0.0,
+0.0,
+1.0
+],
+"pass": "ArmorColoredAndBlack",
+"sat": 1.2
+},
+"1028": {
+"color": [
+0.5,
+0.0,
+1.0
+],
+"pass": "ArmorColoredAndBlack",
+"sat": 1.2
+},
+"1029": {
+"color": [
+1.0,
+0.0,
+1.0
+],
+"pass": "ArmorColoredAndBlack",
+"sat": 1.2
+},
+"1030": {
+"color": [
+1.0,
+0.1,
+0.5
+],
+"pass": "ArmorColoredAndBlack",
+"sat": 1.3
+},
+"1031": {
+"pass": "ArmorColoredGradient"
+},
+"1032": {
+"pass": "ArmorColoredAndBlackGradient"
+},
+"1033": {
+"pass": "ArmorColoredGradient"
+},
+"1034": {
+"pass": "ArmorColoredAndBlackGradient"
+},
+"1035": {
+"pass": "ArmorColoredGradient"
+},
+"1036": {
+"pass": "ArmorColoredAndBlackGradient"
+},
+"1037": {
+"pass": "ArmorBrightnessColored"
+},
+"1038": {
+"color": [
+1.0,
+0.5,
+0.5
+],
+"pass": "ArmorColored",
+"sat": 1.2
+},
+"1039": {
+"color": [
+1.0,
+0.75,
+0.5
+],
+"pass": "ArmorColored",
+"sat": 1.2
+},
+"1040": {
+"color": [
+1.0,
+1.0,
+0.5
+],
+"pass": "ArmorColored",
+"sat": 1.2
+},
+"1041": {
+"color": [
+0.75,
+1.0,
+0.5
+],
+"pass": "ArmorColored",
+"sat": 1.2
+},
+"1042": {
+"color": [
+0.5,
+1.0,
+0.5
+],
+"pass": "ArmorColored",
+"sat": 1.2
+},
+"1043": {
+"color": [
+0.5,
+1.0,
+0.75
+],
+"pass": "ArmorColored",
+"sat": 1.2
+},
+"1044": {
+"color": [
+0.5,
+1.0,
+1.0
+],
+"pass": "ArmorColored",
+"sat": 1.2
+},
+"1045": {
+"color": [
+0.6,
+0.75,
+1.0
+],
+"pass": "ArmorColored",
+"sat": 1.2
+},
+"1046": {
+"color": [
+0.5,
+0.5,
+1.0
+],
+"pass": "ArmorColored",
+"sat": 1.2
+},
+"1047": {
+"color": [
+0.75,
+0.5,
+1.0
+],
+"pass": "ArmorColored",
+"sat": 1.2
+},
+"1048": {
+"color": [
+1.0,
+0.5,
+1.0
+],
+"pass": "ArmorColored",
+"sat": 1.2
+},
+"1049": {
+"color": [
+1.0,
+0.55,
+0.75
+],
+"pass": "ArmorColored",
+"sat": 1.3
+},
+"1050": {
+"pass": "ArmorBrightnessColored"
+},
+"1051": {
+"color": [
+1.0,
+0.0,
+0.0
+],
+"pass": "ArmorColoredAndSilverTrim",
+"sat": 1.2
+},
+"1052": {
+"color": [
+1.0,
+0.5,
+0.0
+],
+"pass": "ArmorColoredAndSilverTrim",
+"sat": 1.2
+},
+"1053": {
+"color": [
+1.0,
+1.0,
+0.0
+],
+"pass": "ArmorColoredAndSilverTrim",
+"sat": 1.2
+},
+"1054": {
+"color": [
+0.5,
+1.0,
+0.0
+],
+"pass": "ArmorColoredAndSilverTrim",
+"sat": 1.2
+},
+"1055": {
+"color": [
+0.0,
+1.0,
+0.0
+],
+"pass": "ArmorColoredAndSilverTrim",
+"sat": 1.2
+},
+"1056": {
+"color": [
+0.0,
+1.0,
+0.5
+],
+"pass": "ArmorColoredAndSilverTrim",
+"sat": 1.2
+},
+"1057": {
+"color": [
+0.0,
+1.0,
+1.0
+],
+"pass": "ArmorColoredAndSilverTrim",
+"sat": 1.2
+},
+"1058": {
+"color": [
+0.2,
+0.5,
+1.0
+],
+"pass": "ArmorColoredAndSilverTrim",
+"sat": 1.2
+},
+"1059": {
+"color": [
+0.0,
+0.0,
+1.0
+],
+"pass": "ArmorColoredAndSilverTrim",
+"sat": 1.2
+},
+"1060": {
+"color": [
+0.5,
+0.0,
+1.0
+],
+"pass": "ArmorColoredAndSilverTrim",
+"sat": 1.2
+},
+"1061": {
+"color": [
+1.0,
+0.0,
+1.0
+],
+"pass": "ArmorColoredAndSilverTrim",
+"sat": 1.2
+},
+"1062": {
+"color": [
+1.0,
+0.1,
+0.5
+],
+"pass": "ArmorColoredAndSilverTrim",
+"sat": 1.3
+},
+"1063": {
+"pass": "ArmorBrightnessGradient"
+},
+"1064": {
+"pass": "ArmorBrightnessGradient"
+},
+"1065": {
+"pass": "ArmorBrightnessGradient"
+},
+"1066": {
+"pass": "ArmorColoredRainbow"
+},
+"1067": {
+"pass": "ArmorBrightnessRainbow"
+},
+"1068": {
+"pass": "ArmorColoredGradient"
+},
+"1069": {
+"pass": "ArmorColoredGradient"
+},
+"1070": {
+"pass": "ArmorColoredGradient"
+},
+"1969": {
+"pass": "ArmorColored"
+},
+"2864": {
+"pass": "ArmorMartian"
+},
+"2869": {
+"pass": "ArmorLivingFlame"
+},
+"2870": {
+"pass": "ArmorLivingRainbow"
+},
+"2871": {
+"pass": "ArmorBrightnessColored"
+},
+"2872": {
+"pass": "ArmorInvert"
+},
+"2873": {
+"pass": "ArmorLivingOcean"
+},
+"2878": {
+"pass": "ArmorWisp"
+},
+"2879": {
+"pass": "ArmorWisp"
+},
+"2883": {
+"pass": "ArmorHighContrastGlow"
+},
+"2884": {
+"pass": "ArmorWisp"
+},
+"2885": {
+"pass": "ArmorWisp"
+},
+"3024": {
+"pass": "ArmorGel"
+},
+"3025": {
+"pass": "ArmorFlow"
+},
+"3026": {
+"pass": "ArmorReflectiveColor"
+},
+"3027": {
+"pass": "ArmorReflectiveColor"
+},
+"3028": {
+"pass": "ArmorAcid"
+},
+"3038": {
+"pass": "ArmorHades"
+},
+"3040": {
+"pass": "ArmorAcid"
+},
+"3041": {
+"pass": "ArmorMushroom"
+},
+"3042": {
+"pass": "ArmorPhase"
+},
+"3190": {
+"pass": "ArmorReflective"
+},
+"3526": {
+"pass": "ArmorSolar"
+},
+"3527": {
+"pass": "ArmorNebula"
+},
+"3528": {
+"pass": "ArmorVortex"
+},
+"3529": {
+"pass": "ArmorStardust"
+},
+"3530": {
+"pass": "ArmorVoid"
+},
+"3533": {
+"pass": "ArmorShiftingSands"
+},
+"3534": {
+"pass": "ArmorMirage"
+},
+"3535": {
+"pass": "ArmorShiftingPearlsands"
+},
+"3550": {
+"pass": "ArmorColoredAndSilverTrimGradient"
+},
+"3551": {
+"pass": "ArmorColoredAndSilverTrimGradient"
+},
+"3552": {
+"pass": "ArmorColoredAndSilverTrimGradient"
+},
+"3553": {
+"pass": "ArmorReflectiveColor"
+},
+"3554": {
+"pass": "ArmorReflectiveColor"
+},
+"3555": {
+"pass": "ArmorReflectiveColor"
+},
+"3556": {
+"pass": "ArmorMidnightRainbow"
+},
+"3557": {
+"pass": "ArmorPolarized"
+},
+"3558": {
+"pass": "ArmorBrightnessColored"
+},
+"3559": {
+"pass": "ArmorColoredAndBlack"
+},
+"3560": {
+"pass": "ArmorAcid"
+},
+"3561": {
+"pass": "ArmorGel"
+},
+"3562": {
+"pass": "ArmorGel"
+},
+"3597": {
+"pass": "ArmorHades"
+},
+"3598": {
+"pass": "ArmorHades"
+},
+"3599": {
+"pass": "ArmorLoki"
+},
+"3600": {
+"pass": "ArmorHades"
+},
+"3978": {
+"pass": "ColorOnly"
+},
+"4662": {
+"pass": "ArmorFog"
+},
+"4663": {
+"pass": "ArmorGel"
+},
+"4778": {
+"pass": "ArmorHallowBoss"
+}
+}

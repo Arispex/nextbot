@@ -15,6 +15,7 @@ dependencies = [
     "uvicorn>=0.35.0",
     "tzdata>=2025.3",
     "bcrypt>=4.0.0",
+    "numpy>=2.2.6",
 ]
 
 [project.optional-dependencies]
@@ -103,6 +104,25 @@ ignore = [
     "PLC0415", # import-outside-top-level
 ]
 allowed-confusables = ["，", "。", "“", "”", "：", "；", "？", "！", "【", "】", "《", "》", "…", "—", "（", "）", "、"]
+
+[tool.ruff.lint.per-file-ignores]
+# 测试：断言里的数值阈值（PNG 大小等）、独立运行时的诊断 print 都是测试常规用法。
+"tests/*" = ["PLR2004", "T201", "S101"]
+# 渲染模块的数学 / 编解码代码：保留与规格 / 字节码源一致的命名与字面量，不做无谓改名。
+# image_io.py 是 8-bit RGBA PNG 编解码器：filter type / bit-depth / color-type
+# 等都是 PNG 规范里的固定整型字面量（0/1/2/3/4/6/8），抽成常量只会降低可读性。
+"nextbot/terraria_render/image_io.py" = ["PLR2004"]
+# dye.py 精确移植反编译出的 ps_2_0 着色器 + D3DX preshader：单字母数学变量
+# （M=max、m=min、S=max+min、D=chroma）与 uColor / uSat 直接对应着色器源里的
+# uColor / uSaturation 常量名，改成蛇形会破坏与 dye_shader_spec 的逐行对照。
+"nextbot/terraria_render/dye.py" = ["PLR2004", "N803", "N806"]
+# _build/* 是一次性离线工具（XNB/LZX 解码器、资源/查表生成脚本），不进运行时。
+# lzx_xnb.py 是 cabextract/MonoGame LZX 解码器的忠实移植，R0/R1/R2/PRETREE_len
+# 等是该算法的规范命名；脚本通过 print 输出 CLI 诊断，用 os.path 即可。
+"nextbot/terraria_render/_build/*" = [
+    "N806", "N803", "T201", "PTH", "PLR2004", "TRY003", "SIM115", "ANN",
+    "RUF059", "BLE001", "E501", "C901", "PLR0912", "PLR0913", "PLR0915", "ARG002",
+]
 
 [tool.ruff.lint.pyupgrade]
 keep-runtime-typing = true

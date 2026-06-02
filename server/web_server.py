@@ -91,6 +91,7 @@ def create_inventory_page(
     show_stats: bool = True,
     show_index: bool = True,
     slots: list[dict[str, Any]] = [],
+    character_sprite_data_uri: str | None = None,
 ) -> str:
     payload = inventory_page.build_payload(
         user_id=user_id,
@@ -107,6 +108,7 @@ def create_inventory_page(
         show_stats=show_stats,
         show_index=show_index,
         slots=slots,
+        character_sprite_data_uri=character_sprite_data_uri,
     )
     return _make_page_url("inventory", payload)
 
