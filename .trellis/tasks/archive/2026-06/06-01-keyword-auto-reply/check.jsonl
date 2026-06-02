@@ -1,0 +1,6 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend spec 索引"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "新表 schema / migration / session 生命周期"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "WebUI endpoint / plugin 异常 / 文案合规"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "INFO / WARN 日志合规"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "DRY / 缓存正确性 / 跨层一致性"}
+{"file": ".claude/guides/cross-layer-thinking-guide.md", "reason": "DB + plugin + WebUI 三层数据流验证"}

@@ -1,0 +1,7 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend spec 索引"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "新 schema + migration 注册规范"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "WebUI api_error / reply_failure 文案合规"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "自动回复触发的 INFO 日志 key=value 格式"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "代码质量基线 / 缓存策略 / DRY"}
+{"file": ".claude/guides/cross-layer-thinking-guide.md", "reason": "DB / plugin / WebUI 后端 / WebUI 前端 / 侧边栏 多层一致性"}
+{"file": "DESIGN.md", "reason": "颜色 token / 中英文留空格 / 信息密度参考"}
