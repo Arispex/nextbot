@@ -44,6 +44,7 @@
           <th>回复内容</th>
           <th scope="col" aria-label="艾特状态">艾特</th>
           <th scope="col" aria-label="引用状态">引用</th>
+          <th scope="col" aria-label="可重复触发状态">重复</th>
           <th scope="col" aria-label="启用状态">启用</th>
           <th>创建时间</th>
           <th>操作</th>
@@ -91,6 +92,12 @@
       <label class="form-checkbox-row">
         <input id="field-quote-reply" type="checkbox" checked />
         <span>引用原消息</span>
+      </label>
+
+      <label class="form-checkbox-row" for="field-repeatable">
+        <input id="field-repeatable" type="checkbox" />
+        <span>可重复触发</span>
+        <span class="form-hint">开启后，即使前面已有规则触发，本规则仍会被触发</span>
       </label>
 
       <label class="form-checkbox-row">

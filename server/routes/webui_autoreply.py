@@ -72,6 +72,7 @@ class ValidatedAutoReplyPayload:
     enabled: bool
     at_user: bool
     quote_reply: bool
+    repeatable: bool
 
 
 class AutoReplyPayloadValidationError(ValueError):
@@ -136,6 +137,9 @@ def _validate_create_payload(payload: dict[str, Any]) -> ValidatedAutoReplyPaylo
         quote_reply=_normalize_bool(
             payload.get("quote_reply"), field="quote_reply", default=True
         ),
+        repeatable=_normalize_bool(
+            payload.get("repeatable"), field="repeatable", default=False
+        ),
     )
 
 
@@ -171,6 +175,11 @@ def _validate_update_payload(
             if "quote_reply" in payload
             else bool(current.quote_reply)
         ),
+        repeatable=(
+            _normalize_bool(payload["repeatable"], field="repeatable", default=False)
+            if "repeatable" in payload
+            else bool(current.repeatable)
+        ),
     )
 
 
@@ -182,6 +191,7 @@ def _serialize_rule(rule: KeywordReply) -> dict[str, Any]:
         "enabled": bool(rule.enabled),
         "at_user": bool(rule.at_user),
         "quote_reply": bool(rule.quote_reply),
+        "repeatable": bool(rule.repeatable),
         "created_at": format_beijing_datetime(rule.created_at),
     }
 
@@ -250,6 +260,7 @@ async def webui_autoreply_create(request: Request) -> JSONResponse:
             enabled=validated.enabled,
             at_user=validated.at_user,
             quote_reply=validated.quote_reply,
+            repeatable=validated.repeatable,
         )
         session.add(rule)
         session.commit()
@@ -319,6 +330,7 @@ async def webui_autoreply_update(
         rule.enabled = validated.enabled
         rule.at_user = validated.at_user
         rule.quote_reply = validated.quote_reply
+        rule.repeatable = validated.repeatable
         session.commit()
         serialized = _serialize_rule(rule)
         logger.info(

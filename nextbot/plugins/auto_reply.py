@@ -38,6 +38,7 @@ class _Rule:
     reply: str
     at_user: bool
     quote_reply: bool
+    repeatable: bool
 
 
 _cache: tuple[float, list[_Rule]] | None = None
@@ -64,6 +65,7 @@ def _load_rules_from_db() -> list[_Rule]:
                 reply=str(row.reply or ""),
                 at_user=bool(row.at_user),
                 quote_reply=bool(row.quote_reply),
+                repeatable=bool(row.repeatable),
             )
             for row in rows
         ]
@@ -141,54 +143,64 @@ async def handle_auto_reply(bot: Bot, event: Event) -> None:
         return
 
     text_lower = text.lower()
-    matched_rule: _Rule | None = None
+    is_group_event = isinstance(event, OBV11GroupMessageEvent)
+    group_id = getattr(event, "group_id", None)
+    masked_user_id = _mask_user_id(event.get_user_id())
+    matched_text_len = len(text)
+    has_triggered_any = False
+
+    # 语义 A：第一条命中规则无条件触发；从第二条命中规则起，仅当
+    # 自身 repeatable=True 才触发，否则"跳过本次发送但继续遍历"。
+    # 默认 repeatable=False，与历史"首条命中即 break"完全兼容。
     for rule in rules:
         keyword_lower = rule.keyword.strip().lower()
         if not keyword_lower:
             continue
-        if keyword_lower in text_lower:
-            matched_rule = rule
-            break
+        if keyword_lower not in text_lower:
+            continue
+        if has_triggered_any and not rule.repeatable:
+            continue
 
-    if matched_rule is None:
-        return
+        message = OBV11Message()
 
-    is_group_event = isinstance(event, OBV11GroupMessageEvent)
-    message = OBV11Message()
+        if rule.quote_reply:
+            # 取 event.message_id 构造 OneBot v11 reply 段；非 OneBot 适配
+            # 器（例如 console）可能没有 message_id，做防御性处理。
+            message_id = getattr(event, "message_id", None)
+            if message_id is not None:
+                message += OBV11MessageSegment.reply(message_id)
 
-    if matched_rule.quote_reply:
-        # 取 event.message_id 构造 OneBot v11 reply 段；非 OneBot 适配
-        # 器（例如 console）可能没有 message_id，做防御性处理。
-        message_id = getattr(event, "message_id", None)
-        if message_id is not None:
-            message += OBV11MessageSegment.reply(message_id)
+        if rule.at_user and is_group_event:
+            # 仅群消息追加 @<user>；私聊场景 @ 无意义，PRD 明确要求跳过。
+            user_id_raw = event.get_user_id()
+            try:
+                at_target: int | str = int(user_id_raw)
+            except (TypeError, ValueError):
+                at_target = user_id_raw
+            message += OBV11MessageSegment.at(at_target)
+            # @ 与回复文本之间补一个空格，避免黏连。
+            message += OBV11MessageSegment.text(" " + rule.reply)
+        else:
+            message += OBV11MessageSegment.text(rule.reply)
 
-    if matched_rule.at_user and is_group_event:
-        # 仅群消息追加 @<user>；私聊场景 @ 无意义，PRD 明确要求跳过。
-        user_id_raw = event.get_user_id()
         try:
-            at_target: int | str = int(user_id_raw)
-        except (TypeError, ValueError):
-            at_target = user_id_raw
-        message += OBV11MessageSegment.at(at_target)
-        # @ 与回复文本之间补一个空格，避免黏连。
-        message += OBV11MessageSegment.text(" " + matched_rule.reply)
-    else:
-        message += OBV11MessageSegment.text(matched_rule.reply)
+            await bot.send(event, message)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                f"自动回复发送失败：rule_id={rule.id} "
+                f"keyword={rule.keyword!r} repeatable={rule.repeatable} "
+                f"reason={exc!r}"
+            )
+            # 单条发送失败不阻断后续 repeatable 规则触发：日志已记录原因，
+            # 让管理员可以排查；本期不引入更复杂的串联策略。
+            has_triggered_any = True
+            continue
 
-    try:
-        await bot.send(event, message)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning(
-            f"自动回复发送失败：rule_id={matched_rule.id} "
-            f"keyword={matched_rule.keyword!r} reason={exc!r}"
+        logger.info(
+            f"自动回复触发：rule_id={rule.id} "
+            f"keyword={rule.keyword!r} "
+            f"repeatable={rule.repeatable} "
+            f"user_id={masked_user_id} "
+            f"group_id={group_id} matched_text_len={matched_text_len}"
         )
-        return
-
-    group_id = getattr(event, "group_id", None)
-    logger.info(
-        f"自动回复触发：rule_id={matched_rule.id} "
-        f"keyword={matched_rule.keyword!r} "
-        f"user_id={_mask_user_id(event.get_user_id())} "
-        f"group_id={group_id} matched_text_len={len(text)}"
-    )
+        has_triggered_any = True

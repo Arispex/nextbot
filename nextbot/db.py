@@ -340,6 +340,10 @@ class KeywordReply(Base):
     at_user: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     # 命中后是否以 OneBot v11 reply 引用原消息。
     quote_reply: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # 是否允许在同一条消息已被前面规则触发后仍参与触发；默认 False，与历史
+    # "首条命中即 break" 行为完全兼容。开启后即使有前序规则已触发，本条仍
+    # 会触发；语义详见 plugin handler 的主循环。
+    repeatable: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=db_now_utc_naive
     )
@@ -504,6 +508,7 @@ def init_db() -> None:
         ensure_purge_user_whitelist_sync_permission_schema,
     )
     _run_migration("keyword_reply", ensure_keyword_reply_schema)
+    _run_migration("keyword_reply_repeatable", ensure_keyword_reply_repeatable_schema)
     # ensure_default_* 是 seeding 不是 migration，失败必须阻断启动（业务需要这些行）
     ensure_default_groups()
     ensure_default_stats()
@@ -1066,6 +1071,31 @@ def ensure_keyword_reply_schema() -> None:
             )
             """
         ))
+
+
+def ensure_keyword_reply_repeatable_schema() -> None:
+    """启动时确保 keyword_reply 表上有 repeatable 列（旧库升级补列）。
+
+    SQLite ALTER TABLE ADD COLUMN 幂等：先 PRAGMA 检查再 ALTER，缺列才加。
+    默认值 0（False）保证已有规则维持"首条命中即 break"行为。
+
+    失败仅 logger.warning 不阻断启动（_run_migration 包装层兜底）。
+    """
+    if not DB_PATH.exists():
+        return
+
+    engine = get_engine()
+    with engine.begin() as conn:
+        rows = conn.execute(sa_text('PRAGMA table_info("keyword_reply")')).fetchall()
+        if not rows:
+            return
+
+        columns = {str(row[1]) for row in rows}
+        if "repeatable" not in columns:
+            conn.execute(sa_text(
+                'ALTER TABLE "keyword_reply" '
+                'ADD COLUMN "repeatable" BOOLEAN NOT NULL DEFAULT 0'
+            ))
 
 
 def wal_checkpoint_truncate() -> None:

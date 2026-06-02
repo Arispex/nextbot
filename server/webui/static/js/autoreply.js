@@ -22,6 +22,7 @@
   const fieldReply = document.getElementById("field-reply");
   const fieldAtUser = document.getElementById("field-at-user");
   const fieldQuoteReply = document.getElementById("field-quote-reply");
+  const fieldRepeatable = document.getElementById("field-repeatable");
   const fieldEnabled = document.getElementById("field-enabled");
 
   const deleteModalNode = document.getElementById("delete-modal");
@@ -53,6 +54,7 @@
       fieldReply &&
       fieldAtUser &&
       fieldQuoteReply &&
+      fieldRepeatable &&
       fieldEnabled &&
       deleteModalNode &&
       deleteModalTextNode &&
@@ -244,6 +246,7 @@
     enabled: Boolean(item?.enabled),
     at_user: Boolean(item?.at_user),
     quote_reply: Boolean(item?.quote_reply),
+    repeatable: Boolean(item?.repeatable),
     created_at: String(item?.created_at || ""),
   });
 
@@ -311,6 +314,10 @@
       quoteCell.className = "status-cell";
       quoteCell.appendChild(buildStatusBadge(rule.quote_reply));
 
+      const repeatableCell = document.createElement("td");
+      repeatableCell.className = "status-cell";
+      repeatableCell.appendChild(buildStatusBadge(rule.repeatable));
+
       const enabledCell = document.createElement("td");
       enabledCell.className = "status-cell";
       enabledCell.appendChild(buildStatusBadge(rule.enabled));
@@ -349,6 +356,7 @@
       row.appendChild(replyCell);
       row.appendChild(atCell);
       row.appendChild(quoteCell);
+      row.appendChild(repeatableCell);
       row.appendChild(enabledCell);
       row.appendChild(createdCell);
       row.appendChild(actionCell);
@@ -399,6 +407,7 @@
       fieldReply.value = rule.reply || "";
       fieldAtUser.checked = Boolean(rule.at_user);
       fieldQuoteReply.checked = Boolean(rule.quote_reply);
+      fieldRepeatable.checked = Boolean(rule.repeatable);
       fieldEnabled.checked = Boolean(rule.enabled);
     } else {
       modalTitleNode.textContent = "创建自动回复规则";
@@ -407,6 +416,7 @@
       fieldReply.value = "";
       fieldAtUser.checked = true;
       fieldQuoteReply.checked = true;
+      fieldRepeatable.checked = false;
       fieldEnabled.checked = true;
     }
     openModalWithFocus(modalNode);
@@ -441,6 +451,7 @@
       enabled: Boolean(fieldEnabled.checked),
       at_user: Boolean(fieldAtUser.checked),
       quote_reply: Boolean(fieldQuoteReply.checked),
+      repeatable: Boolean(fieldRepeatable.checked),
     };
   };
 
