@@ -1822,3 +1822,38 @@ shop.py _buy_command 顶部的 SF-4.3 守卫强拒 require_online=False + target
 ### Next Steps
 
 - None - task complete
+
+
+## Session 210: 关键词自动回复 + WebUI 管理页
+
+**Date**: 2026-06-02
+**Task**: 关键词自动回复 + WebUI 管理页
+**Branch**: `main`
+
+### Summary
+
+新增「关键词自动回复」系统：消息匹配关键词时自动回复预设内容，通过 WebUI 增删改查；每条规则单独开关 at_user/quote_reply/enabled/repeatable。DB keyword_reply 表 + 幂等 migration；plugin on_message(priority=100, block=False) + 30s TTL 缓存 + 主动 invalidate + frozen dataclass 隔离 ORM + has_triggered_any 累积模式（语义 A：第一条命中无条件触发，后续按自身 repeatable 决定）；CRUD router；前端模板/JS/CSS 1:1 镜像 users 视觉规范 + 表格三列改只读 status-badge（编辑统一走 dialog）；侧边栏菜单 + 10 个 shell 占位符替换。修 3 个回归：.hidden 工具类缺失导致 modal 默认弹出 / CSS 风格统一 / webui_autoreply 顶层 import auto_reply 触发 NoneBot PluginManager imported-before-loading RuntimeError 改 lazy 包装函数。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `9a30f4e` | (see git log) |
+| `fb4c357` | (see git log) |
+| `23fe19b` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
