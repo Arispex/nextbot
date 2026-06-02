@@ -9,10 +9,13 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import numpy as np
+
 # allow `python tests/test_terraria_render.py` from anywhere
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from nextbot.terraria_render import render_character
+from nextbot.terraria_render.dye import apply_dye
 
 _PNG_SIG = b"\x89PNG\r\n\x1a\n"
 
@@ -61,12 +64,68 @@ def test_scale_changes_dimensions() -> None:
     assert len(big) > len(small)
 
 
+def _gray_frame(value: int = 200) -> np.ndarray:
+    """A fully-opaque 56x40 gray cell to dye."""
+    f = np.full((56, 40, 4), value, np.uint8)
+    f[..., 3] = 255
+    return f
+
+
+def test_armor_colored_is_copper() -> None:
+    # ArmorColored RedDye on silver gray -> copper (high R, equal-and-lower G==B),
+    # brightness preserved (NOT flat red). Bit-exact against dye_shader_spec ramp.
+    px = np.array([[[204, 204, 204, 255]]], np.uint8)  # 0.8 gray
+    out = apply_dye(px, {"pass": "ArmorColored", "color": [1.0, 0.0, 0.0], "sat": 1.2})
+    r, g, b = int(out[0, 0, 0]), int(out[0, 0, 1]), int(out[0, 0, 2])
+    assert (r, g, b) == (213, 183, 183)  # spec copper ramp @0.8
+    assert r > g and g == b and g > 0  # copper, not pure red
+
+
+def test_invert_deterministic_and_changes_input() -> None:
+    f = _gray_frame(200)
+    a = apply_dye(f.copy(), {"pass": "ArmorInvert"})
+    b = apply_dye(f.copy(), {"pass": "ArmorInvert"})
+    assert np.array_equal(a, b)  # deterministic
+    assert not np.array_equal(a, f)  # differs from input
+    # opaque 200 -> premult 200/255, inverted 1-200/255 -> straight -> 55
+    assert int(a[0, 0, 0]) == round((1.0 - 200 / 255) * 255)
+
+
+def test_gradient_red_to_yellow_is_warm() -> None:
+    # ArmorColoredGradient red->yellow runs left->right across the 40px frame and must
+    # stay WARM (high R, low B), NOT inverted to cyan. Regression guard for the
+    # sat-remap sign bug (sat_c2=-c1 drove D negative and flipped red -> cyan).
+    f = _gray_frame(200)
+    out = apply_dye(
+        f, {"pass": "ArmorColoredGradient", "color": [1.0, 0.0, 0.0],
+            "secondary": [1.0, 1.0, 0.0], "sat": 1.2})
+    r_left, g_left, b_left = (int(out[0, 0, c]) for c in range(3))
+    r_right, g_right, b_right = (int(out[0, 39, c]) for c in range(3))
+    # warm everywhere: red channel dominates, blue stays low (not cyan)
+    assert r_left > b_left and r_right > b_right
+    assert r_left > g_left  # red end leans red
+    # red->yellow means the green channel rises left->right (and the gradient varies)
+    assert g_right > g_left
+    # rows are identical (gradient is column-only)
+    assert np.array_equal(out[0], out[40])
+
+
+def test_unknown_pass_falls_back_undyed() -> None:
+    f = _gray_frame(200)
+    assert np.array_equal(apply_dye(f.copy(), {"pass": "NotARealPass"}), f)
+    assert np.array_equal(apply_dye(f.copy(), None), f)
+
+
 def _run() -> int:
     tests = [
         test_render_returns_valid_png,
         test_render_is_deterministic,
         test_render_appearance_only,
         test_scale_changes_dimensions,
+        test_armor_colored_is_copper,
+        test_invert_deterministic_and_changes_input,
+        test_gradient_red_to_yellow_is_warm,
+        test_unknown_pass_falls_back_undyed,
     ]
     failed = 0
     for t in tests:

@@ -113,9 +113,19 @@ allowed-confusables = ["，", "。", "“", "”", "：", "；", "？", "！", "
 # 等都是 PNG 规范里的固定整型字面量（0/1/2/3/4/6/8），抽成常量只会降低可读性。
 "nextbot/terraria_render/image_io.py" = ["PLR2004"]
 # dye.py 精确移植反编译出的 ps_2_0 着色器 + D3DX preshader：单字母数学变量
-# （M=max、m=min、S=max+min、D=chroma）与 uColor / uSat 直接对应着色器源里的
-# uColor / uSaturation 常量名，改成蛇形会破坏与 dye_shader_spec 的逐行对照。
-"nextbot/terraria_render/dye.py" = ["PLR2004", "N803", "N806"]
+# （M=max、m=min、S=max+min、D=chroma）与 uColor / uSat / uSecondary 直接对应
+# 着色器源里的常量名，改成蛇形会破坏与 dye_shader_spec 的逐行对照。
+# - ANN001：内层 f(r,g,b,a) 闭包/ lambda 形参都是 numpy 数组，对应着色器寄存器，
+#   标注 np.ndarray 只是噪音。
+# - ARG001/ARG005：动画 / 噪声 pass 在静态近似里折叠了 uTime / uSecondary / uSat 等
+#   uniform，但保留完整签名以忠实记录真实着色器输入（见 spec §0 / §全局 uniforms）。
+# - RUF059：解包占位变量（h_ 等）。E501：保持与字节码逐行对照的着色器数学长行。
+# - C901 / PLR09xx：apply_dye 是按 pass 名分派的扁平派发表，分支多但无逻辑嵌套；
+#   _recolor_premul 形参对应 preshader 常量，拆分反而失真。
+"nextbot/terraria_render/dye.py" = [
+    "PLR2004", "N803", "N806", "ANN001", "ARG001", "ARG005",
+    "RUF059", "E501", "C901", "PLR0911", "PLR0912", "PLR0913",
+]
 # _build/* 是一次性离线工具（XNB/LZX 解码器、资源/查表生成脚本），不进运行时。
 # lzx_xnb.py 是 cabextract/MonoGame LZX 解码器的忠实移植，R0/R1/R2/PRETREE_len
 # 等是该算法的规范命名；脚本通过 print 输出 CLI 诊断，用 os.path 即可。

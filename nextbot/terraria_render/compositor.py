@@ -39,6 +39,9 @@ _EQUIP_SLOTS = _load_json("equip_slots.json")   # netId -> {"head"|"body"|"legs"
 _DYES = _load_json("dyes.json")                 # dye netId -> {pass,color,sat,...}
 _HAIR = _load_json("hair_sets.json")
 _VAR = _load_json("variants.json")
+# body equip slot -> long-coat leg-armor slot (robe/coat skirt); int, or
+# {"male","female"} for the 5 gender-conditional bodies. See robe_extension_spec.md.
+_ROBE_EXT = _load_json("robe_extensions.json")
 _FULLHAIR = set(_HAIR["fullHair"])
 _HATHAIR = set(_HAIR["hatHair"])
 _BACKONLY = set(_HAIR["backonly"])
@@ -146,6 +149,16 @@ def _slot_of(item: dict[str, Any] | None, kind: str) -> int | None:
     return _EQUIP_SLOTS.get(str(nid), {}).get(kind)
 
 
+def _longcoat_ext_slot(body_slot: int | None, *, male: bool) -> int | None:
+    """body equip slot -> long-coat leg-armor extension slot (robe/coat skirt)."""
+    if body_slot is None:
+        return None
+    v = _ROBE_EXT.get(str(body_slot))
+    if v is None:
+        return None
+    return (v["male"] if male else v["female"]) if isinstance(v, dict) else v
+
+
 def _cell(key: str, *, male: bool) -> int:
     c = _CELLS[key]
     if isinstance(c, dict):
@@ -245,6 +258,7 @@ def _resolve_armor(
     leg_slot = _slot_of(_displayed_piece("legs", equipment, vanity), "legs")
     return {
         "head_slot": head_slot,
+        "body_slot": body_slot,
         "head": f"Armor_Head_{head_slot}" if head_slot else None,
         "body": f"ArmorBody_{body_slot}" if body_slot else None,
         "legs": f"Armor_Legs_{leg_slot}" if leg_slot else None,
@@ -299,6 +313,11 @@ def render_character(
     # 5. skin long-coat (only without body armor)
     if not armor_body:
         comp.draw_player(14, "col")
+    # 5b. armor long-coat (robe/coat skirt): leg-armor sheet keyed on BODY slot,
+    # drawn with the BODY dye/tint, at the idle leg frame, just BEHIND the torso.
+    ext_slot = _longcoat_ext_slot(armor["body_slot"], male=comp.male)
+    if ext_slot is not None:
+        comp.draw_armor(f"Armor_Legs_{ext_slot}", "col", body_dye)
     # 6. torso + back shoulder
     if armor_body:
         comp.draw_armor(armor_body, "torso", body_dye)
