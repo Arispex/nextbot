@@ -177,7 +177,11 @@ def _run_preshader(blob: bytes, inputs: Mapping[int, np.ndarray]) -> dict[int, n
 
     def get(table: int, off: int) -> float:
         reg, comp = off >> 2, off & 3
-        if table == 0:
+        # tables 0 (IMM) and 1 (CONST) both index the CLIT literal doubles by `off`
+        # (Wine d3dx9 reg_table). Solar/Stardust/HallowBoss reference their literals
+        # via table 1 (e.g. Stardust `mul OUTb[8] <- uTime.x, CONST[8]=0.2`); reading
+        # only table 0 made those literals 0 -> the uTime brightness/phase terms froze.
+        if table in (0, 1):
             return imm[off] if off < len(imm) else 0.0
         if table == 2:
             return float(inp.get(reg, np.zeros(4))[comp])
@@ -334,6 +338,10 @@ def _run_ps(  # faithful 1:1 bytecode dispatch (opcode table mirrors d3d9types.h
         elif op == 0x07:  # rsq
             d = np.abs(s[0])
             res = np.where(d != 0, 1.0 / np.sqrt(np.where(d == 0, 1.0, d)), 0.0)
+        elif op == 0x08:  # dp3 (3-component dot, broadcast to all 4 lanes)
+            res = np.repeat((s[0][..., :3] * s[1][..., :3]).sum(-1, keepdims=True), 4, -1)
+        elif op == 0x09:  # dp4 (4-component dot, broadcast to all 4 lanes)
+            res = np.repeat((s[0] * s[1]).sum(-1, keepdims=True), 4, -1)
         elif op == 0x0A:  # min
             res = np.minimum(s[0], s[1])
         elif op == 0x0B:  # max
@@ -368,11 +376,15 @@ def run_noise_pass(
     u_sat: float,
     src_rect: tuple[int, int, int, int],
     sheet_size: tuple[int, int],
+    u_time: float = _UTIME,
 ) -> np.ndarray | None:
     """Run baked pass `name` per-pixel with real noise sampling.
 
     premul: (H,W,4) PREMULTIPLIED rgba in [0,1]. Returns premult oC0, or None if
     the blob/textures are unavailable (caller falls back to the APPROX body).
+    `u_time` is the frozen GlobalTimeWrappedHourly for this still (default 0); the
+    animated/emissive pillar passes (Solar/Nebula/Vortex/Stardust/HallowBoss) bake a
+    per-pass representative value in dye.py so the frozen frame reads bright.
     """
     parsed = _parse_blob(name)
     noise = _noise_tex()
@@ -395,7 +407,7 @@ def run_noise_pass(
         "uSaturation": np.array([u_sat, u_sat, u_sat, u_sat]),
         "uSourceRect": np.array([sx, sy, sw, sh], dtype=np.float64),
         "uImageSize0": np.array([sheet_w, sheet_h, 0.0, 0.0]),
-        "uTime": np.array([_UTIME, 0.0, 0.0, 0.0]),
+        "uTime": np.array([u_time, 0.0, 0.0, 0.0]),
         "uDirection": np.array([1.0, 0.0, 0.0, 0.0]),
         "uRotation": np.array([0.0, 0.0, 0.0, 0.0]),
     }

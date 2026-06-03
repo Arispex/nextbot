@@ -433,8 +433,31 @@ def _solar(
     arr_u8: np.ndarray, uColor: ColorLike = (1.0, 0.0, 0.0),
     uSecondary: ColorLike = (1.0, 1.0, 0.0), uTime: float = UTIME,
 ) -> np.ndarray:
-    """ArmorSolar APPROX: self-emboss collapsed to DC -> fiery uColor tint."""
-    return _brightness_clip(arr_u8, uColor)
+    """ArmorSolar APPROX: emissive lava/fire heat ramp from source luminance.
+
+    The real ArmorSolar bytecode (5 self-taps + a `sincos(uTime)` rotation) builds its
+    fiery glow as an ADDITIVE emissive term carried on the vertex color `v0`; running it
+    with v0=white (offline) collapses the glow to a flat pale wash and loses the fire
+    hue entirely (verified). So this is a deliberate fire approximation, NOT the literal
+    shader: map source brightness to a Solar-pillar heat ramp uColor(ember red) ->
+    uSecondary(yellow) -> white-hot, scaled emissively (dark embers stay dim, hot cores
+    bloom to near-white). Reads as bright orange/yellow lava with hot highlights, not the
+    dark red the old `_brightness_clip(uColor)` produced."""
+    uC = _col(uColor, [1.0, 0.0, 0.0])
+    uS = _col(uSecondary, [1.0, 1.0, 0.0])
+    white = np.array([1.0, 1.0, 1.0])
+
+    def f(r, g, b, a):
+        L = (r + g + b) / 3.0                     # premult luma in [0,1]
+        t = np.clip((L - 0.04) * 2.0, 0.0, 1.0)   # heat: lift mids toward yellow
+        lo = (t * 2.0)[..., None]                 # ramp segment 1: ember -> yellow
+        hi = (t * 2.0 - 1.0)[..., None]           # ramp segment 2: yellow -> white-hot
+        low = uC + (uS - uC) * np.clip(lo, 0.0, 1.0)
+        high = uS + (white - uS) * np.clip(hi, 0.0, 1.0)
+        col = np.where((t < 0.5)[..., None], low, high)
+        return col * (0.4 + 0.95 * t)[..., None] * a[..., None]  # emissive: dim cold, bloom hot
+
+    return _run(arr_u8, f)
 
 
 def _void(arr_u8: np.ndarray, uTime: float = UTIME) -> np.ndarray:
@@ -462,17 +485,66 @@ def _loki(
     return _brightness_clip(arr_u8, _col(uColor, [0.1, 0.1, 0.1]))
 
 
+# ── emissive HDR tone-map (for the pillar/boss glow passes) ───────────
+# Representative GlobalTimeWrappedHourly per emissive pillar/boss pass — chosen by
+# sweeping uTime over a cycle and picking the BRIGHTEST, most characteristic still
+# (research/dye_passes_spec.md "Time-animated"; sweep contact sheets in
+# temp/xnb_probe/out/sweep_<name>.png). These are animated emissive effects in-game;
+# uTime=0 lands on a dim phase for several, so each bakes its own bright frame.
+_PILLAR_TIME: dict[str, float] = {
+    "ArmorSolar": 5.0,       # brightness pulse c2=sin(uTime*0.477+0.5)*0.2+1 peaks ~1.13
+    "ArmorNebula": 3.0,      # cloud uv-scroll phase with the most pink coverage
+    "ArmorVortex": 0.5,      # swirl phase with the brightest teal energy streaks
+    "ArmorStardust": 1.0,    # starfield phase showing the most bright white sparkles
+    "ArmorHallowBoss": 0.0,  # palette uv barely time-shifts; 0 already bright pastel
+}
+# Per-pass emissive gain applied before the tone-map: a mild lift so the glow reads as
+# bright (the in-game additive bloom) instead of a dark tint on the dark armor base.
+# Tuned by eye (temp/xnb_probe/out/tonemap_<pass>.png): high enough to glow, low enough
+# to keep the hue (>~2.0 washes everything to white). HallowBoss is already bright and
+# in-gamut -> 1.0 (no gain, stays accurate).
+_PILLAR_GAIN: dict[str, float] = {
+    "ArmorNebula": 1.4,
+    "ArmorVortex": 1.5,
+    "ArmorStardust": 1.35,
+    "ArmorHallowBoss": 1.0,
+}
+
+
+def _emissive_tonemap(rgb: np.ndarray, gain: float = 1.0) -> np.ndarray:
+    """Map an over-unity (HDR) emissive rgb into [0,1] so >1 regions read as bright
+    glow instead of hard-clipping to a flat primary.
+
+    In-game these dyes are drawn additively (the shader output exceeds 1.0 and blooms);
+    offline we have one LDR layer, so a plain clip to [0,1] turns the glow into a dark
+    tint and skews the hue (a (1.3,1.45,1.73) sparkle clips to (1,1,1)'s neighbours,
+    losing brightness). Instead: apply a mild per-pass `gain` (the bloom lift), then fold
+    each pixel's overflow (max(channel)-1, when >0) back into ALL channels so a hot texel
+    desaturates toward white (a glowing highlight) while sub-unity texels keep their hue.
+    Hue is preserved below 1; only genuinely over-bright texels lift toward white."""
+    g = rgb * gain
+    m = np.max(g, axis=-1, keepdims=True)
+    overflow = np.clip(m - 1.0, 0.0, None)  # how far the brightest channel exceeds 1
+    lifted = g + overflow  # push the dimmer channels up by the same amount -> white-ish
+    return np.clip(lifted, 0.0, 1.0)
+
+
 # ── noise-sampling passes (real Misc/noise sampling via dye_noise) ────
 def _noise_pass(
     arr_u8: np.ndarray, name: str, *, uColor: np.ndarray, uSecondary: np.ndarray,
     uSat: float, src_rect: SrcRect, sheet_size: SheetSize,
     fallback: Callable[[], np.ndarray],
+    u_time: float = UTIME, emissive: bool = False, gain: float = 1.0,
 ) -> np.ndarray:
     """Run baked shader `name` per-pixel with real noise sampling (dye_noise).
 
     Premultiplies straight input, runs the actual ps_2_0 bytecode (premult-in/out),
     un-premultiplies — same wrapper as `_run`. Falls back to the documented APPROX
     when the baked blob / noise.png is absent (renderer never crashes offline).
+
+    `u_time` freezes the still (emissive pillar passes bake a per-pass bright frame via
+    `_PILLAR_TIME`). `emissive=True` tone-maps the over-unity output with `gain`
+    (preserving the glow) instead of hard-clipping; non-pillar passes keep the hard clip.
     """
     arr = arr_u8.astype(np.float64) / 255.0
     a = arr[..., 3]
@@ -481,14 +553,14 @@ def _noise_pass(
     out = dye_noise.run_noise_pass(
         pr, name, u_color=np.asarray(uColor, dtype=np.float64),
         u_secondary=np.asarray(uSecondary, dtype=np.float64), u_sat=uSat,
-        src_rect=src_rect, sheet_size=sheet_size)
+        src_rect=src_rect, sheet_size=sheet_size, u_time=u_time)
     if out is None:
         return fallback()
     oa = out[..., 3]
     nz = oa > 1e-6
     rgb = np.where(nz[..., None], out[..., :3] / np.where(nz, oa, 1.0)[..., None], 0.0)
     res = arr.copy()
-    res[..., :3] = rgb
+    res[..., :3] = _emissive_tonemap(rgb, gain) if emissive else np.clip(rgb, 0.0, 1.0)
     res = np.clip(res, 0.0, 1.0)
     return (res * 255.0 + 0.5).astype(np.uint8)
 
@@ -531,11 +603,17 @@ def _nebula(
     arr_u8: np.ndarray, uColor: ColorLike = (1.0, 0.0, 1.0), uSecondary: ColorLike = None,
     uSat: float = 1.0, *, src_rect: SrcRect = _DEFAULT_RECT, sheet_size: SheetSize = _DEFAULT_SHEET,
 ) -> np.ndarray:
-    """ArmorNebula: real noise cloud over recolor; APPROX = ArmorColored recolor."""
+    """ArmorNebula: real noise cloud over recolor (emissive); APPROX = ArmorColored.
+
+    Bright pink/purple nebula clouds: the bytecode adds a `_rainbow(noise)*uSecondary*5`
+    cloud (over-unity) onto the uColor recolor. Frozen at a representative bright frame
+    (`_PILLAR_TIME`) and tone-mapped so the cloud highlights read as glow, not a clip."""
     uC = _col(uColor, [1.0, 0.0, 1.0])
     uS = _col(uSecondary, [1.0, 1.0, 1.0])
     return _noise_pass(arr_u8, "ArmorNebula", uColor=uC, uSecondary=uS, uSat=uSat,
                        src_rect=src_rect, sheet_size=sheet_size,
+                       u_time=_PILLAR_TIME["ArmorNebula"], emissive=True,
+                       gain=_PILLAR_GAIN["ArmorNebula"],
                        fallback=lambda: _armor_colored(arr_u8, np.clip(uC, 0.0, 1.0), uSat))
 
 
@@ -543,11 +621,17 @@ def _vortex(
     arr_u8: np.ndarray, uColor: ColorLike = (0.1, 0.5, 0.35), uSecondary: ColorLike = None,
     *, src_rect: SrcRect = _DEFAULT_RECT, sheet_size: SheetSize = _DEFAULT_SHEET,
 ) -> np.ndarray:
-    """ArmorVortex: real swirling noise; APPROX = brightness recolor by uColor."""
+    """ArmorVortex: real swirling noise (emissive); APPROX = brightness recolor.
+
+    Teal/green energy glow: the bytecode swirls polar-coord noise into bright
+    `uSecondary` streaks (over-unity) over a `uColor*luma` base. Frozen at a bright
+    swirl phase and tone-mapped so the energy streaks read as glow."""
     uC = _col(uColor, [0.1, 0.5, 0.35])
     uS = _col(uSecondary, [1.0, 1.0, 1.0])
     return _noise_pass(arr_u8, "ArmorVortex", uColor=uC, uSecondary=uS, uSat=1.0,
                        src_rect=src_rect, sheet_size=sheet_size,
+                       u_time=_PILLAR_TIME["ArmorVortex"], emissive=True,
+                       gain=_PILLAR_GAIN["ArmorVortex"],
                        fallback=lambda: _brightness_clip(arr_u8, uC))
 
 
@@ -555,7 +639,12 @@ def _stardust(
     arr_u8: np.ndarray, uColor: ColorLike = (0.4, 0.6, 1.0), uSecondary: ColorLike = None,
     *, src_rect: SrcRect = _DEFAULT_RECT, sheet_size: SheetSize = _DEFAULT_SHEET,
 ) -> np.ndarray:
-    """ArmorStardust: real noise starfield (dark + bright specks); APPROX = uColor base."""
+    """ArmorStardust: real noise starfield (emissive); APPROX = uColor base.
+
+    Deep blue (uColor*luma*0.666) with bright white star sparkles
+    (`noise-threshold * uSecondary * 8`, strongly over-unity). Frozen at a phase
+    (`_PILLAR_TIME`, via the now-correct uTime preshader input) showing the most
+    sparkles; tone-mapped so the specks read as hot white stars, not clipped blue."""
     uC = _col(uColor, [0.4, 0.6, 1.0])
     uS = _col(uSecondary, [1.0, 1.0, 1.0])
 
@@ -563,7 +652,9 @@ def _stardust(
         return _run(arr_u8, lambda r, g, b, a: uC * ((r + g + b) * 0.667)[..., None] * a[..., None])
 
     return _noise_pass(arr_u8, "ArmorStardust", uColor=uC, uSecondary=uS, uSat=1.0,
-                       src_rect=src_rect, sheet_size=sheet_size, fallback=approx)
+                       src_rect=src_rect, sheet_size=sheet_size,
+                       u_time=_PILLAR_TIME["ArmorStardust"], emissive=True,
+                       gain=_PILLAR_GAIN["ArmorStardust"], fallback=approx)
 
 
 def _shifting_sands(
@@ -611,10 +702,16 @@ def _fog(
 def _hallow_boss(
     arr_u8: np.ndarray, *, src_rect: SrcRect = _DEFAULT_RECT, sheet_size: SheetSize = _DEFAULT_SHEET,
 ) -> np.ndarray:
-    """ArmorHallowBoss: real Extra_156 palette lookup; APPROX = positional rainbow tint."""
+    """ArmorHallowBoss: real Extra_156 palette lookup (emissive); APPROX = rainbow tint.
+
+    Bright iridescent rainbow pastel: `out = src*0.2 + palette*0.8` from the Extra_156
+    rainbow texture. Already bright/in-gamut; emissive tone-map is a safe no-op below 1
+    and keeps any palette highlight from clipping."""
     return _noise_pass(arr_u8, "ArmorHallowBoss", uColor=np.array([1.0, 1.0, 1.0]),
                        uSecondary=np.array([1.0, 1.0, 1.0]), uSat=1.0,
                        src_rect=src_rect, sheet_size=sheet_size,
+                       u_time=_PILLAR_TIME["ArmorHallowBoss"], emissive=True,
+                       gain=_PILLAR_GAIN["ArmorHallowBoss"],
                        fallback=lambda: _colored_rainbow(arr_u8))
 
 
