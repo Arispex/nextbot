@@ -231,19 +231,27 @@ async def _build_character_sprite_uri(
         return None
 
     # 装备 / 装饰 / 染料各块可能为 null；保留 API 原始字段直传渲染模块。
-    # 配饰（accessories / vanityAccessories / accessoryDyes）本期不渲染，忽略。
     equipment = appearance_result.payload.get("equipment")
     vanity = appearance_result.payload.get("vanity")
     dye = appearance_result.payload.get("dye")
+    # 配饰：功能 / 社交 / 配饰染料各定长 7 的列表（空槽零值），可能为 null。
+    accessories = appearance_result.payload.get("accessories")
+    vanity_accessories = appearance_result.payload.get("vanityAccessories")
+    accessory_dyes = appearance_result.payload.get("accessoryDyes")
 
     try:
         # 本地 numpy 合成是 CPU-bound，推到线程池避免阻塞事件循环。
+        # asyncio.to_thread 透传位置 + 关键字参数；配饰三组用关键字传入。
         png = await asyncio.to_thread(
             render_character,
             appearance,
             equipment if isinstance(equipment, dict) else None,
             vanity if isinstance(vanity, dict) else None,
             dye if isinstance(dye, dict) else None,
+            accessories=accessories if isinstance(accessories, list) else None,
+            vanity_accessories=(
+                vanity_accessories if isinstance(vanity_accessories, list) else None),
+            accessory_dyes=accessory_dyes if isinstance(accessory_dyes, list) else None,
         )
     except Exception:  # noqa: BLE001 - 渲染层对脏 appearance 兜底，立绘失败不影响背包
         logger.exception(

@@ -108,6 +108,17 @@ allowed-confusables = ["，", "。", "“", "”", "：", "；", "？", "！", "
 [tool.ruff.lint.per-file-ignores]
 # 测试：断言里的数值阈值（PNG 大小等）、独立运行时的诊断 print 都是测试常规用法。
 "tests/*" = ["PLR2004", "T201", "S101"]
+# compositor.py 按反编译的 DrawPlayer_NN 逐层合成角色立绘：
+# - C901 / PLR0912 / PLR0915：render_character 是一条「从后到前」的固定图层绘制序列
+#   （身体 + 12 类配饰交织），分支 / 语句多但无嵌套逻辑，拆开反而割裂与
+#   LegacyPlayerRenderer 调用顺序的对照。
+# - PLR0913：公开签名携带 equipment/vanity/dye + 三组配饰（accessories /
+#   vanityAccessories / accessoryDyes）关键字参数，与 appearance API 数据块一一对应。
+# - E501：保留与 accessories_spec / terraria_render_spec 逐行对照的注释 / docstring
+#   （帧矩形、cell-local 偏移、ArmorIDs Sets 行号等），换行只会降低可读性。
+"nextbot/terraria_render/compositor.py" = [
+    "C901", "E501", "PLR0912", "PLR0913", "PLR0915",
+]
 # 渲染模块的数学 / 编解码代码：保留与规格 / 字节码源一致的命名与字面量，不做无谓改名。
 # image_io.py 是 8-bit RGBA PNG 编解码器：filter type / bit-depth / color-type
 # 等都是 PNG 规范里的固定整型字面量（0/1/2/3/4/6/8），抽成常量只会降低可读性。

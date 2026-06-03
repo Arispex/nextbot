@@ -86,6 +86,9 @@
       display: flex;
       align-items: center;
       justify-content: center;
+      /* Stable stage width so a narrow (plain) sprite stays centered and the card
+       * doesn't shrink-wrap to the variable-aspect image. */
+      min-width: 210px;
       background-color: var(--color-surface-card);
       border: 1px solid var(--color-hairline);
       border-radius: var(--radius-md);
@@ -93,10 +96,16 @@
     }
 
     .portrait img {
-      /* Source PNG is the 40×56 idle frame at scale=1; CSS-upscale ~6x and
-       * keep pixels crisp (no smoothing). */
-      width: 240px;
-      height: 336px;
+      /* Source PNG is content-cropped at scale=1, so its native size is tiny
+       * (~28×50 plain, taller/wider with accessories). Drive the on-screen size
+       * by a DEFINITE height (pixel-art upscale, aspect preserved via width:auto)
+       * — `auto`/`auto` would render at the tiny native size. Height 280 ≈ the
+       * previous ~336 footprint, a touch smaller; max-width caps very-wide winged
+       * sprites so they don't overflow the stage. */
+      height: 280px;
+      width: auto;
+      max-width: 240px;
+      object-fit: contain;
       image-rendering: pixelated;
       image-rendering: crisp-edges;
       display: block;

@@ -6,6 +6,7 @@ Dependency-light: no network, no pytest-only fixtures. Runs under pytest
 """
 from __future__ import annotations
 
+import struct
 import sys
 from pathlib import Path
 
@@ -15,10 +16,33 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from nextbot.terraria_render import render_character
-from nextbot.terraria_render.compositor import _back_hair_style
+from nextbot.terraria_render.compositor import (
+    _back_hair_style,
+    _resolve_accessories,
+)
 from nextbot.terraria_render.dye import apply_dye
+from nextbot.terraria_render.image_io import read_png
 
 _PNG_SIG = b"\x89PNG\r\n\x1a\n"
+
+
+def _png_size(png: bytes) -> tuple[int, int]:
+    """(width, height) from a PNG's IHDR (bytes 16..24)."""
+    width, height = struct.unpack_from(">II", png, 16)
+    return int(width), int(height)
+
+
+def _decode(png: bytes) -> np.ndarray:
+    """Decode rendered PNG bytes -> (h, w, 4) uint8 (reuses the project's PNG codec)."""
+    import tempfile
+
+    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as fh:
+        fh.write(png)
+        path = fh.name
+    try:
+        return read_png(path)
+    finally:
+        Path(path).unlink(missing_ok=True)
 
 # Known-good input from the task verification snippet (FemaleCoat + armor + RedDye).
 _APPEARANCE = {
@@ -211,6 +235,135 @@ def test_back_hair_predicate_matches_game() -> None:
         assert _back_hair_style(idx) is ref, f"hair {idx} diverges from formula"
 
 
+# ── accessories ──────────────────────────────────────────────────────
+# Known netIds (Item.cs): 493 AngelWings (wing slot 2), 492 DemonWings (wing slot 1),
+# 532 StarCloak (back cape slot 2 — drawn behind the body, always visible),
+# 54 HermesBoots (shoe slot 6), 128 RocketBoots (shoe slot 12). For a default-clothed
+# (non-robe) player the shoe accessory draws OVER the default shoes (the normal
+# LegacyPlayerRenderer branch), so it is visible — see test_shoe_accessory_is_visible.
+def _acc(net_id: int) -> dict:
+    return {"netId": net_id, "stack": 1, "prefixId": 0}
+
+
+def _slots7(*items: int) -> list[dict]:
+    """A 7-element accessory list with `items` in the first slots, rest empty."""
+    out = [{"netId": 0, "stack": 0, "prefixId": 0} for _ in range(7)]
+    for i, n in enumerate(items):
+        out[i] = _acc(n)
+    return out
+
+
+def test_no_accessory_render_is_body_sized() -> None:
+    # The output is content-cropped: a plain (no-accessory) character crops to roughly
+    # the body cell (the body content is ~28-34px wide, ~50px tall, narrower than the
+    # full 40px cell because the arms are tucked), NOT the full 152x112 padded canvas.
+    # At scale=1 that means a small, taller-than-wide frame well under the padded size.
+    w1, h1 = _png_size(render_character(_APPEARANCE, scale=1))
+    assert 20 <= w1 <= 40, f"plain width {w1} not ~body-cell-sized"
+    assert 40 <= h1 <= 56, f"plain height {h1} not ~body-cell-sized"
+    assert h1 > w1                     # body cell is taller than wide
+    assert w1 < 80 and h1 < 80         # nowhere near the 152x112 padded canvas
+    # scale just multiplies the cropped frame.
+    w4, h4 = _png_size(render_character(_APPEARANCE, scale=4))
+    assert (w4, h4) == (w1 * 4, h1 * 4)
+
+
+def test_wings_change_and_widen_render() -> None:
+    # A wings accessory adds content to the sides of the body; after content-cropping,
+    # the winged render differs from the no-accessory one and is WIDER than it (wings
+    # extend horizontally past the 40px body cell).
+    none = render_character(_APPEARANCE, scale=4)
+    winged = render_character(_APPEARANCE, scale=4, accessories=_slots7(493))
+    assert none[:8] == _PNG_SIG and winged[:8] == _PNG_SIG
+    assert winged != none
+    none_w, _ = _png_size(none)
+    winged_w, _ = _png_size(winged)
+    assert winged_w > none_w  # wing pixels extend the crop horizontally
+
+
+def test_vanity_accessory_overrides_functional() -> None:
+    # Functional AngelWings(493) with vanity DemonWings(492): the vanity wins, so the
+    # render must equal the DemonWings-only render and differ from the AngelWings one.
+    func_only = render_character(_APPEARANCE, scale=4, accessories=_slots7(493))
+    vanity_only = render_character(_APPEARANCE, scale=4, accessories=_slots7(492))
+    overridden = render_character(
+        _APPEARANCE, scale=4,
+        accessories=_slots7(493), vanity_accessories=_slots7(492))
+    assert overridden == vanity_only      # vanity DemonWings wins
+    assert overridden != func_only        # ...and is not the functional AngelWings
+
+
+def test_hidevisuals_hides_functional_accessory() -> None:
+    # hideVisuals bit 3 hides functional accessory slot 0; with StarCloak there and no
+    # vanity twin, the render must equal the no-accessory render (the cape is absent).
+    none = render_character(_APPEARANCE, scale=4)
+    shown = render_character(_APPEARANCE, scale=4, accessories=_slots7(532))
+    # hideVisuals lives on appearance; build a hidden-bit-3 appearance copy.
+    appearance_hidden = {**_APPEARANCE, "hideVisuals": 1 << 3}
+    hidden = render_character(appearance_hidden, scale=4, accessories=_slots7(532))
+    assert shown != none          # the cape is visible without hiding
+    assert hidden == none         # ...and gone once hideVisuals bit 3 is set
+
+
+def test_hidden_functional_keeps_vanity_twin() -> None:
+    # hideVisuals hides the functional acc but its vanity twin still draws: functional
+    # HermesBoots(54) hidden + vanity RocketBoots(128) -> resolves to the vanity shoe.
+    res = _resolve_accessories(
+        _slots7(54), _slots7(128), None, 1 << 3, male=True)
+    assert res["slots"].get("shoe") == 12   # RocketBoots vanity survives the hide
+    res_no_twin = _resolve_accessories(_slots7(54), _slots7(), None, 1 << 3, male=True)
+    assert "shoe" not in res_no_twin["slots"]  # hidden, no twin -> absent
+
+
+def test_shoe_accessory_is_visible() -> None:
+    # A shoe accessory (RocketBoots, netId 128 -> shoe slot 12) on a default-clothed
+    # (non-robe) character must draw OVER the default shoes and be visible, matching the
+    # game's normal LegacyPlayerRenderer branch (leggings then shoes). Regression for
+    # the bug where the shoe acc was drawn BEFORE the default shoes (layer 12) and was
+    # mostly hidden. _APPEARANCE has no equipment -> default pants+shoes (the `else`
+    # legs branch); no body armor -> not a robe body -> the normal branch.
+    none = render_character(_APPEARANCE, scale=1)
+    shod = render_character(_APPEARANCE, scale=1, accessories=_slots7(128))
+    assert none[:8] == _PNG_SIG and shod[:8] == _PNG_SIG
+    assert shod != none                          # the shoe acc adds foot-region pixels
+    # The shoe acc stacks inside the body cell, so the content crop is identical (same
+    # dimensions); compare the foot (bottom) region. When the acc draws OVER the default
+    # shoes it overwrites a large patch of the foot; drawn UNDER them only a few px peek
+    # out. Assert it covers a substantial part of the foot (not a sliver), so the test
+    # separates the correct (shoe-over) order from the buggy (shoe-under) one.
+    a, b = _decode(none), _decode(shod)
+    assert a.shape == b.shape, "shoe acc unexpectedly changed the content bounding box"
+    foot = slice(a.shape[0] * 3 // 4, a.shape[0])    # lowest quarter = the feet
+    changed = int(np.any(a[foot] != b[foot], axis=2).sum())
+    assert changed > 30, f"shoe acc barely visible ({changed}px), likely under shoes"
+
+
+def test_accessory_dye_routes_to_category() -> None:
+    # accessoryDyes[k] pairs with the category of accessories[k]: HermesBoots in slot 0
+    # + RedDye(1007) in dye slot 0 -> the shoe category gets the ArmorColored red dye.
+    res = _resolve_accessories(
+        _slots7(54), _slots7(), [_acc(1007)] + [{"netId": 0}] * 6, 0, male=True)
+    shoe_dye = res["dyes"].get("shoe")
+    assert shoe_dye is not None
+    assert shoe_dye["pass"] == "ArmorColored"
+    # and a dyed cape render differs from an undyed one (the cape is visible; the dye
+    # rides accessoryDyes slot 0, the same slot as the functional accessory).
+    undyed = render_character(_APPEARANCE, scale=4, accessories=_slots7(532))
+    dyed = render_character(
+        _APPEARANCE, scale=4, accessories=_slots7(532),
+        accessory_dyes=[_acc(1007)] + [{"netId": 0}] * 6)
+    assert dyed != undyed
+
+
+def test_animated_wing_renders_nothing_grounded() -> None:
+    # AlwaysAnimated wings (e.g. Hoverboard, wing slot 22) draw nothing for a still
+    # grounded avatar; the render must equal the no-accessory render. Hoverboard netId
+    # = 1866 (Item.cs). If the table lacks it the test still passes (slot absent).
+    none = render_character(_APPEARANCE, scale=4)
+    hover = render_character(_APPEARANCE, scale=4, accessories=_slots7(1866))
+    assert hover == none
+
+
 def _run() -> int:
     tests = [
         test_render_returns_valid_png,
@@ -227,6 +380,14 @@ def _run() -> int:
         test_hairdye_twilight_differs_from_none,
         test_hairdye_legacy_changes_hair_color,
         test_back_hair_predicate_matches_game,
+        test_no_accessory_render_is_body_sized,
+        test_wings_change_and_widen_render,
+        test_vanity_accessory_overrides_functional,
+        test_hidevisuals_hides_functional_accessory,
+        test_hidden_functional_keeps_vanity_twin,
+        test_shoe_accessory_is_visible,
+        test_accessory_dye_routes_to_category,
+        test_animated_wing_renders_nothing_grounded,
     ]
     failed = 0
     for t in tests:

@@ -7,6 +7,9 @@ Parses the decompiled Terraria source to bake the runtime lookup tables into
 
 Produces:
     equip_slots.json  netID -> {"head"|"body"|"legs": slot}   (Item.cs SetDefaults)
+    accessory_slots.json  netID -> {category: slot}  for the 12 visual accessory
+                      categories (wing/back/balloon/shoe/handOff/waist/neck/face/
+                      shield/handOn/front/beard)               (Item.cs SetDefaults)
     dyes.json         dye netID -> {pass, color, secondary?, sat}  (DyeInitializer.cs)
     hair_sets.json    {fullHair:[...], hatHair:[...], backonly:[...]}  (Player.GetHairSettings)
     hair_dye_colors.json  hairDye index 1..11 -> [r,g,b] | null  (DyeInitializer.cs)
@@ -49,6 +52,112 @@ def gen_equip_slots(decomp: str) -> dict:
         if reset_rx.match(line):
             pending = []
     return out
+
+
+# the 12 visual accessory categories: `item.<cat>Slot` field name -> json key.
+# (these are the categories whose slot routes a DrawPlayer_NN layer; see
+# research/accessories_spec.md. Order doesn't matter — keyed by category.)
+_ACC_CATS = (
+    "wing", "back", "balloon", "shoe", "handOff", "waist",
+    "neck", "face", "shield", "handOn", "front", "beard",
+)
+
+
+def gen_accessory_slots(decomp: str) -> dict:
+    """Walk Item.cs SetDefaults: netID -> {category: slot} for every accessory
+    visual slot. Same case-accumulation parser as gen_equip_slots, plus two extra
+    forms the accessory slots use that the armor slots don't:
+
+    * literal  `<cat>Slot = N;`                 -> all pending cases get slot N.
+    * computed `<cat>Slot = (sbyte)(B + type - F);` (a run of consecutive item
+      types mapped to consecutive slots) -> each pending case `c` gets `B+(c-F)`.
+      Pending cases come from `case N:` labels OR an `if (type >= A && type <= B)`
+      guard (the SuperHero cape/front pair, line 22961, uses the if-guard form).
+
+    A break/return clears the pending set; one item may set several categories
+    (e.g. type 211 sets both handOn and handOff), so we DON'T clear on a slot
+    assignment — only on break/return — exactly like gen_equip_slots."""
+    src = open(os.path.join(decomp, "Terraria", "Item.cs")).read()
+    cats = "|".join(_ACC_CATS)
+    case_rx = re.compile(r"^\s*case (\d+):")
+    # `if (type >= A && type <= B)` — inclusive type range acting as a case group
+    ifrange_rx = re.compile(r"^\s*if \(type >= (\d+) && type <= (\d+)\)")
+    lit_rx = re.compile(rf"^\s*({cats})Slot = (\d+);")
+    # computed forms vary in inner parens: `(sbyte)(13 + type - 3250)` (wing/balloon)
+    # vs `(sbyte)(2 + (type - 5104))` (Wilson beards) — tolerate the optional `(`/`)`.
+    comp_rx = re.compile(
+        rf"^\s*({cats})Slot = \(sbyte\)\((\d+) \+ \(?type - (\d+)\)?\);")
+    reset_rx = re.compile(r"^\s*(break;|return\b)")
+    pending: list[int] = []
+    out: dict[str, dict] = {}
+    for line in src.splitlines():
+        m = case_rx.match(line)
+        if m:
+            pending.append(int(m.group(1)))
+            continue
+        m = ifrange_rx.match(line)
+        if m:
+            pending.extend(range(int(m.group(1)), int(m.group(2)) + 1))
+            continue
+        m = lit_rx.match(line)
+        if m and pending:
+            cat, slot = m.group(1), int(m.group(2))
+            for nid in pending:
+                out.setdefault(str(nid), {})[cat] = slot
+            continue
+        m = comp_rx.match(line)
+        if m and pending:
+            cat, base, first = m.group(1), int(m.group(2)), int(m.group(3))
+            for nid in pending:
+                out.setdefault(str(nid), {})[cat] = base + (nid - first)
+            continue
+        if reset_rx.match(line):
+            pending = []
+    return out
+
+
+def gen_wing_meta(decomp: str) -> dict:
+    """Wing draw metadata for the idle still (DrawPlayer_09_Wings, PlayerDrawLayers.cs
+    :655-1104). Returns {"always_animated": [...], "frames": {slot: N}, "offset":
+    {slot: [num13, num12]}}.
+
+    * always_animated = ArmorIDs.Wing.Sets.AlwaysAnimated (ArmorIDs.cs:1967) — these
+      wings only draw airborne (ShouldDrawWingsThatAreAlwaysAnimated()==false grounded),
+      so they render NOTHING for a still avatar; the compositor skips them.
+    * frames N = the `Frame(1, N, ...)` / `num14` / `num11` row count of the wing strip
+      (idle = frame 0 = top N-th of the sheet). Default N=4; the non-default drawable
+      wings are read below. The AlwaysAnimated wings' N is irrelevant (skipped).
+    * offset = the default-block `(num13, num12)` position tweaks (most wings 0,0).
+
+    Both AlwaysAnimated and the N literals are ASSERTED against the source so the table
+    can't silently drift; the non-default-N / non-zero-offset wings are transcribed from
+    the cited draw-method blocks (each is a one-off `if (wings == K)` branch)."""
+    armor_ids = open(os.path.join(decomp, "Terraria.ID", "ArmorIDs.cs")).read()
+    m = re.search(r"Wing[\s\S]*?AlwaysAnimated = Factory\.CreateBoolSet\(false,\s*"
+                  r"([\d,\s]+)\);", armor_ids)
+    if m is None:
+        raise ValueError("Wing.Sets.AlwaysAnimated not found in ArmorIDs.cs")
+    always = sorted(int(x) for x in m.group(1).replace(" ", "").split(","))
+    if always != sorted([22, 28, 45, 34, 48, 39, 40, 44]):
+        raise ValueError(f"Wing AlwaysAnimated set changed: {always}")
+    pdl = open(os.path.join(decomp, "Terraria.DataStructures",
+                            "PlayerDrawLayers.cs")).read()
+    wings_src = pdl[pdl.find("void DrawPlayer_09_Wings"):]
+    wings_src = wings_src[:wings_src.find("void DrawPlayer_10_BackAcc")]
+    # assert the per-wing Frame(1, N, ...) row counts the still relies on are present.
+    for slot in (43, 47, 49, 50, 51):
+        if f"wings == {slot}" not in wings_src:
+            raise ValueError(f"wing {slot} branch missing in DrawPlayer_09_Wings")
+    if "int num14 = 4" not in wings_src:
+        raise ValueError("wing default num14=4 changed")
+    # N per wing (only the drawable non-default ones matter; AlwaysAnimated skipped).
+    # 43→7 (num14, line 285), 51→8 (Frame(1,8), 47/49/50→11 (Frame(1,11)/num11).
+    frames = {43: 7, 47: 11, 49: 11, 50: 11, 51: 8}
+    # default-block (num13, num12) tweaks (PlayerDrawLayers.cs:282-308) + wing-50's
+    # `-UnitX*dir*4` horizontal nudge (line ~922, num13≈-4 at dir=1).
+    offset = {5: [4, -4], 12: [-1, -1], 27: [3, 0], 41: [-1, 0],
+              43: [-5, -7], 50: [-4, 0]}
+    return {"always_animated": always, "frames": frames, "offset": offset}
 
 
 def gen_dyes(decomp: str) -> dict:
@@ -233,6 +342,8 @@ def main() -> None:
     os.makedirs(OUT, exist_ok=True)
     tables = {
         "equip_slots.json": gen_equip_slots(decomp),
+        "accessory_slots.json": gen_accessory_slots(decomp),
+        "wing_meta.json": gen_wing_meta(decomp),
         "dyes.json": gen_dyes(decomp),
         "hair_sets.json": gen_hair_sets(decomp),
         "hair_dye_colors.json": gen_hair_dye_colors(decomp),
@@ -253,6 +364,27 @@ def main() -> None:
         got = eq.get(nid, {}).get(slot_kind)
         status = "OK" if got == slot else f"MISMATCH got={got}"
         print(f"  validate netID {nid} {slot_kind}={slot}: {status}")
+    acc = tables["accessory_slots.json"]
+    # known item types -> (category, slot). 492 DemonWings, 493 AngelWings,
+    # 159 ShinyRedBalloon, 54 HermesBoots, 156 CobaltShield, 2501 GingerBeard,
+    # 3224 WormScarf; 211 sets BOTH handOn 5 + handOff 9 (multi-slot item).
+    acc_checks = {"492": ("wing", 1), "493": ("wing", 2), "159": ("balloon", 8),
+                  "54": ("shoe", 6), "156": ("shield", 1), "2501": ("beard", 1),
+                  "3224": ("neck", 8), "211": ("handOn", 5)}
+    for nid, (cat, slot) in acc_checks.items():
+        got = acc.get(nid, {}).get(cat)
+        status = "OK" if got == slot else f"MISMATCH got={got}"
+        print(f"  validate acc netID {nid} {cat}={slot}: {status}")
+    print(f"  acc 211 (multi-slot) = {acc.get('211')}")  # expect handOn 5 + handOff 9
+    # computed-range forms: SuperHero cape 2284-2287 -> back 3..6 / front 1..4 (if-guard);
+    # Yoraiz0r wings 3469-3471 -> wing 30..32 (case-label run).
+    print(f"  acc 2285 (if-range cape) = {acc.get('2285')}")  # expect back 4, front 2
+    print(f"  acc 3470 (case-run wing) = {acc.get('3470')}")  # expect wing 31
+    print(f"  acc 5105 (Wilson beard, inner-parens) = {acc.get('5105')}")  # expect beard 3
+    print(f"  accessory_slots: {len(acc)} items")
+    wm = tables["wing_meta.json"]
+    print(f"  wing AlwaysAnimated = {wm['always_animated']}")
+    print(f"  wing frames (non-default N) = {wm['frames']}")  # 43:7 47/49/50:11 51:8
     dyes = tables["dyes.json"]
     print(f"  validate dye 1007: {dyes.get('1007')}")
     # gradient dyes must carry color + secondary now (bind_rx multi-line fix)
