@@ -15,6 +15,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from nextbot.terraria_render import render_character
+from nextbot.terraria_render.compositor import _back_hair_style
 from nextbot.terraria_render.dye import apply_dye
 
 _PNG_SIG = b"\x89PNG\r\n\x1a\n"
@@ -181,6 +182,35 @@ def test_hairdye_legacy_changes_hair_color() -> None:
     assert life != rainbow
 
 
+def test_back_hair_predicate_matches_game() -> None:
+    # _back_hair_style must match Player.GetHairSettings backHairDraw exactly
+    # (Player.cs:16787). Drives the 26px forehead clip on the FRONT hair pass:
+    # True -> clip (genuine back style), False -> full-height long front hair.
+    expect = {
+        87: True, 82: True,
+        # 52 is in the (50,56) window -> True (genuine back style, forehead-clipped)
+        52: True,
+        # the bug: these returned True before (clipped long hair to forehead)
+        112: False, 194: False, 214: False, 58: False, 75: False,
+        89: False, 120: False, 200: False,
+        # explicit extras forced True
+        6: True, 133: True, 134: True, 146: True, 162: True,
+        # range/exclusion boundaries
+        50: False, 51: True, 55: True, 56: False, 63: False, 64: True,
+        94: False, 100: False, 104: False, 115: True, 116: False, 227: False,
+    }
+    for idx, want in expect.items():
+        assert _back_hair_style(idx) is want, f"hair {idx}: {want} expected"
+    # cross-check against a literal transcription of the Player.cs:16787 formula
+    # over the full hair range (228 styles). Phrased with set membership to read
+    # cleanly while staying 1:1 with the (<a||>b) windows and != points.
+    excluded = {*range(56, 64), *range(74, 78), *range(88, 90), 94, 100, 104, 112}
+    forced = {6, 133, 134, 146, 162}
+    for idx in range(228):
+        ref = (50 < idx < 116 and idx not in excluded) or idx in forced
+        assert _back_hair_style(idx) is ref, f"hair {idx} diverges from formula"
+
+
 def _run() -> int:
     tests = [
         test_render_returns_valid_png,
@@ -196,6 +226,7 @@ def _run() -> int:
         test_twilight_dye_changes_input,
         test_hairdye_twilight_differs_from_none,
         test_hairdye_legacy_changes_hair_color,
+        test_back_hair_predicate_matches_game,
     ]
     failed = 0
     for t in tests:

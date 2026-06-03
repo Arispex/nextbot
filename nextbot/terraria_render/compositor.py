@@ -21,13 +21,15 @@ _HERE = Path(__file__).resolve().parent
 ASSETS = _HERE / "assets"
 DATA = _HERE / "data"
 FW, FH = 40, 56
-# Hair indices > this are "back-flowing" styles drawn behind the body
-# (Player.GetHairSettings backHairDraw threshold). A handful below it are
-# back styles too — see _back_hair_style.
-_BACK_HAIR_MIN_INDEX = 50
-_BACK_HAIR_EXTRA = (6, 133, 134, 146, 162)
 # front-hair forehead clip height when the style also draws a back pass
 _FRONT_HAIR_CLIP = 26
+# Player.GetHairSettings backHairDraw (Player.cs:16787): the predicate is "hair index
+# inside the open range (50, 116) but not in any of these excluded windows/values".
+_BACK_HAIR_RANGE = range(51, 116)        # num > 50 && num < 116
+_BACK_HAIR_EXCLUDED = (                   # the (<a||>b) windows + the != points
+    *range(56, 64), *range(74, 78), *range(88, 90), 94, 100, 104, 112,
+)
+_BACK_HAIR_FORCED = (6, 133, 134, 146, 162)  # explicitly forced True regardless
 
 
 def _load_json(name: str) -> Any:
@@ -158,7 +160,12 @@ def _hair_mode(head_slot: int | None) -> str:
 
 
 def _back_hair_style(hair_idx: int) -> bool:
-    return hair_idx > _BACK_HAIR_MIN_INDEX or hair_idx in _BACK_HAIR_EXTRA
+    """Exact `backHairDraw` predicate from Player.GetHairSettings (Player.cs:16787).
+    Gates both back-hair visibility AND the 26px forehead clip on the FRONT pass:
+    when False, the front hair is drawn full-height (long hair drapes to the chest)."""
+    if hair_idx in _BACK_HAIR_FORCED:
+        return True
+    return hair_idx in _BACK_HAIR_RANGE and hair_idx not in _BACK_HAIR_EXCLUDED
 
 
 def _hair_tint_color(
