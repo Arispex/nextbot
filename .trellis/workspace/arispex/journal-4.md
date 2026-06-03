@@ -1857,3 +1857,40 @@ shop.py _buy_command 顶部的 SF-4.3 守卫强拒 require_online=False + target
 ### Next Steps
 
 - None - task complete
+
+
+## Session 211: Terraria 角色渲染：背包卡片立绘（装备/装饰/染料/发型）
+
+**Date**: 2026-06-03
+**Task**: Terraria 角色渲染：背包卡片立绘（装备/装饰/染料/发型）
+**Branch**: `main`
+
+### Summary
+
+新增可复用渲染模块 nextbot/terraria_render（从 Terraria 安装提取 1293 PNG + netID→装备槽/染料/发型/长袍扩展查表 + numpy 图层合成 + 逆向 ps_2_0 染料 shader）。我的背包/用户背包 卡片以 best-effort 资料头像展示角色立绘：外观+功能装备+社交装备(逐部位覆盖)+护甲染料+hairDye+长袍裙摆。染料含基础/渐变/彩虹精确、噪声(Stardust/Nebula/Vortex/Solar/HallowBoss/Gel/Phase 真实字节码采样)、柱/Boss 发光染料代表帧+emissive 调优；Reflective 离线近似。修复：渐变反色、长发前垂被裁(精确 backHairDraw)、preshader table-1 字面量。配饰/动画帧 out of scope。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `37b9f15` | (see git log) |
+| `70e618b` | (see git log) |
+| `6d7de9b` | (see git log) |
+| `18b4fad` | (see git log) |
+| `8398dd5` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
