@@ -1,0 +1,4 @@
+{"file": ".trellis/tasks/06-02-my-character-render/research/port-from-prototype.md", "reason": "核对实现是否覆盖移植清单、渲染范围与目标模块结构"}
+{"file": ".trellis/tasks/06-02-my-character-render/research/terraria_render_spec.md", "reason": "核对渲染正确性：帧/图层/颜色/composite/头发遮挡是否符合规格"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "核对 API 字段→渲染数据流一致性、null 存档/账号不存在/连接失败分支"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "核对是否复用现有卡片/截图流程、模块无重复、render_character 不依赖 NoneBot"}

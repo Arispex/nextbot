@@ -1,0 +1,5 @@
+{"file": ".trellis/tasks/06-02-my-character-render/research/port-from-prototype.md", "reason": "原型→生产移植地图：目标模块结构、查表数据来源、提取脚本、绘制顺序、接入点"}
+{"file": ".trellis/tasks/06-02-my-character-render/research/terraria_render_spec.md", "reason": "权威渲染规格：图层语义、颜色映射、composite 帧 cell、变体 fallback、头发遮挡规则、帧几何"}
+{"file": ".trellis/tasks/06-02-my-character-render/research/dye_shader_spec.md", "reason": "染料 ArmorColored 系精确公式（含 D3DX preshader）+ numpy 实现"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "渲染逻辑抽成不依赖 NoneBot 的可复用模块；复用现有卡片+截图流程，避免重复"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "命令→appearance API→渲染模块→卡片 的跨层数据流与 null 存档分支"}
