@@ -126,6 +126,14 @@ allowed-confusables = ["，", "。", "“", "”", "：", "；", "？", "！", "
     "PLR2004", "N803", "N806", "ANN001", "ARG001", "ARG005",
     "RUF059", "E501", "C901", "PLR0911", "PLR0912", "PLR0913",
 ]
+# dye_noise.py 是 ps_2_0 字节码解释器 + D3DX preshader 解码器：直接执行反编译出的
+# 真实着色器指令流（噪声采样 dye）。PLR2004 是 D3D9 字节码里固定的位域/寄存器常量
+# （0x42=texld、regset 2/3、128 个常量上限等），抽常量只会破坏与 d3d9types.h 的对照；
+# N803/N806 保留 uColor/uSat/c5/t0/oC0 等着色器寄存器名；C901/PLR09xx 是按 opcode 分派
+# 的扁平解释器循环；E501 保持与字节码逐行对照的长行。
+"nextbot/terraria_render/dye_noise.py" = [
+    "PLR2004", "N803", "N806", "C901", "PLR0912", "PLR0913", "PLR0915", "E501",
+]
 # _build/* 是一次性离线工具（XNB/LZX 解码器、资源/查表生成脚本），不进运行时。
 # lzx_xnb.py 是 cabextract/MonoGame LZX 解码器的忠实移植，R0/R1/R2/PRETREE_len
 # 等是该算法的规范命名；脚本通过 print 输出 CLI 诊断，用 os.path 即可。

@@ -6,13 +6,15 @@ Terraria; the resulting PNGs are committed (asset strategy A).
 
     python3 extract_assets.py ["/path/to/Terraria.../Content/Images"]
 
-Output naming (consumed by compositor.py):
+Output naming (consumed by compositor.py / dye.py):
     Player_{var}_{layer}.png        player body layers (var 0..11)
     Player_Hair_{n}.png             hair styles      (n = Player.hair + 1)
     Player_HairAlt_{n}.png          hat-hair styles
     Armor_Head_{slot}.png           head armor
     ArmorBody_{slot}.png            body armor  (from Content/Images/Armor/Armor_{slot}.xnb)
     Armor_Legs_{slot}.png           leg armor
+    noise.png                       Misc/noise.xnb 256x256 — noise-sampling dyes (dye.py)
+    Extra_156.png                   Extra_156.xnb 512x512 — HallowBoss dye palette (dye.py)
 """
 from __future__ import annotations
 
@@ -38,6 +40,13 @@ PATTERNS = [
 ]
 # body armor lives in the Armor/ subdir as Armor_{slot}.xnb -> ArmorBody_{slot}.png
 BODY_PATTERN = (re.compile(r"^Armor_(\d+)\.xnb$"), "ArmorBody_{0}.png")
+# noise-sampling dye textures: (content-relative-src, output-name). Both are fmt-0
+# RGBA (alpha==255) so unpremultiply is a no-op. noise -> all 8 noise dyes +
+# ArmorTwilight hair dye; Extra_156 -> HallowBoss palette. See noise_dyes_spec.md.
+NOISE_TEXTURES = [
+    (os.path.join("Misc", "noise.xnb"), "noise.png"),
+    ("Extra_156.xnb", "Extra_156.png"),
+]
 
 
 def convert(src_path: str, out_name: str) -> bool:
@@ -75,6 +84,13 @@ def main() -> None:
             m = rx.match(fn)
             if m and convert(os.path.join(armor_dir, fn), tmpl.format(*m.groups())):
                 count += 1
+
+    for rel_src, out_name in NOISE_TEXTURES:
+        src = os.path.join(content, rel_src)
+        if os.path.isfile(src) and convert(src, out_name):
+            count += 1
+        elif not os.path.isfile(src):
+            print(f"  SKIP {rel_src}: not found")
 
     print(f"extracted {count} PNGs -> {OUT}")
 

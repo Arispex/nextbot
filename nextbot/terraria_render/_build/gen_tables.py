@@ -9,6 +9,7 @@ Produces:
     equip_slots.json  netID -> {"head"|"body"|"legs": slot}   (Item.cs SetDefaults)
     dyes.json         dye netID -> {pass, color, secondary?, sat}  (DyeInitializer.cs)
     hair_sets.json    {fullHair:[...], hatHair:[...], backonly:[...]}  (Player.GetHairSettings)
+    hair_dye_colors.json  hairDye index 1..11 -> [r,g,b] | null  (DyeInitializer.cs)
     variants.json     male variants, fallback chains, idle composite cells
 """
 from __future__ import annotations
@@ -162,6 +163,50 @@ def gen_hair_sets(decomp: str) -> dict:
     return {k: sorted(v) for k, v in groups.items()}
 
 
+def gen_hair_dye_colors(decomp: str) -> dict:
+    """hairDye index (1..11) -> representative-still [r,g,b], or null = "use hairColor".
+
+    `player.hairDye` is a 1-based index into GameShaders.Hair; indices 1..11 are
+    LegacyHairShaderData whose color delegate REPLACES hairColor with a value derived
+    from live state (life/mana/world/time/team/speed). For a static portrait we have no
+    live state, so each index is evaluated at its documented representative condition
+    (DyeInitializer.LoadLegacyHairdyes, bind order = item 1977..2863). Indices whose
+    representative reduces to hairColor itself are null (Speed at rest, Martian offline).
+    Index 12 (Twilight) is NOT here — it keeps hairColor and runs the ArmorTwilight pixel
+    pass; index 0 is no dye. The bind order below is asserted against the source so the
+    1..11 indexing can't silently drift."""
+    di = open(os.path.join(decomp, "Terraria.Initializers", "DyeInitializer.cs")).read()
+    # anchor to the method DEFINITION (not its call site inside LoadHairDyes, which
+    # binds the idx-12 Twilight id 3259 first).
+    legacy = di[di.find("void LoadLegacyHairdyes"):]
+    bind_ids = [int(m) for m in re.findall(r"Hair\.BindShader\((\d+),", legacy)]
+    expected = [1977, 1978, 1979, 1980, 1981, 1982, 1983, 1984, 1985, 1986, 2863]
+    if bind_ids[:11] != expected:
+        raise ValueError(f"legacy hairdye bind order changed: {bind_ids[:11]}")
+    # teamColor[0] (idx 6 Team, team 0) — read from Main.cs so it stays sourced
+    main = open(os.path.join(decomp, "Terraria", "Main.cs")).read()
+    tc0 = re.search(r"teamColor\[0\]\s*=\s*[\w.]*Color\.White", main)
+    team0 = [255, 255, 255] if tc0 else None
+    # representative-still color per index (source line in DyeInitializer.cs):
+    #  1 Life: full life -> R=235+20, G=B=20                                   (155-158)
+    #  2 Mana: full mana -> R=50, G=75, B=255                                  (162-165)
+    #  3 Depth: surface (center.Y ~ 0) -> (116,160,249)                        (178-180)
+    #  4 Money: broke (num=0) -> Color(226,118,76)                             (251,259-261)
+    #  5 Time: dawn (dayTime, time=0) -> Color(1,142,255)                      (289,299-301)
+    #  6 Team: team 0 -> Main.teamColor[0] = White                            (337 + Main.cs)
+    #  7 Biome: default waterStyle -> Color(28,216,94)                         (346)
+    #  8 Party: constant Color(244,22,175)                                     (387)
+    #  9 Rainbow: Disco cycling -> representative red (255,0,0)                (392)
+    # 10 Speed: at rest -> hairColor                                          (405-407) -> null
+    # 11 Martian: offline avg with local light ~ hairColor                    (416-418) -> null
+    return {
+        "1": [255, 20, 20], "2": [50, 75, 255], "3": [116, 160, 249],
+        "4": [226, 118, 76], "5": [1, 142, 255], "6": team0,
+        "7": [28, 216, 94], "8": [244, 22, 175], "9": [255, 0, 0],
+        "10": None, "11": None,
+    }
+
+
 def gen_variants() -> dict:
     # constants from terraria_render_spec.md (PlayerVariantID / PlayerDataInitializer)
     return {
@@ -190,6 +235,7 @@ def main() -> None:
         "equip_slots.json": gen_equip_slots(decomp),
         "dyes.json": gen_dyes(decomp),
         "hair_sets.json": gen_hair_sets(decomp),
+        "hair_dye_colors.json": gen_hair_dye_colors(decomp),
         "robe_extensions.json": gen_robe_extensions(decomp),
         "variants.json": gen_variants(),
     }
@@ -215,6 +261,9 @@ def main() -> None:
     print(f"  validate gradient dyes carry secondary: "
           f"{'OK' if not grad_missing else f'MISSING {sorted(grad_missing, key=int)}'}")
     print(f"  validate dye 1031 (ColoredGradient): {dyes.get('1031')}")
+    hdc = tables["hair_dye_colors.json"]
+    print(f"  validate hairDye colors: idx1={hdc.get('1')} idx8={hdc.get('8')} "
+          f"idx6(team0)={hdc.get('6')} idx10(hairColor)={hdc.get('10')}")
     ext = tables["robe_extensions.json"]
     ext_checks = {"200": 149, "52": {"male": 171, "female": 172},
                   "222": {"male": 201, "female": 200}, "251": 238}

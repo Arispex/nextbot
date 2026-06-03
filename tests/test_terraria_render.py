@@ -116,6 +116,71 @@ def test_unknown_pass_falls_back_undyed() -> None:
     assert np.array_equal(apply_dye(f.copy(), None), f)
 
 
+def _structured_frame() -> np.ndarray:
+    """An opaque 56x40 cell with a luminance gradient (so a noise dye has signal)."""
+    f = np.zeros((56, 40, 4), np.uint8)
+    f[..., 3] = 255
+    ramp = np.linspace(60, 240, 40).astype(np.uint8)[None, :, None]
+    f[..., :3] = np.broadcast_to(ramp, (56, 40, 3))
+    return f
+
+
+def test_noise_dye_is_spatially_varying() -> None:
+    # ArmorStardust (netId 3529) samples the real Misc/noise texture -> a starfield:
+    # spatially varying, NOT a flat color. Asserts >1 distinct color + nonzero variance
+    # (when the noise asset ships). Geometry threaded as a 360x224 armor sheet cell.
+    f = _structured_frame()
+    spec = {"pass": "ArmorStardust", "color": [0.4, 0.6, 1.0],
+            "secondary": [1.0, 1.0, 1.0], "sat": 1.0}
+    out = apply_dye(f, spec, src_rect=(80, 0, 40, 56), sheet_size=(360, 224))
+    distinct = np.unique(out[..., :3].reshape(-1, 3), axis=0)
+    assert distinct.shape[0] > 1  # not a flat color
+    assert out[..., :3].astype(np.float64).var() > 0.0  # spatial variance
+
+
+def test_noise_dye_falls_back_without_geometry() -> None:
+    # apply_dye stays back-compatible: no src_rect/sheet_size (positional spec only)
+    # still produces a valid dyed frame (the inventory handler calls it this way).
+    f = _structured_frame()
+    out = apply_dye(f, {"pass": "ArmorNebula", "color": [1.0, 0.0, 1.0],
+                        "secondary": [1.0, 1.0, 1.0], "sat": 1.0})
+    assert out.shape == f.shape
+    assert not np.array_equal(out, f)
+
+
+def test_twilight_dye_changes_input() -> None:
+    # ArmorTwilight (the Twilight hair dye #12 pixel pass) was a silent no-op before;
+    # it must now alter the frame (purple glow over the source).
+    f = _structured_frame()
+    out = apply_dye(f, {"pass": "ArmorTwilight", "color": [0.5, 0.1, 1.0]},
+                    src_rect=(0, 0, 40, 56), sheet_size=(40, 56))
+    assert not np.array_equal(out, f)
+
+
+def _hair_appearance(hair_dye: int) -> dict:
+    # A back-flowing hair style (index 5) so the hair pixels are prominent in the frame.
+    return {**_APPEARANCE, "skinVariant": 0, "hair": 5, "hairDye": hair_dye}
+
+
+def test_hairdye_twilight_differs_from_none() -> None:
+    # hairDye 12 (Twilight) runs the ArmorTwilight pass on the hair; the render must
+    # differ from hairDye 0 (plain hairColor tint).
+    none = render_character(_hair_appearance(0), scale=4)
+    twilight = render_character(_hair_appearance(12), scale=4)
+    assert none != twilight
+
+
+def test_hairdye_legacy_changes_hair_color() -> None:
+    # A legacy hairDye index (1 = Life Hair Dye) REPLACES hairColor with red
+    # (255,20,20); the render must differ from the undyed hairColor tint.
+    none = render_character(_hair_appearance(0), scale=4)
+    life = render_character(_hair_appearance(1), scale=4)
+    assert none != life
+    # ...and differ from another legacy index (9 = Rainbow -> red (255,0,0)).
+    rainbow = render_character(_hair_appearance(9), scale=4)
+    assert life != rainbow
+
+
 def _run() -> int:
     tests = [
         test_render_returns_valid_png,
@@ -126,6 +191,11 @@ def _run() -> int:
         test_invert_deterministic_and_changes_input,
         test_gradient_red_to_yellow_is_warm,
         test_unknown_pass_falls_back_undyed,
+        test_noise_dye_is_spatially_varying,
+        test_noise_dye_falls_back_without_geometry,
+        test_twilight_dye_changes_input,
+        test_hairdye_twilight_differs_from_none,
+        test_hairdye_legacy_changes_hair_color,
     ]
     failed = 0
     for t in tests:

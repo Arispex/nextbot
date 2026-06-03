@@ -38,6 +38,10 @@ def _load_json(name: str) -> Any:
 _EQUIP_SLOTS = _load_json("equip_slots.json")   # netId -> {"head"|"body"|"legs": slot}
 _DYES = _load_json("dyes.json")                 # dye netId -> {pass,color,sat,...}
 _HAIR = _load_json("hair_sets.json")
+# hairDye index 1..11 -> replacement [r,g,b] (or null = keep hairColor); index 0 = no
+# dye, index 12 = Twilight (keeps hairColor, runs ArmorTwilight pass). hairdye_spec.md.
+_HAIR_DYE_COLORS = _load_json("hair_dye_colors.json")
+_TWILIGHT_HAIR_DYE = 12
 _VAR = _load_json("variants.json")
 # body equip slot -> long-coat leg-armor slot (robe/coat skirt); int, or
 # {"male","female"} for the 5 gender-conditional bodies. See robe_extension_spec.md.
@@ -79,6 +83,24 @@ def _frame(name: str, cell: int) -> np.ndarray:
     sub = sheet[cy:cy + FH, cx:cx + FW]
     out[:sub.shape[0], :sub.shape[1]] = sub
     return out
+
+
+def _frame_geom(
+    name: str, cell: int,
+) -> tuple[tuple[int, int, int, int], tuple[int, int]]:
+    """Cell geometry for noise dyes: (src_rect=(x,y,40,56), sheet_size=(W,H)).
+
+    Mirrors _frame's cell placement so the noise uv lands on the right cell of the
+    360x224 armor grid. Missing sheet / column sheet -> the cell is its own sheet."""
+    sheet = _sheet(name)
+    if sheet is None:
+        return (0, 0, FW, FH), (FW, FH)
+    h, w = sheet.shape[0], sheet.shape[1]
+    cols = max(1, w // FW)
+    if w <= FW:
+        cell = 0
+    cx, cy = (cell % cols) * FW, (cell // cols) * FH
+    return (cx, cy, FW, FH), (w, h)
 
 
 def _tint(layer: np.ndarray, rgb: tuple[int, int, int] | None) -> np.ndarray:
@@ -139,6 +161,17 @@ def _back_hair_style(hair_idx: int) -> bool:
     return hair_idx > _BACK_HAIR_MIN_INDEX or hair_idx in _BACK_HAIR_EXTRA
 
 
+def _hair_tint_color(
+    hair_dye: int, hair_rgb: tuple[int, int, int] | None,
+) -> tuple[int, int, int] | None:
+    """Hair tint (GetColor): hairDye 1..11 REPLACE hairColor with a per-index color
+    (null entry = keep hairColor); 0 and 12 keep hairColor. See hairdye_spec.md §2."""
+    rgb = _HAIR_DYE_COLORS.get(str(hair_dye))
+    if rgb is None:  # idx 0/12 or a null (hairColor-derived) legacy dye
+        return hair_rgb
+    return (rgb[0], rgb[1], rgb[2])
+
+
 def _slot_of(item: dict[str, Any] | None, kind: str) -> int | None:
     """item = {netId,...}; kind in head/body/legs -> equip slot or None."""
     if not item:
@@ -193,6 +226,7 @@ class _Compositor:
             None: None,
         }
         self.hair_rgb = _packed_rgb(appearance.get("hairColor"))
+        self.hair_dye = int(appearance.get("hairDye") or 0)
         self.cells = {
             "torso": _cell("torso", male=self.male),
             "front_arm": _CELLS["front_arm"],
@@ -219,13 +253,23 @@ class _Compositor:
         dye_spec: dict[str, Any] | None = None,
     ) -> None:
         if name and _sheet(name) is not None:
-            buf = _frame(name, self.cells[cell_key])
+            cell = self.cells[cell_key]
+            buf = _frame(name, cell)
             if dye_spec:
-                buf = apply_dye(buf, dye_spec)
+                src_rect, sheet_size = _frame_geom(name, cell)
+                buf = apply_dye(buf, dye_spec, src_rect=src_rect, sheet_size=sheet_size)
             _over(self.canvas, buf)
 
     def draw_hair(self, hair_file: str, clip_rows: int | None = None) -> None:
-        hf = _tint(_frame(hair_file, 0), self.hair_rgb)
+        # Step A: tint. hairDye 1..11 replace hairColor; 0/12 keep it (hairdye_spec §2)
+        tint = _hair_tint_color(self.hair_dye, self.hair_rgb)
+        hf = _tint(_frame(hair_file, 0), tint)
+        # Step B: Twilight (idx 12) runs the ArmorTwilight noise pixel pass on the hair
+        # frame (uColor=(0.5,0.1,1.0)); the hair sheet is its own uImageSize0.
+        if self.hair_dye == _TWILIGHT_HAIR_DYE:
+            src_rect, sheet_size = _frame_geom(hair_file, 0)
+            hf = apply_dye(hf, {"pass": "ArmorTwilight", "color": [0.5, 0.1, 1.0]},
+                           src_rect=src_rect, sheet_size=sheet_size)
         if clip_rows is not None:
             hf[clip_rows:] = 0
         _over(self.canvas, hf)
