@@ -191,6 +191,50 @@ def test_twilight_dye_changes_input() -> None:
     assert not np.array_equal(out, f)
 
 
+def _dye_cell(sheet: str, cell: int, spec: dict) -> tuple[np.ndarray, np.ndarray]:
+    """Dye one composite cell of `sheet` with `spec`; return (dyed_u8, opaque_mask).
+
+    Threads the cell's real (col*40,row*56) origin in the 360x224 armor sheet so the
+    noise pass samples Misc/noise at the in-game uv (research/noise_dye_luma_bug.md)."""
+    frame = _frame(sheet, cell)
+    col, row = cell % 9, cell // 9
+    out = apply_dye(frame.copy(), spec, src_rect=(col * 40, row * 56, FW, FH),
+                    sheet_size=(360, 224))
+    return out, frame[..., 3] > 0
+
+
+def test_gel_dye_preserves_source_arm_body_shading() -> None:
+    # Regression for the noise-dye `_sat` (saturate) drop (noise_dye_luma_bug.md).
+    # ArmorGel (Bloodbath = netId 4663) must preserve the armor's built-in arm-vs-body
+    # shading. PumpkinShirt (body slot 82, netId 1755) ships a real composite sheet
+    # whose forearm cell (idle front-arm cell 2, mean-luma ~28) is darker than its torso
+    # cell (cell 0, ~103). Once dyed, the forearm must stay DARKER than the torso
+    # (monotonic with source luma), not exploded to clip-white. The bug dropped the
+    # in-shader `mul r1.x_sat` clamp, blowing oC0 to millions, which collapsed/INVERTED
+    # the shading (forearm ended up brighter, ~26% of forearm px pinned to R==255).
+    sheet = "ArmorBody_82"
+    if _frame(sheet, 0)[..., 3].sum() == 0:  # asset absent -> skip (renderer falls back
+        return                               # to the APPROX path; nothing to assert)
+    spec = {"pass": "ArmorGel", "color": [2.6, 0.6, 0.6],
+            "secondary": [0.2, -0.2, -0.2]}
+    forearm, fa_op = _dye_cell(sheet, 2, spec)   # front-arm cell (dark source)
+    torso, to_op = _dye_cell(sheet, 0, spec)     # torso cell (bright source)
+    assert int(fa_op.sum()) > 0 and int(to_op.sum()) > 0
+    fa_luma = forearm[fa_op][:, :3].astype(np.float64).mean()
+    to_luma = torso[to_op][:, :3].astype(np.float64).mean()
+    # 1) monotonic: the darker source (forearm) stays the darker output (source shading
+    #    preserved, NOT flattened or inverted as the bug did: broken fa=78 > to=72).
+    assert to_luma > fa_luma, (
+        f"Gel inverted/flattened source shading: forearm luma {fa_luma:.1f} "
+        f">= torso luma {to_luma:.1f} (the `_sat` drop)")
+    # 2) no clip-white explosion: the dark forearm must not pin its red channel to 255
+    #    (the bug clipped ~26% of forearm px to R==255; the fix keeps it ~0%).
+    fa_clip = float((forearm[fa_op][:, 0] == 255).mean())
+    assert fa_clip < 0.05, (
+        f"Gel clipped the forearm to white ({fa_clip:.0%} of px R==255), "
+        "oC0 exploded past unity")
+
+
 def _hair_appearance(hair_dye: int) -> dict:
     # A back-flowing hair style (index 5) so the hair pixels are prominent in the frame.
     return {**_APPEARANCE, "skinVariant": 0, "hair": 5, "hairDye": hair_dye}
@@ -1388,6 +1432,7 @@ def _run() -> int:
         test_noise_dye_is_spatially_varying,
         test_noise_dye_falls_back_without_geometry,
         test_twilight_dye_changes_input,
+        test_gel_dye_preserves_source_arm_body_shading,
         test_hairdye_twilight_differs_from_none,
         test_hairdye_legacy_changes_hair_color,
         test_back_hair_predicate_matches_game,

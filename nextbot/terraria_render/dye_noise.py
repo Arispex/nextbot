@@ -260,6 +260,8 @@ def _dst(regs: dict, tok: int, val: np.ndarray) -> None:
     rt, rn = _regtype(tok), tok & 0x7FF
     cur = regs[(rt, rn)].copy()
     mask = (tok >> 16) & 0xF
+    if (tok >> 20) & 0x1:  # D3DSPDM_SATURATE: clamp result to [0,1] before masking
+        val = np.clip(val, 0.0, 1.0)
     for i in range(4):
         if mask & (1 << i):
             cur[..., i] = val[..., i]
