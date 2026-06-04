@@ -15,6 +15,7 @@ import numpy as np
 # allow `python tests/test_terraria_render.py` from anywhere
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from nextbot.terraria_render import compositor as glow_mod
 from nextbot.terraria_render import render_character
 from nextbot.terraria_render.compositor import (
     FH,
@@ -25,6 +26,7 @@ from nextbot.terraria_render.compositor import (
     _back_hair_style,
     _Compositor,
     _frame,
+    _over_glow,
     _resolve_accessories,
 )
 from nextbot.terraria_render.dye import apply_dye
@@ -478,7 +480,9 @@ def test_back_head_adds_visible_pixels_behind_body() -> None:
     # assert the back-head has surviving (uncovered) pixels -- the ones the bug dropped.
     from nextbot.terraria_render.compositor import _resolve_player
     back = _opaque_cells("Armor_Head_253", 0)            # behind-body back head
-    head_skin = _opaque_cells(_resolve_player(0, 0), 0)  # layer 0 head skin (in front)
+    head_layer0 = _resolve_player(0, 0)                  # variant-0 head-skin sheet
+    assert head_layer0 is not None                       # ships for variant 0
+    head_skin = _opaque_cells(head_layer0, 0)            # layer 0 head skin (in front)
     front_helm = _opaque_cells("Armor_Head_224", 0)      # front helmet (in front)
     front_hair = _opaque_cells("Player_Hair_1", 0)       # head 224 fullHair: hair draws
     surviving = back & ~head_skin & ~front_helm & ~front_hair
@@ -489,6 +493,31 @@ def test_back_head_adds_visible_pixels_behind_body() -> None:
     # differ from the bare head; the front helmet shares the same idle frame anyway).
     helmeted = render_character({**_APP_M, "hair": 0}, {"head": _acc(4560)}, scale=1)
     assert helmeted[:8] == _PNG_SIG
+
+
+def test_useskincolor_head_uses_skin_color() -> None:
+    # P3 (item 2): ArmorIDs.Head.Sets.UseSkinColor (ArmorIDs.cs:16 = CreateBoolSet(
+    # false, 274, 277)) heads draw with the player's skinColor + the skin shader, NOT
+    # armor white + the head dye (PlayerDrawLayers.cs:2145/2223). VulkelfEar = netId
+    # 5136 (head 274), GoblorcEar = netId 5305 (head 277). Set must match decompiled.
+    from nextbot.terraria_render.compositor import _HEAD_USE_SKIN_COLOR
+    assert set(_HEAD_USE_SKIN_COLOR) == {274, 277}
+    # A UseSkinColor head changes with the player's skinColor (it is tinted by skin),
+    # which a white-drawn armor head would NOT do in its own (non-skin) sprite region.
+    for net_id in (5136, 5305):
+        pink = render_character({**_APP_M, "skinColor": -65281}, {"head": _acc(net_id)})
+        blue = render_character(
+            {**_APP_M, "skinColor": -16776961}, {"head": _acc(net_id)})
+        assert pink[:8] == _PNG_SIG
+        assert pink != blue, f"head {net_id} not tinted by skinColor"
+    # ...and the head dye does NOT apply to a UseSkinColor head (it uses the skin
+    # shader): a dyed-vs-undyed render of the ear head is identical (dye is dropped),
+    # whereas a normal armor head (GoldHelmet 8 -> some slot) would change under it.
+    fixed_skin = {**_APP_M, "skinColor": -65281}
+    undyed = render_character(fixed_skin, {"head": _acc(5136)})
+    dyed = render_character(
+        fixed_skin, {"head": _acc(5136)}, dye={"head": _acc(1007)})  # RedDye
+    assert undyed == dyed, "UseSkinColor head must ignore the head dye (skin shader)"
 
 
 def test_shoe_acc_suppressed_by_leg_override() -> None:
@@ -508,6 +537,32 @@ def test_shoe_acc_suppressed_by_leg_override() -> None:
     # exception: shoe slot 15 (FrogLeg) is NOT suppressed even under the override legs.
     legs_frog = render_character(_APP_M, override_legs, accessories=_slots7(2423))
     assert legs_frog != legs_only
+
+
+def test_shoe15_suppresses_default_legs_and_leg_armor() -> None:
+    # P3 (item 1): shoe==15 (FrogLeg, ShouldOverrideLegs_CheckShoes PlayerDrawLayers.cs
+    # :1246) suppresses BOTH the leg armor (DrawPlayer_13_Leggings :1540 only draws when
+    # !CheckShoes || wearsRobe) AND the default pants+shoes (:1576 else-if only when
+    # !CheckShoes) -- FrogLeg replaces the legs. The bug drew the default pants+shoes
+    # (or leg armor) unconditionally underneath. With shoe==15, a default-clothed render
+    # must equal an override-legs render (both leave only the FrogLeg sprite + leg-skin
+    # suppression): no default pants/shoes leak. FrogLeg = netId 2423 (shoe 15);
+    # override legs 55 = netId 1505. A distinctive pants color makes a leak observable.
+    app = {**_APP_M, "pantsColor": -16711681}
+    frog_default = render_character(app, scale=1, accessories=_slots7(2423))
+    frog_override = render_character(
+        app, {"legs": _acc(1505)}, scale=1, accessories=_slots7(2423))
+    # shoe==15 suppresses the default pants+shoes exactly like override legs suppress
+    # the leg armor -> the two are byte-identical (only FrogLeg remains in both).
+    assert frog_default == frog_override
+    # ...and the equality is meaningful: WITHOUT FrogLeg the two paths differ (default
+    # pants+shoes vs the override-legs suppression), so the equality above is the fix,
+    # not a trivial match.
+    assert render_character(app, scale=1) != render_character(
+        app, {"legs": _acc(1505)}, scale=1)
+    # FrogLeg still visibly changes a default-clothed render (it replaces the legs).
+    frog = render_character(app, scale=1, accessories=_slots7(2423))
+    assert frog != render_character(app, scale=1)
 
 
 def test_under_hair_face_is_occluded_by_hair() -> None:
@@ -566,6 +621,7 @@ def _wing_topleft(slot: int) -> tuple[tuple[int, int], np.ndarray]:
     n = _WING_FRAMES.get(slot, 4)
     cx, cy, crop = _WING_BESPOKE[slot]
     frame, _src, _size = _acc_wing_frame(f"Wings_{slot}", n, crop=crop)
+    assert frame is not None                             # the bespoke wing sheets ship
     lx, ly = cx - frame.shape[1] // 2, cy - frame.shape[0] // 2
     return (lx, ly), frame
 
@@ -624,6 +680,7 @@ def test_default_wing_offset_unchanged() -> None:
     comp = _Compositor(_APP_M)
     comp.draw_acc_wing(2, None)
     frame, _src, _size = _acc_wing_frame("Wings_2", 4)
+    assert frame is not None                             # AngelWings (slot 2) ships
     lx, ly = 11 - frame.shape[1] // 2, 33 - frame.shape[0] // 2
     y0, x0 = PAD_T + ly, PAD_L + lx
     region = comp.canvas[y0:y0 + frame.shape[0], x0:x0 + frame.shape[1]]
@@ -682,6 +739,353 @@ def test_front13_and_rollerskate_offsets_match_decompiled() -> None:
     assert _strip_shift("Acc_Shoes_27", (0, 2))
 
 
+# ── equipment glowmask (research/glowmask_spec.md) ────────────────────
+# Glowmask netIds (Item.cs / equip_slots.json):
+#   body 227 NebulaBreastplate 4756 (bodyGlowColor (230,230,230,60), arm too);
+#   body 80 GoldChainmail 80 (NO glow, 360x224 sheet -> regression baseline);
+#   head 291 -> 5683 (headGlowColor white A=255, opaque cover);
+#   legs 222 -> 5053 (legsGlowColor mouseText additive A=0).
+def test_over_glow_additive_does_not_drop_layer() -> None:
+    # The core fix: a glow color with alpha==0 (the common case) is PURELY ADDITIVE: it
+    # brightens the canvas without occluding it. The old straight-over (_over) drops a
+    # src-alpha-0 layer (contributes nothing); _over_glow must brighten instead.
+    dst = np.zeros((2, 2, 4), np.uint8)
+    dst[..., :3] = 100
+    dst[..., 3] = 255                              # opaque gray base
+    glow = np.zeros((2, 2, 4), np.uint8)
+    glow[..., :3] = 80
+    glow[..., 3] = 255                             # straight glow tex, full tex-alpha
+    out = _over_glow(dst.copy(), glow, (255, 255, 255, 0))  # additive white, A=0
+    assert int(out[0, 0, 0]) > 100, "additive (alpha=0) glow must brighten"
+    assert int(out[0, 0, 0]) == min(255, 100 + 80)  # 100 + 80 additive = 180
+    assert int(out[0, 0, 3]) == 255                # alpha unchanged (no occlusion)
+
+
+def test_over_glow_opaque_color_covers() -> None:
+    # A glow color with alpha==255 (body 238/260/291, ...) is an OPAQUE COVER (spec §8:
+    # not an outline -- it fully replaces the pixel), not additive.
+    dst = np.zeros((1, 1, 4), np.uint8)
+    dst[..., :3] = 50
+    dst[..., 3] = 255
+    glow = np.zeros((1, 1, 4), np.uint8)
+    glow[..., :3] = 200
+    glow[..., 3] = 255
+    out = _over_glow(dst.copy(), glow, (255, 255, 255, 255))
+    assert tuple(int(out[0, 0, c]) for c in range(3)) == (200, 200, 200)
+
+
+def test_over_glow_empty_texture_is_noop() -> None:
+    # Where the glow texture is transparent (alpha 0), nothing is added regardless of
+    # the glow color -- the canvas is untouched (the per-cell skip / regression safety).
+    dst = np.zeros((3, 3, 4), np.uint8)
+    dst[..., :3] = 123
+    dst[..., 3] = 255
+    out = _over_glow(dst.copy(), np.zeros((3, 3, 4), np.uint8), (230, 230, 230, 60))
+    assert np.array_equal(out, dst)
+
+
+def _without_glow(table: dict, key: str):
+    """Context-managed temporary removal of a glow-table entry (restore on exit)."""
+    import contextlib
+
+    @contextlib.contextmanager
+    def cm():
+        saved = table.pop(key, None)
+        try:
+            yield
+        finally:
+            if saved is not None:
+                table[key] = saved
+
+    return cm()
+
+
+def test_glow_body_brightens_torso_region() -> None:
+    # End-to-end: a glowmask body (Nebula, 4756) must brighten its torso/arm region vs.
+    # the SAME body with its glow suppressed (the colored armor underneath is identical,
+    # so the diff IS the glow contribution).
+    body_t, arm_t = glow_mod._GLOW_BODY, glow_mod._GLOW_ARM
+    with _without_glow(body_t, "227"), _without_glow(arm_t, "227"):
+        base = _decode(render_character(_APP_M, {"body": _acc(4756)}, scale=1))
+    glown = _decode(render_character(_APP_M, {"body": _acc(4756)}, scale=1))
+    assert base.shape == glown.shape
+    diff = np.any(base != glown, axis=2)
+    assert int(diff.sum()) > 0, "glow layer changed nothing (must brighten pixels)"
+    # the changed pixels must be brighter overall (a bright (230,230,230) additive/
+    # partial wash, never darkening), summed over the changed region.
+    ys, xs = np.nonzero(diff)
+    base_lum = base[ys, xs, :3].astype(np.int32).sum()
+    glow_lum = glown[ys, xs, :3].astype(np.int32).sum()
+    assert glow_lum > base_lum, "glow must brighten the affected pixels"
+
+
+def test_glow_head_changes_and_legs_glow_render() -> None:
+    # head/legs use independent Glow_{id} strips. A glowmask head (291 -> 5683, opaque
+    # white cover) must change the render vs the same head with its glow suppressed; a
+    # legs glowmask (222 -> 5053) renders a valid PNG.
+    with _without_glow(glow_mod._GLOW_HEAD, "291"):
+        base = render_character(_APP_M, {"head": _acc(5683)}, scale=1)
+    glown = render_character(_APP_M, {"head": _acc(5683)}, scale=1)
+    assert base != glown, "head glowmask layer changed nothing"
+    legs = render_character(_APP_M, {"legs": _acc(5053)}, scale=1)
+    assert legs[:8] == _PNG_SIG
+
+
+def test_non_glow_body_unaffected_by_glow_code() -> None:
+    # Regression: a body WITHOUT a glowmask (GoldChainmail, 80; sheet is 360x224 with no
+    # lower-half glow data) renders identically with the glow code present -- the glow
+    # color resolves to None and no glow cell exists, so nothing is drawn.
+    comp = _Compositor(_APP_M)
+    # body slot 1 has no glow-table entry -> resolved color is None (no-op non-glow).
+    assert comp._glow_color(glow_mod._GLOW_BODY.get("1")) is None
+    a = render_character(_APP_M, {"body": _acc(80)}, scale=2)
+    b = render_character(_APP_M, {"body": _acc(80)}, scale=2)
+    assert a == b
+    assert a[:8] == _PNG_SIG
+
+
+def test_glow_color_arkhalis_uses_undershirt() -> None:
+    # The 'arkhalis' sentinel resolves to (underShirtColor.rgb, A=180) (PlayerDrawSet.cs
+    # :515-516). With a known undershirt color the resolved glow color must match.
+    app = {**_APP_M, "underShirtColor": -16711936}  # 0xFF00FF00 -> straight green
+    comp = _Compositor(app)
+    # packed -16711936 = 0xFF00FF00 -> R=0, G=255, B=0 (FNA 0xAABBGGRR layout).
+    assert comp.colors["under"] == (0, 255, 0)
+    assert comp._glow_color("arkhalis") == (0, 255, 0, 180)
+
+
+# ── backcoat / tails / backpacks / body→back routing (backcoat_tails_spec.md) ──
+# netIds (Item.cs / data tables):
+#   tail accessories: 4769 DogTail (backSlot 25), 4775 BunnyTail (backSlot 28);
+#   backpack accessories: 1321 MagicQuiver (backSlot 7), 3061 ArchitectGizmoPack (8);
+#   5587 ChickenBonesRobe (vanity, NO *Slot -> coat=251); 532 StarCloak (back cape 2);
+#   bodies that force a cape: 1839 (slot 96 -> tail 18), 1822 (94 -> tail 19),
+#   1750 (80 -> tail 21), 3881 (207 -> back cape 13), 5055 (238 -> backpack 32),
+#   1764 (85 -> front 7 + back 20 pair); armor sets 5045/5046/5047 (266/235/218 ->
+#   Extra_212 backpack) and 5051/5052/5053 (268/237/222 -> Extra_213).
+def test_tail_accessory_routes_to_tail_field() -> None:
+    # A back item in DrawInTailLayer (DogTail 4769 -> backSlot 25) resolves to the
+    # `tail` field, NOT the `back` cape field (Player.UpdateVisibleAccessory:36481).
+    res = _resolve_accessories(_slots7(4769), None, None, 0, male=True)
+    assert res["slots"].get("tail") == 25
+    assert "back" not in res["slots"] and "backpack" not in res["slots"]
+
+
+def test_tail_accessory_renders_behind_body() -> None:
+    # A tail accessory must now render (it used to be skipped): the render differs from
+    # a no-accessory one and adds pixels behind the body (08_1_Tails, before body skin).
+    none = render_character(_APP_M, scale=2)
+    tailed = render_character(_APP_M, scale=2, accessories=_slots7(4775))
+    assert tailed[:8] == _PNG_SIG
+    assert tailed != none
+
+
+def test_tail_female_x_offset() -> None:
+    # 08_1_Tails shifts the tail +2*direction in X for a female player (idle dir=1 ->
+    # +2); male is unshifted (PlayerDrawLayers.cs:577-579). The female render is the
+    # male one moved right by 2px in the tail region, so the two differ.
+    app_f = {**_APPEARANCE, "skinVariant": 4, "hair": 5}  # female base variant
+    app_m = {**_APP_M}
+    fem = render_character(app_f, scale=1, accessories=_slots7(4775))
+    masc = render_character(app_m, scale=1, accessories=_slots7(4775))
+    assert fem[:8] == _PNG_SIG and masc[:8] == _PNG_SIG
+    # (the body sprites also differ by gender, so this only asserts both render; the
+    # offset itself is unit-tested below via the resolver-independent strip shift.)
+    base = _Compositor(app_f)
+    base.draw_acc_strip("Acc_Back_28", None, offset=(0, 0))
+    moved = _Compositor(app_f)
+    moved.draw_acc_strip("Acc_Back_28", None, offset=(2, 0))
+    a = base.canvas[PAD_T:PAD_T + FH, PAD_L:PAD_L + FW]
+    b = moved.canvas[PAD_T:PAD_T + FH, PAD_L + 2:PAD_L + 2 + FW]
+    assert np.array_equal(a, b)
+
+
+def test_backpack_accessory_routes_and_renders() -> None:
+    # A back item in DrawInBackpackLayer (MagicQuiver 1321 -> backSlot 7) resolves to
+    # the `backpack` field (UpdateVisibleAccessory:36477), and renders (was skipped).
+    res = _resolve_accessories(_slots7(1321), None, None, 0, male=True)
+    assert res["slots"].get("backpack") == 7
+    assert "back" not in res["slots"]
+    none = render_character(_APP_M, scale=2)
+    packed = render_character(_APP_M, scale=2, accessories=_slots7(1321))
+    assert packed[:8] == _PNG_SIG
+    assert packed != none
+
+
+def test_chickenbones_robe_sets_coat_and_draws_both_pieces() -> None:
+    # ChickenBonesRobe (netId 5587) carries NO *Slot, so it's absent from the slot
+    # tables; it must be special-cased to coat=251 (UpdateVisibleAccessory:36585), which
+    # draws the back piece (Armor_Legs_239, behind the body) AND the front piece
+    # (Armor_Legs_238, the long-coat skirt). Both differ from the no-robe render.
+    res = _resolve_accessories(_slots7(5587), None, None, 0, male=True)
+    assert res["coat"] == 251
+    assert res["slots"] == {}                  # the robe sets no visual slot, only coat
+    none = render_character(_APP_M, scale=2)
+    robed = render_character(_APP_M, scale=2, accessories=_slots7(5587))
+    assert robed[:8] == _PNG_SIG
+    assert robed != none
+    # and works from the vanity (social) accessory slots too.
+    robed_vanity = render_character(
+        _APP_M, scale=2, vanity_accessories=_slots7(5587))
+    assert robed_vanity != none
+
+
+def test_chickenbones_robe_dye_applies() -> None:
+    # The coat (cCoat) dye comes from item 5587's own accessory-dye slot; a dyed robe
+    # differs from the undyed one (the dye rides accessoryDyes[k], k = the robe's slot).
+    undyed = render_character(_APP_M, scale=2, accessories=_slots7(5587))
+    dyed = render_character(
+        _APP_M, scale=2, accessories=_slots7(5587),
+        accessory_dyes=[_acc(1007)] + [{"netId": 0}] * 6)   # RedDye in slot 0
+    assert dyed != undyed
+    res = _resolve_accessories(
+        _slots7(5587), None, [_acc(1007)] + [{"netId": 0}] * 6, 0, male=True)
+    assert res["coat_dye"] is not None
+    assert res["coat_dye"]["pass"] == "ArmorColored"
+
+
+def test_body_forced_tail_routes_and_renders() -> None:
+    # A body whose IncludedCapeBack maps to a DrawInTailLayer slot forces a tail
+    # (Player.cs:35417). Body slot 96 (netId 1839) -> back 18 -> tail. The tail is dyed
+    # with the BODY dye (cTail = cBody). It must render and add tail pixels vs a
+    # non-cape body (GoldChainmail 80, body slot 1, which forces nothing).
+    res = _resolve_accessories(None, None, None, 0, male=True, body_slot=96)
+    assert res["slots"].get("tail") == 18
+    plain = render_character(_APP_M, {"body": _acc(80)}, scale=2)
+    caped = render_character(_APP_M, {"body": _acc(1839)}, scale=2)
+    assert caped[:8] == _PNG_SIG
+    assert caped != plain
+
+
+def test_body_forced_back_cape_and_backpack() -> None:
+    # body 207 (netId 3881) -> back cape 13 (a real cape, drawn at layer 10); body 238
+    # (netId 5055) -> backpack 32 (the backpack layer). Both via IncludedCapeBack + the
+    # 3-way Back.Sets routing (Player.cs:35412-35425).
+    assert _resolve_accessories(
+        None, None, None, 0, male=True, body_slot=207)["slots"].get("back") == 13
+    assert _resolve_accessories(
+        None, None, None, 0, male=True, body_slot=238)["slots"].get("backpack") == 32
+    cape = render_character(_APP_M, {"body": _acc(3881)}, scale=1)
+    pack = render_character(_APP_M, {"body": _acc(5055)}, scale=1)
+    assert cape[:8] == _PNG_SIG and pack[:8] == _PNG_SIG
+
+
+def test_body_cape_female_variant_differs() -> None:
+    # IncludedCapeBackFemale diverges from the male table only at body 217 (back 22
+    # male, 23 female) -- the one gender-specific cape slot. Cross-check the resolver.
+    male = _resolve_accessories(None, None, None, 0, male=True, body_slot=217)
+    female = _resolve_accessories(None, None, None, 0, male=False, body_slot=217)
+    assert male["slots"].get("back") == 22
+    assert female["slots"].get("back") == 23
+
+
+def test_body_cape_front_and_back_pair_is_atomic() -> None:
+    # IncludeCapeFrontAndBack (body 85 -> front 7 + back 20) is applied atomically and
+    # ONLY when both back and front are still unset (Player.cs:35436). With an accessory
+    # back cape already present (StarCloak 532 -> back 2) the body's whole pair is
+    # suppressed -> only the accessory cape remains.
+    pair = _resolve_accessories(None, None, None, 0, male=True, body_slot=85)
+    assert pair["slots"].get("back") == 20 and pair["slots"].get("front") == 7
+    suppressed = _resolve_accessories(
+        _slots7(532), None, None, 0, male=True, body_slot=85)
+    assert suppressed["slots"].get("back") == 2     # the accessory cape
+    assert "front" not in suppressed["slots"]       # body pair fully suppressed
+
+
+def test_body_forced_cape_uses_body_dye() -> None:
+    # A body-forced cape is dyed with the BODY dye (cBack/cTail/cFront = cBody,
+    # Player.cs:35415..35433), not an accessory dye. Pass a body dye and assert the
+    # resolved cape dye is that body dye.
+    red = {"pass": "ArmorColored", "color": [1.0, 0.0, 0.0], "sat": 1.2}
+    res = _resolve_accessories(
+        None, None, None, 0, male=True, body_slot=207, body_dye=red)
+    assert res["dyes"].get("back") == red       # back cape carries the body dye
+
+
+def test_armorset_backpack_renders() -> None:
+    # The two armor-set backpacks: displayed (head,body,legs) == (266,235,218) draws
+    # Extra_212, (268,237,222) draws Extra_213 (DrawPlayer_08_Backpacks:446/458). The
+    # full set differs from wearing just the body (which doesn't complete the set -> no
+    # backpack). netIds 5045/5046/5047 (set1) and 5051/5052/5053 (set2).
+    set1 = {"head": _acc(5045), "body": _acc(5046), "legs": _acc(5047)}
+    full1 = render_character(_APP_M, set1, scale=1)
+    body_only = render_character(_APP_M, {"body": _acc(5046)}, scale=1)
+    assert full1[:8] == _PNG_SIG
+    assert full1 != body_only                   # the backpack appears only for the set
+    set2 = {"head": _acc(5051), "body": _acc(5052), "legs": _acc(5053)}
+    assert render_character(_APP_M, set2, scale=1)[:8] == _PNG_SIG
+
+
+def test_armorset_backpack_triggers_match_decompiled() -> None:
+    # Transcription cross-check of the two armor-set triggers + their Extra ids/offsets
+    # (DrawPlayer_08_Backpacks:446/458). A wrong triple/offset => wrong/absent backpack.
+    from nextbot.terraria_render.compositor import (
+        _ARMORSET_BACKPACK_ALPHA,
+        _ARMORSET_BACKPACKS,
+    )
+    assert _ARMORSET_BACKPACKS == (
+        ((266, 235, 218), 212, (-4, 0)),
+        ((268, 237, 222), 213, (-8, -4)),
+    )
+    assert _ARMORSET_BACKPACK_ALPHA == 200
+    # the Extra backpack sheets ship and have content in their idle (frame-0) cell.
+    for _triple, extra_id, _off in _ARMORSET_BACKPACKS:
+        sheet = glow_mod._sheet(f"Extra_{extra_id}")
+        assert sheet is not None, f"Extra_{extra_id} missing"
+        fh = sheet.shape[0] // 5                 # 5-frame vertical strip
+        assert int((sheet[:fh, :, 3] > 0).sum()) > 0
+
+
+def test_back_routing_sets_match_decompiled() -> None:
+    # The 3-way back-slot routing sets (ArmorIDs.cs:1695/1697) drive backpack/tail/back.
+    from nextbot.terraria_render.compositor import _BACK_BACKPACK, _BACK_TAIL
+    assert set(_BACK_BACKPACK) == {7, 8, 9, 10, 15, 16, 32, 33}
+    assert set(_BACK_TAIL) == {18, 19, 21, 25, 26, 27, 28}
+    # a back slot not in either set is a real back cape (drawn at layer 10).
+    res = _resolve_accessories(_slots7(532), None, None, 0, male=True)
+    assert res["slots"].get("back") == 2        # StarCloak is a real cape
+
+
+def test_cape_with_both_back_and_front_keeps_both() -> None:
+    # Player.UpdateVisibleAccessory order (36475-36494): the `front = -1` clear at 36488
+    # runs BEFORE the SAME item's `frontSlot` apply at 36491, so a cape carrying BOTH a
+    # back and a front slot (CrimsonCloak 2284 -> back 3 + front 1) keeps BOTH halves --
+    # the clear only drops a front set by an EARLIER item.
+    res = _resolve_accessories(_slots7(2284), None, None, 0, male=True)
+    assert res["slots"].get("back") == 3
+    assert res["slots"].get("front") == 1       # the item's own front survives (36491)
+
+
+def test_real_back_cape_clears_earlier_front() -> None:
+    # The 36488 `front = -1` clear DOES drop a front set by an EARLIER item. With
+    # CrimsonCloak (2284: back 3 + front 1) in slot 0 then StarCloak (532: back 2, no
+    # front) in slot 1, the StarCloak back clears the CrimsonCloak front -> only back 2
+    # survives (the later real back wins, and StarCloak has no own front to restore it).
+    res = _resolve_accessories(_slots7(2284, 532), None, None, 0, male=True)
+    assert res["slots"].get("back") == 2        # StarCloak (slot 1) is the last back
+    assert "front" not in res["slots"]          # CrimsonCloak's front cleared by 36488
+
+
+def test_plain_and_normal_accessory_output_unchanged() -> None:
+    # KEY REGRESSION: the backcoat/tails/backpacks/body-routing changes must NOT alter
+    # the output for a plain character or for ordinary (non-tail/backpack/coat) accs.
+    # A plain render, a wings render, a back-cape render, and a body that forces NO cape
+    # must all be byte-identical to a fresh render (determinism + no spurious layers).
+    plain = render_character(_APP_M, scale=4)
+    assert plain == render_character(_APP_M, scale=4)
+    # a normal back cape (StarCloak 532 -> back 2) is a real cape, unchanged by routing.
+    cape = render_character(_APP_M, scale=4, accessories=_slots7(532))
+    assert cape == render_character(_APP_M, scale=4, accessories=_slots7(532))
+    assert cape != plain                         # the cape is still drawn
+    # wings still render and widen (the original accessory regression still holds).
+    winged = render_character(_APPEARANCE, scale=4, accessories=_slots7(493))
+    assert winged == render_character(_APPEARANCE, scale=4, accessories=_slots7(493))
+    # a body that forces NO cape (GoldChainmail 80, body slot 1) is unchanged by the
+    # body-cape code (its slot isn't in body_cape.json).
+    b80 = render_character(_APP_M, {"body": _acc(80)}, scale=4)
+    assert b80 == render_character(_APP_M, {"body": _acc(80)}, scale=4)
+
+
 def _run() -> int:
     tests = [
         test_render_returns_valid_png,
@@ -711,7 +1115,9 @@ def _run() -> int:
         test_masked_body_render_is_valid,
         test_back_head_front_to_back_set_matches_decompiled,
         test_back_head_adds_visible_pixels_behind_body,
+        test_useskincolor_head_uses_skin_color,
         test_shoe_acc_suppressed_by_leg_override,
+        test_shoe15_suppresses_default_legs_and_leg_armor,
         test_under_hair_face_is_occluded_by_hair,
         test_shield_and_front_acc_render_is_stable,
         test_bespoke_wing_offsets_match_decompiled,
@@ -719,6 +1125,30 @@ def _run() -> int:
         test_default_wing_offset_unchanged,
         test_face19_draw_offset_applied,
         test_front13_and_rollerskate_offsets_match_decompiled,
+        test_over_glow_additive_does_not_drop_layer,
+        test_over_glow_opaque_color_covers,
+        test_over_glow_empty_texture_is_noop,
+        test_glow_body_brightens_torso_region,
+        test_glow_head_changes_and_legs_glow_render,
+        test_non_glow_body_unaffected_by_glow_code,
+        test_glow_color_arkhalis_uses_undershirt,
+        test_tail_accessory_routes_to_tail_field,
+        test_tail_accessory_renders_behind_body,
+        test_tail_female_x_offset,
+        test_backpack_accessory_routes_and_renders,
+        test_chickenbones_robe_sets_coat_and_draws_both_pieces,
+        test_chickenbones_robe_dye_applies,
+        test_body_forced_tail_routes_and_renders,
+        test_body_forced_back_cape_and_backpack,
+        test_body_cape_female_variant_differs,
+        test_body_cape_front_and_back_pair_is_atomic,
+        test_body_forced_cape_uses_body_dye,
+        test_armorset_backpack_renders,
+        test_armorset_backpack_triggers_match_decompiled,
+        test_back_routing_sets_match_decompiled,
+        test_cape_with_both_back_and_front_keeps_both,
+        test_real_back_cape_clears_earlier_front,
+        test_plain_and_normal_accessory_output_unchanged,
     ]
     failed = 0
     for t in tests:

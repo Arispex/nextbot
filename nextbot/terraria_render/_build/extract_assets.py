@@ -35,6 +35,7 @@ composite 360x224 ones, so those are the only hand textures extracted (from the 
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 import sys
@@ -46,6 +47,23 @@ DEFAULT_CONTENT = (
     "Terraria/Terraria.app/Contents/Resources/Content/Images"
 )
 OUT = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "assets"))
+DATA = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "data"))
+
+
+def referenced_glow_masks() -> set[int]:
+    """The head/legs glowmask ids actually consumed by compositor.py, read from
+    data/glowmask.json (its `head`/`legs` sections map equip slot -> {mask, color}).
+    Only these Glow_{id}.png are extracted; the ~348 other Glow_*.xnb are weapon/NPC/
+    projectile glowmasks the player renderer never reads. (body/arm glow rides the
+    ArmorBody composite lower half, not a Glow_ strip — see glowmask_spec.md §1.3/§6.)"""
+    with open(os.path.join(DATA, "glowmask.json"), encoding="utf-8") as fh:
+        table = json.load(fh)
+    ids: set[int] = set()
+    for section in ("head", "legs"):
+        for entry in table.get(section, {}).values():
+            if isinstance(entry, dict) and "mask" in entry:
+                ids.add(int(entry["mask"]))
+    return ids
 
 # (source-dir-relative-glob regex, output-name-template) — output uses the captured groups
 PATTERNS = [
@@ -66,6 +84,12 @@ PATTERNS = [
     (re.compile(r"^Acc_Beard_(\d+)\.xnb$"), "Acc_Beard_{0}.png"),
     (re.compile(r"^Acc_Balloon_(\d+)\.xnb$"), "Acc_Balloon_{0}.png"),
 ]
+# equipment glowmasks (root Content/Images/Glow_{id}.xnb, 40x1120 vertical strip): the
+# independent head/legs glow layers (body/arm glow lives in the 360x448 ArmorBody lower
+# half, not here). compositor.py only reads Glow_{headGlowMask}/Glow_{legsGlowMask} for
+# the ~31 head/legs ids referenced in glowmask.json; the other ~348 Glow_*.xnb are weapon/
+# NPC/projectile glowmasks and are NOT extracted. See research/glowmask_spec.md §1.3/§6.
+GLOW_PATTERN = (re.compile(r"^Glow_(\d+)\.xnb$"), "Glow_{0}.png")
 # body armor lives in the Armor/ subdir as Armor_{slot}.xnb -> ArmorBody_{slot}.png
 BODY_PATTERN = (re.compile(r"^Armor_(\d+)\.xnb$"), "ArmorBody_{0}.png")
 # composite hand accessories live in the Accessories/ subdir (the live 360x224 grid;
@@ -75,12 +99,16 @@ ACC_HAND_PATTERNS = [
     (re.compile(r"^Acc_HandsOn_(\d+)\.xnb$"), "Acc_HandsOn_{0}.png"),
     (re.compile(r"^Acc_HandsOff_(\d+)\.xnb$"), "Acc_HandsOff_{0}.png"),
 ]
-# noise-sampling dye textures: (content-relative-src, output-name). Both are fmt-0
-# RGBA (alpha==255) so unpremultiply is a no-op. noise -> all 8 noise dyes +
-# ArmorTwilight hair dye; Extra_156 -> HallowBoss palette. See noise_dyes_spec.md.
-NOISE_TEXTURES = [
+# individually-named textures: (content-relative-src, output-name). All are fmt-0 RGBA
+# (alpha==255) so unpremultiply is a no-op. noise -> all 8 noise dyes + ArmorTwilight hair
+# dye; Extra_156 -> HallowBoss palette (noise_dyes_spec.md). Extra_212/213 are the two
+# armor-set backpacks (5-frame vertical strips) drawn by DrawPlayer_08_Backpacks for the
+# displayed sets (266,235,218)/(268,237,222) — research/backcoat_tails_spec.md §4.
+SINGLE_TEXTURES = [
     (os.path.join("Misc", "noise.xnb"), "noise.png"),
     ("Extra_156.xnb", "Extra_156.png"),
+    ("Extra_212.xnb", "Extra_212.png"),
+    ("Extra_213.xnb", "Extra_213.png"),
 ]
 
 
@@ -103,8 +131,18 @@ def main() -> None:
         sys.exit(f"Terraria Content/Images not found: {content}")
     os.makedirs(OUT, exist_ok=True)
     count = 0
+    glow_ids = referenced_glow_masks()
+    glow_rx, glow_tmpl = GLOW_PATTERN
 
     for fn in os.listdir(content):
+        # Glow_*.xnb: only extract the head/legs ids referenced in glowmask.json (skip the
+        # ~348 unrelated weapon/NPC/projectile glowmasks).
+        gm = glow_rx.match(fn)
+        if gm:
+            if int(gm.group(1)) in glow_ids and convert(
+                os.path.join(content, fn), glow_tmpl.format(*gm.groups())):
+                count += 1
+            continue
         for rx, tmpl in PATTERNS:
             m = rx.match(fn)
             if m:
@@ -130,7 +168,7 @@ def main() -> None:
                         count += 1
                     break
 
-    for rel_src, out_name in NOISE_TEXTURES:
+    for rel_src, out_name in SINGLE_TEXTURES:
         src = os.path.join(content, rel_src)
         if os.path.isfile(src) and convert(src, out_name):
             count += 1

@@ -316,6 +316,98 @@ def gen_hair_dye_colors(decomp: str) -> dict:
     }
 
 
+def _int_set_pairs(call_args: str) -> dict[int, int]:
+    """Parse a `CreateIntSet(default, k0, v0, k1, v1, ...)` argument list (the leading
+    default is dropped) into {k: v}. Whitespace/newlines tolerated."""
+    nums = [int(n) for n in re.findall(r"-?\d+", call_args)]
+    pairs = nums[1:]                       # drop the default (first arg)
+    return {pairs[i]: pairs[i + 1] for i in range(0, len(pairs) - 1, 2)}
+
+
+def _bool_set(call_args: str) -> set[int]:
+    """Parse a `CreateBoolSet(false, a, b, c, ...)` argument list into {a,b,c}.
+    The leading `false`/`true` default is non-numeric, so the number regex already
+    skips it — every captured int is a real member (do NOT drop the first)."""
+    return {int(n) for n in re.findall(r"-?\d+", call_args)}
+
+
+def gen_body_cape(decomp: str) -> dict:
+    """body equip slot -> the cape/tail/backpack it forces (ArmorIDs.Body.Sets +
+    Player.cs:35407-35458 three-way routing). The game, after accessory resolution,
+    maps a body slot to a back slot via IncludedCapeBack[/Female] (single) or
+    IncludeCapeFrontAndBack (a front+back pair), then routes that back slot to the
+    backpack / tail / back field by Back.Sets.DrawInBackpackLayer / DrawInTailLayer.
+    IncludedCapeFront adds a standalone front cape. We bake, per gender:
+
+        body_slot -> {"back"|"tail"|"backpack": <Acc_Back slot>, "front": <Acc_Front slot>}
+
+    matching the field each back slot lands in, plus the front cape. The runtime
+    applies these only when the accessory left that field unset (back/front) and
+    always for backpack/tail — exactly as Player.cs does."""
+    armor = open(os.path.join(decomp, "Terraria.ID", "ArmorIDs.cs")).read()
+
+    def _call(name: str, factory: str) -> str:
+        # capture the (...) args of `<name> = Factory.<factory>(...)`, paren-balanced.
+        m = re.search(rf"{name}\s*=\s*Factory\.{factory}\(", armor)
+        if not m:
+            raise ValueError(f"{name} = Factory.{factory}(...) not found in ArmorIDs.cs")
+        i = m.end()
+        depth, start = 1, i
+        while depth:
+            if armor[i] == "(":
+                depth += 1
+            elif armor[i] == ")":
+                depth -= 1
+            i += 1
+        return armor[start:i - 1]
+
+    back_male = _int_set_pairs(_call("IncludedCapeBack", "CreateIntSet"))
+    back_female = _int_set_pairs(_call("IncludedCapeBackFemale", "CreateIntSet"))
+    front_only = _int_set_pairs(_call("IncludedCapeFront", "CreateIntSet"))
+    # IncludeCapeFrontAndBack: CreateCustomSet(default, body, {backCape=..,frontCape=..}, ..)
+    fb_args = _call("IncludeCapeFrontAndBack", "CreateCustomSet")
+    front_and_back: dict[int, tuple[int, int]] = {}
+    # pair a leading `<body>,` with the following backCape/frontCape literals.
+    for m in re.finditer(
+        r"(\d+)\s*,\s*new IncludeCapeFrontAndBackInfo\s*\{\s*"
+        r"backCape\s*=\s*(-?\d+)\s*,\s*frontCape\s*=\s*(-?\d+)", fb_args,
+    ):
+        front_and_back[int(m.group(1))] = (int(m.group(2)), int(m.group(3)))
+
+    # the Back-slot -> field classification (3-way, Player.cs:35412/35417/35422).
+    bp = _bool_set(_call("DrawInBackpackLayer", "CreateBoolSet"))
+    tl = _bool_set(_call("DrawInTailLayer", "CreateBoolSet"))
+
+    def field_of(back_slot: int) -> str:
+        if back_slot in bp:
+            return "backpack"
+        if back_slot in tl:
+            return "tail"
+        return "back"
+
+    def build(back_map: dict[int, int]) -> dict[str, dict]:
+        out: dict[str, dict] = {}
+        for body, b in back_map.items():            # IncludedCapeBack: independent back
+            if b != -1:
+                out.setdefault(str(body), {})[field_of(b)] = b
+        for body, fc in front_only.items():         # IncludedCapeFront: independent front
+            if fc != -1:
+                out.setdefault(str(body), {})["front"] = fc
+        for body, (b, f) in front_and_back.items():
+            # IncludeCapeFrontAndBack is applied ATOMICALLY and only when BOTH back and
+            # front are still unset (Player.cs:35436) -> mark it so the runtime can honor
+            # that, vs the independent CreateIntSet maps above.
+            entry = out.setdefault(str(body), {})
+            entry["pair"] = True
+            if f != -1:
+                entry["front"] = f
+            if b != -1:
+                entry[field_of(b)] = b
+        return out
+
+    return {"male": build(back_male), "female": build(back_female)}
+
+
 def gen_variants() -> dict:
     # constants from terraria_render_spec.md (PlayerVariantID / PlayerDataInitializer)
     return {
@@ -348,6 +440,7 @@ def main() -> None:
         "hair_sets.json": gen_hair_sets(decomp),
         "hair_dye_colors.json": gen_hair_dye_colors(decomp),
         "robe_extensions.json": gen_robe_extensions(decomp),
+        "body_cape.json": gen_body_cape(decomp),
         "variants.json": gen_variants(),
     }
     for name, data in tables.items():
@@ -404,6 +497,21 @@ def main() -> None:
         status = "OK" if got == want else f"MISMATCH got={got}"
         print(f"  validate robe ext body {body_slot} -> {want}: {status}")
     print(f"  robe_extensions: {len(ext)} body slots")
+    bc = tables["body_cape.json"]
+    # body 96 -> tail 18, 80 -> tail 21, 207 -> back cape 13, 238 -> backpack 32,
+    # 85 -> front 7 + back cape 20 (IncludeCapeFrontAndBack), 217 -> back 22(M)/23(F).
+    bc_checks = {
+        ("male", "96"): {"tail": 18}, ("male", "80"): {"tail": 21},
+        ("male", "207"): {"back": 13}, ("male", "238"): {"backpack": 32},
+        ("male", "85"): {"front": 7, "back": 20, "pair": True},
+        ("male", "217"): {"back": 22},
+        ("female", "217"): {"back": 23},
+    }
+    for (gender, body), want in bc_checks.items():
+        got = bc[gender].get(body)
+        status = "OK" if got == want else f"MISMATCH got={got}"
+        print(f"  validate body_cape {gender} {body} -> {want}: {status}")
+    print(f"  body_cape: male={len(bc['male'])} female={len(bc['female'])} body slots")
 
 
 if __name__ == "__main__":

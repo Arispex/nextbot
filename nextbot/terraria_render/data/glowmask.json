@@ -1,0 +1,62 @@
+{
+  "_doc": "Equipment glowmask layers, reverse-engineered in research/glowmask_spec.md (PlayerDrawSet.cs:517-802). Per-part equip-slot -> glow color. body/arm glow rides the ArmorBody composite lower half (cell+36, Y+224); head/legs glow uses independent Glow_{id}.png strips. Colors are RGBA arrays (0..255); the string 'arkhalis' = ArkhalisColor = (underShirtColor.rgb, A=180), resolved at runtime from appearance. Animated suits use the representative phase value from spec §3 (mouseTextColor->222 num=0.758 -> 193; ChickenBones->0.9 -> 229; Luna->0.925 -> (236,236,236,92)). A glow color with PackedValue==0 (all four channels 0) is skipped (never happens here; transparent slots are simply absent). head/legs entries are {mask:int, color:[...]}; body/arm entries are color arrays.",
+  "body": {
+    "175": [250, 250, 250, 0],
+    "208": "arkhalis",
+    "227": [230, 230, 230, 60],
+    "237": [193, 193, 193, 0],
+    "238": [255, 255, 255, 255],
+    "260": [255, 255, 255, 255],
+    "239": [200, 200, 200, 150],
+    "190": [250, 250, 250, 0],
+    "176": [250, 250, 250, 0],
+    "194": [255, 255, 255, 127],
+    "179": [255, 255, 255, 0]
+  },
+  "arm": {
+    "208": "arkhalis",
+    "227": [230, 230, 230, 60],
+    "238": [255, 255, 255, 255],
+    "260": [255, 255, 255, 255],
+    "239": [200, 200, 200, 150],
+    "190": [250, 250, 250, 0],
+    "176": [250, 250, 250, 0],
+    "194": [255, 255, 255, 127],
+    "179": [255, 255, 255, 0]
+  },
+  "head": {
+    "169": {"mask": 15, "color": [250, 250, 250, 0]},
+    "216": {"mask": 256, "color": [127, 127, 127, 0]},
+    "210": {"mask": 242, "color": [127, 127, 127, 0]},
+    "214": {"mask": 245, "color": "arkhalis"},
+    "240": {"mask": 273, "color": [230, 230, 230, 60]},
+    "267": {"mask": 301, "color": [230, 230, 230, 60]},
+    "268": {"mask": 302, "color": [193, 193, 193, 0]},
+    "269": {"mask": 304, "color": [200, 200, 200, 255]},
+    "270": {"mask": 305, "color": [200, 200, 200, 150]},
+    "271": {"mask": 309, "color": [255, 255, 255, 255]},
+    "170": {"mask": 16, "color": [250, 250, 250, 0]},
+    "189": {"mask": 184, "color": [250, 250, 250, 0]},
+    "175": {"mask": 41, "color": [255, 255, 255, 0]},
+    "193": {"mask": 209, "color": [255, 255, 255, 127]},
+    "109": {"mask": 208, "color": [255, 255, 255, 0]},
+    "178": {"mask": 96, "color": [255, 255, 255, 0]},
+    "282": {"mask": 357, "color": [193, 193, 193, 0]},
+    "284": {"mask": 365, "color": [229, 229, 229, 0]},
+    "285": {"mask": 367, "color": [255, 255, 255, 0]},
+    "291": {"mask": 375, "color": [255, 255, 255, 255]},
+    "292": {"mask": 378, "color": [236, 236, 236, 92]}
+  },
+  "legs": {
+    "111": {"mask": 17, "color": [250, 250, 250, 0]},
+    "157": {"mask": 249, "color": "arkhalis"},
+    "158": {"mask": 250, "color": "arkhalis"},
+    "210": {"mask": 274, "color": [230, 230, 230, 60]},
+    "222": {"mask": 303, "color": [193, 193, 193, 0]},
+    "225": {"mask": 306, "color": [200, 200, 200, 150]},
+    "226": {"mask": 307, "color": [200, 200, 200, 150]},
+    "110": {"mask": 199, "color": [250, 250, 250, 0]},
+    "134": {"mask": 212, "color": [255, 255, 255, 127]},
+    "130": {"mask": 187, "color": [252, 252, 252, 0]}
+  }
+}

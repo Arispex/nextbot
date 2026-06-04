@@ -31,6 +31,11 @@ _HERE = Path(__file__).resolve().parent
 ASSETS = _HERE / "assets"
 DATA = _HERE / "data"
 FW, FH = 40, 56
+# Composite body/arm glow rides the SAME ArmorBody sheet's lower half: sourceRect.Y += 224
+# (glowmask_spec.md §5.1). On the 360x224 grid (9 cols x 56px rows) that is +4 rows = +36
+# cells. So a sub-part's glow cell = its colored cell + 36 (only present on 360x448 sheets).
+_GLOW_CELL_DELTA = 36
+_RGBA_LEN = 4  # a glow-color table entry is an (r,g,b,a) 4-tuple
 # Padded canvas: body cell sits at (PAD_L, PAD_T); wings (worst case ~53px left / 31px
 # right / 14px up, widest vanilla wing 120px) and balloons (~24px below) overflow the
 # 40x56 cell. Symmetric horizontal pad 56 + vertical pad 28 covers every drawable
@@ -47,11 +52,36 @@ _CROP_MARGIN = 2
 _BALLOON_OFFSET = (-6, -4)
 
 # ── accessory category Sets (ArmorIDs.cs, cited; small enough to inline) ──
-# back items routed to the backpack/tail layers (08/08_1) instead of the back layer 10
-# — those layers aren't implemented (PRD prioritizes capes), so such back items are
-# skipped. ArmorIDs.cs:1695 (DrawInBackpackLayer) / 1697 (DrawInTailLayer).
+# back slot routing (Player.UpdateVisibleAccessory:36475-36490): a back slot in
+# DrawInBackpackLayer goes to the backpack field (layer 08_Backpacks), one in
+# DrawInTailLayer to the tail field (layer 08_1_Tails); everything else is a real back
+# cape (layer 10). ArmorIDs.cs:1695 (DrawInBackpackLayer) / 1697 (DrawInTailLayer).
 _BACK_BACKPACK = {7, 8, 9, 10, 15, 16, 32, 33}
 _BACK_TAIL = {18, 19, 21, 25, 26, 27, 28}
+# armor sets whose displayed (head, body, legs) trigger an Extra_* backpack
+# (DrawPlayer_08_Backpacks:446/458). Each maps the (head,body,legs) triple to the Extra
+# texture + the cell-local top-left offset of its 5-frame strip (idle frame 0) and its
+# half-translucent draw color (250,250,250,200). PlayerDrawLayers.cs:448-468.
+_ARMORSET_BACKPACKS = (
+    # (head, body, legs), Extra id, (offset_x, offset_y)
+    ((266, 235, 218), 212, (-4, 0)),     # vec.X = -2 + -2*Directions.X (dir=1) = -4
+    ((268, 237, 222), 213, (-8, -4)),    # vec = (-9 + 1*dir, -4*gravDir) = (-8, -4)
+)
+# the half-translucent backpack draw color new Color(250,250,250,200): we apply the
+# 200/255 alpha to the (already white) sprite (PlayerDrawLayers.cs:452/464).
+_ARMORSET_BACKPACK_ALPHA = 200
+# ChickenBonesRobe (item 5587) is a vanity/social accessory that sets NO *Slot; its only
+# visual effect is coat=251 (Player.UpdateVisibleAccessory:36585). Item.cs gives it no
+# slot, so it is absent from accessory_slots.json and must be special-cased on netId.
+_CHICKENBONES_ROBE_NETID = 5587
+_CHICKENBONES_COAT = 251
+# coat -> the two long-coat leg-armor extension pieces (DrawPlayer_13_ArmorBackCoat /
+# DrawPlayer_16_ArmorLongCoat coat branch). The BACK piece (GetMatchingBodyExtensionBack,
+# PlayerDrawLayers.cs:1838: only 251->239) draws BEHIND the body (before the skin); the
+# FRONT piece (GetMatchingBodyExtension, :1848: 251->238) draws as the long-coat skirt.
+# Both carry the cCoat dye (the dye of the slot holding item 5587).
+_COAT_BACK_EXT = {251: 239}
+_COAT_FRONT_EXT = {251: 238}
 # balloon 18 (RoyalScepter): torso-framed (40x1120) AND drawn in front of the back arm
 # (balloonFront), not the normal behind-body balloon layer. ArmorIDs.cs:2212/2214.
 _BALLOON_TORSO = {18}
@@ -77,6 +107,12 @@ _FACE_UNDER_HAIR = {5}
 # drawn behind the body (DrawPlayer_01_3_BackHead, LegacyPlayerRenderer.cs:185) with the
 # body frame + head dye.
 _HEAD_FRONT_TO_BACK = {242: 246, 243: 247, 244: 248, 245: 249, 133: 252, 224: 253}
+# head equip slots drawn with the player's SKIN color (skinColor) instead of armor color
+# (white), using the skin shader rather than the head dye (ArmorIDs.Head.Sets.UseSkinColor,
+# ArmorIDs.cs:16 = CreateBoolSet(false, 274, 277)). Read in DrawPlayer_21_Head's head-armor
+# draws (PlayerDrawLayers.cs:2145/2223/2330): color = colorHead (= skinColor), shader =
+# skinDyePacked. 274 = HallowedHood? / 277 = (skin-tinted hood-style heads).
+_HEAD_USE_SKIN_COLOR = frozenset({274, 277})
 # beards tinted by the player's hair color (Wilson beards). ArmorIDs.cs:2281.
 _BEARD_HAIR_COLOR = {2, 3, 4}
 # GlassSlipper male->female shoe-slot remap when the player is female. ArmorIDs.cs:1841
@@ -163,6 +199,17 @@ _WING_BESPOKE: dict[int, tuple[int, int, bool]] = {
     51: (16, 30, True),
 }
 _DYES = _load_json("dyes.json")                 # dye netId -> {pass,color,sat,...}
+# equipment glowmask tables (research/glowmask_spec.md §2): per-part equip-slot -> glow
+# color. body/arm = RGBA list (or "arkhalis"); head/legs = {"mask": id, "color": ...}.
+# Keys are stringified equip slots (matching equip_slots.json output).
+_GLOW = _load_json("glowmask.json")
+_GLOW_BODY: dict[str, Any] = _GLOW["body"]
+_GLOW_ARM: dict[str, Any] = _GLOW["arm"]
+_GLOW_HEAD: dict[str, Any] = _GLOW["head"]
+_GLOW_LEGS: dict[str, Any] = _GLOW["legs"]
+# the 'arkhalis' sentinel = ArkhalisColor = (underShirtColor.rgb, A=180) (PlayerDrawSet
+# .cs:515-516), resolved per-render from the appearance undershirt color.
+_GLOW_ARKHALIS_ALPHA = 180
 _HAIR = _load_json("hair_sets.json")
 # hairDye index 1..11 -> replacement [r,g,b] (or null = keep hairColor); index 0 = no
 # dye, index 12 = Twilight (keeps hairColor, runs ArmorTwilight pass). hairdye_spec.md.
@@ -172,6 +219,13 @@ _VAR = _load_json("variants.json")
 # body equip slot -> long-coat leg-armor slot (robe/coat skirt); int, or
 # {"male","female"} for the 5 gender-conditional bodies. See robe_extension_spec.md.
 _ROBE_EXT = _load_json("robe_extensions.json")
+# body equip slot -> the cape/tail/backpack/front it forces (ArmorIDs.Body.Sets
+# IncludedCapeBack[/Female] / IncludedCapeFront / IncludeCapeFrontAndBack, routed through
+# Back.Sets the same 3 ways as an accessory backSlot — Player.cs:35407-35458). Keyed
+# {"male"|"female": {body_slot: {"back"|"tail"|"backpack"|"front": acc_slot}}}. The runtime
+# applies back/front only if the accessory left that field unset, and backpack/tail always
+# (matching the game). See research/backcoat_tails_spec.md "共性缺口".
+_BODY_CAPE = _load_json("body_cape.json")
 _FULLHAIR = set(_HAIR["fullHair"])
 _HATHAIR = set(_HAIR["hatHair"])
 _BACKONLY = set(_HAIR["backonly"])
@@ -315,6 +369,52 @@ def _over_at(dst: np.ndarray, src: np.ndarray, x: int, y: int) -> np.ndarray:
     sx0, sy0 = dx0 - x, dy0 - y
     sub = src[sy0:sy0 + (dy1 - dy0), sx0:sx0 + (dx1 - dx0)]
     _over(dst[dy0:dy1, dx0:dx1], sub)
+    return dst
+
+
+def _over_glow(
+    dst: np.ndarray, glow: np.ndarray, color: tuple[int, int, int, int],
+) -> np.ndarray:
+    """Composite an equipment glow frame onto `dst` with XNA premultiplied AlphaBlend
+    (glowmask_spec.md §4.3). `glow` is the STRAIGHT-alpha glow texture (already dyed);
+    `color` = (r,g,b,a) glow tint (0..255).
+
+    Unlike `_over` (straight-over), this is additive-aware: where the glow color's alpha
+    `ca == 0` (the common case) the layer is PURELY ADDITIVE — it brightens the canvas
+    without occluding it (straight-over would drop the whole layer). Where `ca > 0`
+    (A=60/100/127/150/180/255) it both adds AND partially occludes (premult `over`);
+    A=255 is a fully opaque cover (body 238/260/291, etc. — not an outline). Same shape
+    as `dst`. Mutates and returns `dst`."""
+    cr, cg, cb, ca = color
+    ta = glow[..., 3:4].astype(np.float64) / 255.0           # texture alpha (straight)
+    cvec = np.array([cr, cg, cb], dtype=np.float64) / 255.0
+    # straight glow rgb -> premultiplied, then * color rgb (per-channel, incl. A):
+    src_rgb = glow[..., :3].astype(np.float64) * ta * cvec[None, None, :]  # premult src
+    src_a = ta * (ca / 255.0)                                 # final src alpha
+    # premultiplied AlphaBlend onto dst (carry dst through premult and back):
+    da = dst[..., 3:4].astype(np.float64) / 255.0
+    out_a = src_a + da * (1.0 - src_a)
+    d_rgb = dst[..., :3].astype(np.float64)
+    out_rgb_premult = src_rgb + (d_rgb * da) * (1.0 - src_a)
+    safe = np.where(out_a > 0, out_a, 1.0)
+    dst[..., :3] = np.clip(out_rgb_premult / safe + 0.5, 0, 255).astype(np.uint8)
+    dst[..., 3:4] = np.clip(out_a * 255.0 + 0.5, 0, 255).astype(np.uint8)
+    return dst
+
+
+def _over_glow_at(
+    dst: np.ndarray, glow: np.ndarray, color: tuple[int, int, int, int], x: int, y: int,
+) -> np.ndarray:
+    """`_over_glow` with the glow frame's top-left at (x, y), clipped to dst bounds."""
+    dh, dw = dst.shape[0], dst.shape[1]
+    sh, sw = glow.shape[0], glow.shape[1]
+    dx0, dy0 = max(0, x), max(0, y)
+    dx1, dy1 = min(dw, x + sw), min(dh, y + sh)
+    if dx0 >= dx1 or dy0 >= dy1:
+        return dst
+    sx0, sy0 = dx0 - x, dy0 - y
+    sub = glow[sy0:sy0 + (dy1 - dy0), sx0:sx0 + (dx1 - dx0)]
+    _over_glow(dst[dy0:dy1, dx0:dx1], sub, color)
     return dst
 
 
@@ -468,14 +568,73 @@ class _Compositor:
         name: str | None,
         cell_key: str,
         dye_spec: dict[str, Any] | None = None,
+        *,
+        tint: tuple[int, int, int] | None = None,
     ) -> None:
+        """Draw an armor sheet's idle cell. Normally untinted white (colorArmorHead/Body/
+        Legs == white in the no-world path) + its dye. `tint` overrides the white with a
+        player color (UseSkinColor head armor draws with skinColor and the skin shader, so
+        the caller passes skinColor and no dye_spec — PlayerDrawLayers.cs:2145/2223)."""
         if name and _sheet(name) is not None:
             cell = self.cells[cell_key]
             buf = _frame(name, cell)
+            if tint is not None:
+                buf = _tint(buf, tint)
             if dye_spec:
                 src_rect, sheet_size = _frame_geom(name, cell)
                 buf = apply_dye(buf, dye_spec, src_rect=src_rect, sheet_size=sheet_size)
             self._over_cell(buf)
+
+    # ── equipment glowmask layers (research/glowmask_spec.md) ──
+    def _glow_color(self, raw: Any) -> tuple[int, int, int, int] | None:
+        """Resolve a glow-color table entry (RGBA list or the 'arkhalis' sentinel) to an
+        (r,g,b,a) tuple. 'arkhalis' = (underShirtColor.rgb, A=180); a missing undershirt
+        color falls back to white. Returns None to skip (PackedValue==0)."""
+        if raw == "arkhalis":
+            rgb = self.colors.get("under") or (255, 255, 255)
+            return (rgb[0], rgb[1], rgb[2], _GLOW_ARKHALIS_ALPHA)
+        if isinstance(raw, (list, tuple)) and len(raw) == _RGBA_LEN:
+            r, g, b, a = (int(v) for v in raw)
+            if (r | g | b | a) == 0:           # Color.Transparent -> skip
+                return None
+            return (r, g, b, a)
+        return None
+
+    def draw_body_glow(
+        self, name: str, cell_key: str, color: tuple[int, int, int, int],
+        dye_spec: dict[str, Any] | None,
+    ) -> None:
+        """Composite a body/arm composite-glow sub-part: the SAME ArmorBody sheet at the
+        sub-part's colored cell + 36 (lower half, sourceRect.Y += 224), tinted by `color`
+        and still carrying the base body dye (glowmask_spec.md §5.1). Additive-aware."""
+        if _sheet(name) is None:
+            return
+        glow_cell = self.cells[cell_key] + _GLOW_CELL_DELTA
+        buf = _frame(name, glow_cell)
+        if buf[..., 3].max() == 0:             # no glow data in this cell -> nothing to add
+            return
+        if dye_spec:
+            src_rect, sheet_size = _frame_geom(name, glow_cell)
+            buf = apply_dye(buf, dye_spec, src_rect=src_rect, sheet_size=sheet_size)
+        _over_glow_at(self.canvas, buf, color, PAD_L, PAD_T)
+
+    def draw_strip_glow(
+        self, name: str, cell_key: str, color: tuple[int, int, int, int],
+        dye_spec: dict[str, Any] | None,
+    ) -> None:
+        """Composite an independent head/legs glowmask strip (Glow_{id}.png, 40x1120) at
+        the same idle cell/frame as its base armor, tinted by `color` and still carrying
+        the base armor dye (glowmask_spec.md §5.2). Additive-aware."""
+        if _sheet(name) is None:
+            return
+        cell = self.cells[cell_key]
+        buf = _frame(name, cell)
+        if buf[..., 3].max() == 0:
+            return
+        if dye_spec:
+            src_rect, sheet_size = _frame_geom(name, cell)
+            buf = apply_dye(buf, dye_spec, src_rect=src_rect, sheet_size=sheet_size)
+        _over_glow_at(self.canvas, buf, color, PAD_L, PAD_T)
 
     def draw_hair(self, hair_file: str, clip_rows: int | None = None) -> None:
         # Step A: tint. hairDye 1..11 replace hairColor; 0/12 keep it (hairdye_spec §2)
@@ -519,6 +678,27 @@ class _Compositor:
         if dye_spec:
             frame = apply_dye(frame, dye_spec, src_rect=src_rect, sheet_size=sheet_size)
         self._over_cell(frame, *_BALLOON_OFFSET)
+
+    def draw_armorset_backpack(
+        self, name: str, offset: tuple[int, int], dye_spec: dict[str, Any] | None,
+    ) -> None:
+        """An armor-set backpack (Extra_212/213, DrawPlayer_08_Backpacks:446/458): a
+        5-frame vertical strip drawn at idle frame 0 (Frame(1,5,0,0)) with the body dye
+        and the half-translucent color (250,250,250,200) — we pre-multiply the 200/255
+        alpha into the (white) sprite. `offset` is its cell-local top-left."""
+        sheet = _sheet(name)
+        if sheet is None:
+            return
+        h, w = sheet.shape[0], sheet.shape[1]
+        fh = h // 5                                  # 5-frame vertical strip
+        frame = sheet[:fh, :w].copy()
+        if dye_spec:
+            frame = apply_dye(frame, dye_spec, src_rect=(0, 0, w, fh), sheet_size=(w, h))
+        # the (250,250,250,200) draw color: A=200 scales the sprite alpha (the 250 RGB is
+        # a negligible <2% dim over the already-white sprite; alpha is what matters).
+        a = frame[..., 3].astype(np.uint16)
+        frame[..., 3] = (a * _ARMORSET_BACKPACK_ALPHA // 255).astype(np.uint8)
+        self._over_cell(frame, *offset)
 
     def draw_acc_wing(self, slot: int, dye_spec: dict[str, Any] | None) -> None:
         """A wing: idle frame 0 (folded) of the vertical N-frame strip, at the
@@ -631,11 +811,81 @@ def _net_id(item: Any) -> int:
         return 0
 
 
-def _apply_item_slots(resolved: dict[str, int], net_id: int) -> None:
-    """Merge one item's `<cat>Slot` values into `resolved` (later writes win, mirroring
-    Player.UpdateVisibleAccessory). No-op for air / items with no visual slot."""
-    for cat, slot in _ACC_SLOTS.get(str(net_id), {}).items():
-        resolved[cat] = int(slot)
+def _apply_item_slots(
+    resolved: dict[str, int], net_id: int,
+    dye_index: dict[str, int] | None = None, k: int | None = None,
+) -> None:
+    """Merge one item's `<cat>Slot` values into `resolved`, replicating
+    Player.UpdateVisibleAccessory IN ITEM ORDER (36467-36556). Two routings are modeled
+    exactly (the rest is a direct `<cat> = slot`):
+
+    * `backSlot` is 3-way-routed (36475-36490): DrawInBackpackLayer -> `backpack`,
+      DrawInTailLayer -> `tail`, else a real back cape -> `back` AND `front` is cleared
+      (36488). The clear happens BEFORE this item's own `frontSlot` is applied, so a cape
+      item that carries both (e.g. CrimsonCloak back 3 + front 1) keeps BOTH; only a
+      front set by an EARLIER item is dropped.
+    * `frontSlot` (36491) is applied AFTER the back routing, overriding the 36488 clear.
+
+    `dye_index`/`k` (the accessory slot index) record which dye slot last set each routed
+    field, so the per-field dye reads correctly. No-op for air / no-visual-slot items."""
+    cats = _ACC_SLOTS.get(str(net_id), {})
+
+    def mark(field: str) -> None:
+        if dye_index is not None and k is not None:
+            dye_index[field] = k
+
+    # back routing (36475-36490) runs BEFORE the frontSlot apply (36491), so process
+    # `back` first (clearing front), then `front`, then the remaining categories.
+    if "back" in cats:
+        slot = int(cats["back"])
+        if slot in _BACK_BACKPACK:
+            dest = "backpack"
+        elif slot in _BACK_TAIL:
+            dest = "tail"
+        else:
+            dest = "back"
+            resolved.pop("front", None)        # real back cape clears front (36488)
+            if dye_index is not None:
+                dye_index.pop("front", None)
+        resolved[dest] = slot
+        mark(dest)
+    for cat, raw in cats.items():
+        if cat == "back":
+            continue                           # already routed above
+        resolved[cat] = int(raw)
+        mark(cat)
+
+
+def _apply_body_cape(
+    resolved: dict[str, int], body_slot: int | None, *, male: bool,
+) -> set[str]:
+    """Apply the body-armor-forced cape/tail/backpack/front (Player.cs:35407-35458),
+    AFTER accessory resolution+routing: backpack/tail always override; back/front only
+    when the accessory left them unset. Source: body_cape.json (ArmorIDs.Body.Sets).
+    Returns the set of fields this set FROM the body armor (they are dyed with cBody, not
+    an accessory dye — Player.cs:35415/35420/35425/35433)."""
+    from_body: set[str] = set()
+    if body_slot is None:
+        return from_body
+    table = _BODY_CAPE["male" if male else "female"]
+    entry = table.get(str(body_slot))
+    if not entry:
+        return from_body
+    is_pair = entry.get("pair")
+    # IncludeCapeFrontAndBack (a front+back pair) only applies when BOTH back and front are
+    # still unset (Player.cs:35436); the independent IncludedCapeBack/Front maps don't gate.
+    if is_pair and ("back" in resolved or "front" in resolved):
+        return from_body
+    for field, slot in entry.items():
+        if field == "pair":
+            continue
+        if field in ("backpack", "tail"):
+            resolved[field] = int(slot)            # always overrides
+            from_body.add(field)
+        elif field not in resolved:                # back/front: only if accessory left unset
+            resolved[field] = int(slot)
+            from_body.add(field)
+    return from_body
 
 
 def _resolve_accessories(
@@ -643,7 +893,8 @@ def _resolve_accessories(
     vanity_accessories: list[Any] | None,
     accessory_dyes: list[Any] | None,
     hide_visuals: int,
-    *, male: bool,
+    *, male: bool, body_slot: int | None = None,
+    body_dye: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Replicate Player.UpdateVisibleAccessories (accessories_spec §X1): iterate the 7
     functional acc slots (low->high index, higher index overwrites per category), then
@@ -651,7 +902,12 @@ def _resolve_accessories(
     acc is skipped, but its vanity twin still draws. Also resolves the per-category dye
     (functional acc k AND its vanity twin both read accessoryDyes[k]).
 
-    Returns {"slots": {category: slot}, "dyes": {category: dye_spec|None}}.
+    Each item's back slot is 3-way-routed to back/tail/backpack in item order
+    (Player.cs:36475; a real back cape also clears a prior front), then the body armor's
+    own cape/tail/backpack/front is applied (Player.cs:35407, body_cape.json), and
+    ChickenBonesRobe (netId 5587, which carries no *Slot) sets coat=251.
+
+    Returns {"slots": {category: slot}, "dyes": {category: dye_spec|None}, "coat", "coat_dye"}.
     """
     acc = accessories or []
     van = vanity_accessories or []
@@ -659,10 +915,10 @@ def _resolve_accessories(
     resolved: dict[str, int] = {}
     # category -> the dye index (0..6) whose item last set it (so we read the right dye).
     dye_index: dict[str, int] = {}
-
-    def record(k: int, net_id: int) -> None:
-        for cat in _ACC_SLOTS.get(str(net_id), {}):
-            dye_index[cat] = k
+    coat: int | None = None
+    # coat (item 5587) reads its own slot's dye via the cCoat shader (Player.cs:9466);
+    # remember which dye index the robe came from.
+    coat_dye_index: int | None = None
 
     # 1) functional accessories 0..6 (armor[3+k]); skip if hidden by hideVisuals bit 3+k.
     for k in range(7):
@@ -670,14 +926,19 @@ def _resolve_accessories(
             continue  # hidden functional acc (incl. wings: still grounded => velocity.Y==0)
         nid = _net_id(acc[k]) if k < len(acc) else 0
         if nid:
-            _apply_item_slots(resolved, nid)
-            record(k, nid)
+            _apply_item_slots(resolved, nid, dye_index, k)
+            if nid == _CHICKENBONES_ROBE_NETID:
+                coat, coat_dye_index = _CHICKENBONES_COAT, k
     # 2) social / vanity accessories 0..6 (armor[13+k]) — always draw, override functional.
     for k in range(7):
         nid = _net_id(van[k]) if k < len(van) else 0
         if nid:
-            _apply_item_slots(resolved, nid)
-            record(k, nid)
+            _apply_item_slots(resolved, nid, dye_index, k)
+            if nid == _CHICKENBONES_ROBE_NETID:
+                coat, coat_dye_index = _CHICKENBONES_COAT, k
+
+    # add the body armor's own forced cape/tail/backpack/front (after accessory routing).
+    from_body = _apply_body_cape(resolved, body_slot, male=male)
 
     # GlassSlipper male->female shoe remap (UpdateVisibleAccessory 36502-36505).
     if not male and resolved.get("shoe") in _SHOE_MALE_TO_FEMALE:
@@ -688,7 +949,16 @@ def _resolve_accessories(
     for cat, k in dye_index.items():
         nid = _net_id(dyes[k]) if k < len(dyes) else 0
         cat_dyes[cat] = _DYES.get(str(nid)) if nid else None
-    return {"slots": resolved, "dyes": cat_dyes}
+    # body-armor-forced capes (back/tail/backpack/front) are dyed with the BODY dye
+    # (cBack/cTail/cBackpack/cFront = cBody, Player.cs:35415..35433), not an accessory dye.
+    for field in from_body:
+        cat_dyes[field] = body_dye
+    # the coat (cCoat) dye comes from item 5587's own accessory-dye slot.
+    coat_dye = None
+    if coat_dye_index is not None:
+        nid = _net_id(dyes[coat_dye_index]) if coat_dye_index < len(dyes) else 0
+        coat_dye = _DYES.get(str(nid)) if nid else None
+    return {"slots": resolved, "dyes": cat_dyes, "coat": coat, "coat_dye": coat_dye}
 
 
 # ── main render ─────────────────────────────────────────────────────
@@ -728,11 +998,30 @@ def render_character(
     armor_head, armor_body, armor_legs = armor["head"], armor["body"], armor["legs"]
     body_dye = armor["body_dye"]
 
+    # equipment glowmask colors (glowmask_spec.md §2): body/arm ride the ArmorBody lower
+    # half; head/legs use independent Glow_{id} strips. None = no glow for that slot.
+    body_slot_str = str(armor["body_slot"]) if armor["body_slot"] else None
+    body_glow = comp._glow_color(_GLOW_BODY.get(body_slot_str)) if body_slot_str else None
+    arm_glow = comp._glow_color(_GLOW_ARM.get(body_slot_str)) if body_slot_str else None
+    head_glow_entry = _GLOW_HEAD.get(str(armor["head_slot"])) if armor["head_slot"] else None
+    legs_glow_entry = _GLOW_LEGS.get(str(armor["leg_slot"])) if armor["leg_slot"] else None
+
+    def draw_body_arm_glow(cell_key: str, *, arm: bool) -> None:
+        """Draw the composite-glow for one body sub-part right after its colored draw."""
+        color = arm_glow if arm else body_glow
+        if armor_body and color is not None:
+            comp.draw_body_glow(armor_body, cell_key, color, body_dye)
+
     hide_visuals = int(appearance.get("hideVisuals") or 0)
     acc = _resolve_accessories(
-        accessories, vanity_accessories, accessory_dyes, hide_visuals, male=comp.male)
+        accessories, vanity_accessories, accessory_dyes, hide_visuals,
+        male=comp.male, body_slot=armor["body_slot"], body_dye=body_dye)
     acc_slots: dict[str, int] = acc["slots"]
     acc_dyes: dict[str, Any] = acc["dyes"]
+    # coat (ChickenBonesRobe -> 251): its two long-coat extension pieces share the cCoat
+    # dye (the dye of the slot holding item 5587). See research/backcoat_tails_spec.md §1/2.
+    coat: int | None = acc["coat"]
+    coat_dye: dict[str, Any] | None = acc["coat_dye"]
 
     def sheet_for(cat: str, prefix: str) -> str | None:
         slot = acc_slots.get(cat)
@@ -744,7 +1033,24 @@ def render_character(
     draw_front_hair = hair["draw_front"] and (
         acc_slots.get("face") not in _FACE_PREVENT_HAIR)
 
-    # ===== BEHIND BODY (wings / back cape / balloon — padded canvas) =====
+    # ===== BEHIND BODY (backpacks / tails / wings / back cape / balloon) =====
+    # The whole back-to-front group sits in the BEHIND-BODY band (LegacyPlayerRenderer.cs
+    # :177-187). Backpacks (08) and Tails (08_1) are the rear-most, BEFORE wings (09).
+    # backpack (08_Backpacks): armor-set Extra_212/213 backpacks, then the AccBack-textured
+    # `backpack` field (Acc_Back_*, with the body dye / cBackpack). PlayerDrawLayers.cs:444.
+    for triple, extra_id, off in _ARMORSET_BACKPACKS:
+        if (armor["head_slot"], armor["body_slot"], armor["leg_slot"]) == triple:
+            comp.draw_armorset_backpack(f"Extra_{extra_id}", off, body_dye)
+    backpack_slot = acc_slots.get("backpack")
+    if backpack_slot:
+        comp.draw_acc_strip(f"Acc_Back_{backpack_slot}", acc_dyes.get("backpack"))
+    # tail (08_1_Tails): an AccBack-textured tail (Acc_Back_*); female shifts +2*direction
+    # in X (PlayerDrawLayers.cs:577-579, dir=1 idle -> +2). cTail dye.
+    tail_slot = acc_slots.get("tail")
+    if tail_slot:
+        comp.draw_acc_strip(
+            f"Acc_Back_{tail_slot}", acc_dyes.get("tail"),
+            offset=(0, 0) if comp.male else (2, 0))
     # 0. wings (idle frame 0; AlwaysAnimated wings render nothing grounded -> skip).
     wing_slot = acc_slots.get("wing")
     if wing_slot and wing_slot not in _WING_ALWAYS_ANIMATED:
@@ -752,9 +1058,10 @@ def render_character(
     # 1. back hair
     if hair["draw_back"]:
         comp.draw_hair(hair_file)
-    # 2. back accessory (real capes only; backpack/tail-routed items aren't drawn).
+    # 2. back accessory (10_BackAcc): the routed `back` field is a real cape already
+    #    (backpack/tail were split off in _resolve_accessories). cBack dye.
     back_slot = acc_slots.get("back")
-    if back_slot and back_slot not in _BACK_BACKPACK and back_slot not in _BACK_TAIL:
+    if back_slot:
         comp.draw_acc_strip(f"Acc_Back_{back_slot}", acc_dyes.get("back"))
     # 2b. back-head texture (DrawPlayer_01_3_BackHead, LegacyPlayerRenderer.cs:185): a few
     #     helmets have a behind-body back piece (FrontToBackID), drawn at the head cell with
@@ -767,11 +1074,19 @@ def render_character(
     balloon_slot = acc_slots.get("balloon")
     if balloon_slot and balloon_slot not in _BALLOON_TORSO:
         comp.draw_acc_balloon(f"Acc_Balloon_{balloon_slot}", acc_dyes.get("balloon"))
+    # 4. ArmorBackCoat (13_ArmorBackCoat, LegacyPlayerRenderer.cs:192): the long-coat BACK
+    #    piece (GetMatchingBodyExtensionBack(coat); only coat 251 -> Armor_Legs_239), drawn
+    #    at the idle leg frame with colorArmorBody (white) + the cCoat dye, BEHIND the body
+    #    skin (before 12_Skin). See research/backcoat_tails_spec.md §1.
+    coat_back_ext = _COAT_BACK_EXT.get(coat) if coat is not None else None
+    if coat_back_ext is not None:
+        comp.draw_armor(f"Armor_Legs_{coat_back_ext}", "col", coat_dye)
 
     # ===== BACK ARM group (+ off-hand composite) =====
     comp.draw_player(7, "back_arm")
     comp.draw_player(5, "back_arm")
     comp.draw_armor(armor_body, "back_arm", body_dye)
+    draw_body_arm_glow("back_arm", arm=True)
     # balloon 18 (balloonFront): torso-framed, in front of the back arm.
     if balloon_slot and balloon_slot in _BALLOON_TORSO:
         comp.draw_acc_strip(f"Acc_Balloon_{balloon_slot}", acc_dyes.get("balloon"))
@@ -819,11 +1134,27 @@ def render_character(
 
     def draw_leggings() -> None:
         # leggings = leg armor (replaces pants+shoes) or the default pants+shoes.
+        # shoe==15 (FrogLeg, ShouldOverrideLegs_CheckShoes PlayerDrawLayers.cs:1246) makes
+        # CheckShoes true, which suppresses BOTH the leg armor (the :1540 branch only draws
+        # when !CheckShoes || wearsRobe) AND the default pants+shoes (the :1576 else-if only
+        # draws when !CheckShoes) — FrogLeg replaces the legs. The wearsRobe exception keeps
+        # the leg armor (so the robe skirt still covers the FrogLeg legs).
+        check_shoes = shoe_slot == _SHOE_OVERRIDE_EXCEPTION
         if armor_legs:
+            if check_shoes and not wears_robe:
+                return                        # leg armor suppressed by shoe==15 (:1540)
             # when wearing a robe the leg-armor layer is dyed with the BODY dye, not the
             # leg dye (UpdateDyes: cLegs = cBody when wearsRobe, Player.cs:9309-9311).
-            comp.draw_armor(armor_legs, "col", body_dye if wears_robe else armor["leg_dye"])
-        else:
+            leg_dye = body_dye if wears_robe else armor["leg_dye"]
+            comp.draw_armor(armor_legs, "col", leg_dye)
+            # leg glowmask (Glow_{legsGlowMask}) rides the same leg frame + leg dye, right
+            # after the colored leggings (glowmask_spec.md §5.2). cLegs==cBody under a robe.
+            if legs_glow_entry is not None:
+                leg_color = comp._glow_color(legs_glow_entry["color"])
+                if leg_color is not None:
+                    comp.draw_strip_glow(
+                        f"Glow_{legs_glow_entry['mask']}", "col", leg_color, leg_dye)
+        elif not check_shoes:                 # default pants+shoes suppressed by shoe==15 (:1576)
             comp.draw_player(11, "col")
             comp.draw_player(12, "col")
 
@@ -845,15 +1176,24 @@ def render_character(
     # 5. skin long-coat (only without body armor)
     if not armor_body:
         comp.draw_player(14, "col")
-    # 5b. armor long-coat (robe/coat skirt): leg-armor sheet keyed on BODY slot,
-    # drawn with the BODY dye/tint, at the idle leg frame, just BEHIND the torso.
+    # 5b. armor long-coat (16_ArmorLongCoat, DrawPlayer_16:1791): TWO leg-armor skirts, in
+    # order — first the BODY extension (GetMatchingBodyExtension(body), cBody dye), then the
+    # COAT extension (GetMatchingBodyExtension(coat); only coat 251 -> Armor_Legs_238, cCoat
+    # dye). Both at the idle leg frame, just BEHIND the torso. (The 238 piece would also add
+    # a ChickenBones GlowMask_363 glow — that asset isn't shipped, so the glow is omitted;
+    # see research/backcoat_tails_spec.md §2.)
     ext_slot = _longcoat_ext_slot(armor["body_slot"], male=comp.male)
     if ext_slot is not None:
         comp.draw_armor(f"Armor_Legs_{ext_slot}", "col", body_dye)
+    coat_front_ext = _COAT_FRONT_EXT.get(coat) if coat is not None else None
+    if coat_front_ext is not None:
+        comp.draw_armor(f"Armor_Legs_{coat_front_ext}", "col", coat_dye)
     # 6. torso + back shoulder
     if armor_body:
         comp.draw_armor(armor_body, "torso", body_dye)
+        draw_body_arm_glow("torso", arm=False)        # torso uses bodyGlowColor
         comp.draw_armor(armor_body, "back_shoulder", body_dye)
+        draw_body_arm_glow("back_shoulder", arm=True)  # shoulders use armGlowColor
     else:
         comp.draw_player(4, "torso")
         comp.draw_player(6, "torso")
@@ -880,10 +1220,22 @@ def render_character(
         comp.draw_acc_strip(
             f"Acc_Face_{face_slot}", acc_dyes.get("face"),
             offset=_FACE_DRAW_OFFSET.get(face_slot, (0, 0)))
-    # 8. front hair (unless a PreventHairDraw face acc), then head armor over it
+    # 8. front hair (unless a PreventHairDraw face acc), then head armor over it. A
+    # UseSkinColor head (274/277) is drawn with the player's skinColor + the skin shader
+    # (a no-op for skinDye==0) instead of white + the head dye (PlayerDrawLayers.cs:2145).
     if draw_front_hair:
         comp.draw_hair(hair_file, clip_rows=_FRONT_HAIR_CLIP if is_back else FH)
-    comp.draw_armor(armor_head, "col", armor["head_dye"])
+    if armor["head_slot"] in _HEAD_USE_SKIN_COLOR:
+        comp.draw_armor(armor_head, "col", None, tint=comp.colors["skin"])
+    else:
+        comp.draw_armor(armor_head, "col", armor["head_dye"])
+    # head glowmask (Glow_{headGlowMask}) rides the same head cell (body frame) + head dye,
+    # right after the colored head armor (glowmask_spec.md §5.2).
+    if head_glow_entry is not None:
+        head_color = comp._glow_color(head_glow_entry["color"])
+        if head_color is not None:
+            comp.draw_strip_glow(
+                f"Glow_{head_glow_entry['mask']}", "col", head_color, armor["head_dye"])
     # beard (drawn in the head group; Wilson beards tint by hair color).
     beard_slot = acc_slots.get("beard")
     if beard_slot:
@@ -915,7 +1267,9 @@ def render_character(
     comp.draw_player(7, "front_arm")
     if armor_body:
         comp.draw_armor(armor_body, "front_arm", body_dye)
+        draw_body_arm_glow("front_arm", arm=True)
         comp.draw_armor(armor_body, "front_shoulder", body_dye)
+        draw_body_arm_glow("front_shoulder", arm=True)
     else:
         comp.draw_player(8, "front_arm")
         comp.draw_player(13, "front_arm")
