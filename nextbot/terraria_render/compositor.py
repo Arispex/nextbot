@@ -633,13 +633,18 @@ class _Compositor:
         dye_spec: dict[str, Any] | None = None,
         *,
         tint: tuple[int, int, int] | None = None,
+        frame_row: int | None = None,
     ) -> None:
         """Draw an armor sheet's idle cell. Normally untinted white (colorArmorHead/Body/
         Legs == white in the no-world path) + its dye. `tint` overrides the white with a
         player color (UseSkinColor head armor draws with skinColor and the skin shader, so
-        the caller passes skinColor and no dye_spec — PlayerDrawLayers.cs:2145/2223)."""
+        the caller passes skinColor and no dye_spec — PlayerDrawLayers.cs:2145/2223).
+
+        `frame_row` overrides the idle cell with row N of a vertical strip (the
+        head-282 ColorArmor animates `miscCounter%36/4`, 9 frames; the dynamic-frame dev
+        script sweeps it). None keeps the idle cell, so production is unchanged."""
         if name and _sheet(name) is not None:
-            cell = self.cells[cell_key]
+            cell = self.cells[cell_key] if frame_row is None else frame_row
             buf = _frame(name, cell)
             if tint is not None:
                 buf = _tint(buf, tint)
@@ -675,6 +680,7 @@ class _Compositor:
     def draw_body_glow(
         self, name: str, cell_key: str, color: tuple[int, int, int, int],
         dye_spec: dict[str, Any] | None, *, jitter: int = 1,
+        u_time: float | None = None,
     ) -> None:
         """Composite a body/arm composite-glow sub-part: the SAME ArmorBody sheet at the
         sub-part's colored cell + 36 (lower half, sourceRect.Y += 224), tinted by `color`
@@ -683,7 +689,10 @@ class _Compositor:
         `jitter` > 1 draws the glow that many times at representative integer offsets
         (body 227 Nebula draws each composite glow twice with a ±1.25px Main.rand jitter,
         PlayerDrawLayers.cs:63-76/90-101); idle has no deterministic phase, so we use the
-        fixed `_JITTER_OFFSETS` fan (first pass on-grid, extras fan out ~1px)."""
+        fixed `_JITTER_OFFSETS` fan (first pass on-grid, extras fan out ~1px).
+
+        `u_time` sweeps an animated body dye (Nebula/Vortex/... if dyed); None keeps the
+        baked still (production-neutral)."""
         if _sheet(name) is None:
             return
         glow_cell = self.cells[cell_key] + _GLOW_CELL_DELTA
@@ -692,7 +701,7 @@ class _Compositor:
             return
         if dye_spec:
             src_rect, sheet_size = _frame_geom(name, glow_cell)
-            buf = apply_dye(buf, dye_spec, src_rect=src_rect, sheet_size=sheet_size)
+            buf = apply_dye(buf, dye_spec, src_rect=src_rect, sheet_size=sheet_size, u_time=u_time)
         self._over_glow_passes(buf, color, PAD_L, PAD_T, _JITTER_OFFSETS[:max(1, jitter)])
 
     def draw_body205_frontarm_4tap(
@@ -734,6 +743,7 @@ class _Compositor:
     def draw_strip_glow(
         self, name: str, cell_key: str, color: tuple[int, int, int, int],
         dye_spec: dict[str, Any] | None, *, jitter: int = 1,
+        u_time: float | None = None,
     ) -> None:
         """Composite an independent head/legs glowmask strip (Glow_{id}.png, 40x1120) at
         the same idle cell/frame as its base armor, tinted by `color` and still carrying
@@ -741,7 +751,10 @@ class _Compositor:
 
         `jitter` > 1 draws it that many times at representative integer offsets (head 240
         mask 273 and legs 210 mask 274 each draw twice with a ±1.25px Main.rand jitter,
-        PlayerDrawLayers.cs:2389-2394 / 1559); idle representative = `_JITTER_OFFSETS`."""
+        PlayerDrawLayers.cs:2389-2394 / 1559); idle representative = `_JITTER_OFFSETS`.
+
+        `u_time` sweeps an animated dye on the glow strip; None keeps the baked still
+        (production-neutral)."""
         if _sheet(name) is None:
             return
         cell = self.cells[cell_key]
@@ -750,22 +763,27 @@ class _Compositor:
             return
         if dye_spec:
             src_rect, sheet_size = _frame_geom(name, cell)
-            buf = apply_dye(buf, dye_spec, src_rect=src_rect, sheet_size=sheet_size)
+            buf = apply_dye(buf, dye_spec, src_rect=src_rect, sheet_size=sheet_size, u_time=u_time)
         self._over_glow_passes(buf, color, PAD_L, PAD_T, _JITTER_OFFSETS[:max(1, jitter)])
 
     def draw_tv_head_glow(
         self, name: str, color: tuple[int, int, int, int],
-        dye_spec: dict[str, Any] | None,
+        dye_spec: dict[str, Any] | None, *, cell: tuple[int, int] | None = None,
     ) -> None:
         """The TV-screen head glow (head 271, GlowMask_309): pick the 6x4-grid cell
         (col = GetTVScreen idle = 3, row = miscCounter frozen = 0), drawn rect width 40
         (the Frame(...,-2) gutter trim), at the head-cell top-left + vector5 (=(0,0) idle).
-        Carries the head dye, additive-aware. PlayerDrawLayers.cs:2357-2385."""
+        Carries the head dye, additive-aware. PlayerDrawLayers.cs:2357-2385.
+
+        `cell` = an optional (col, row) override for sweeping the 4 row frames / 6 columns
+        (the dynamic-frame dev script); None keeps the baked idle cell (col 3, row 0) so
+        the production render is unchanged."""
         sheet = _sheet(name)
         if sheet is None:
             return
+        col, row = cell if cell is not None else (_TV_IDLE_COL, _TV_IDLE_ROW)
         # grid cell rect: x = col*42 (-2 trims to 40 wide), y = row*56, size 40x56.
-        cx, cy = _TV_IDLE_COL * _TV_CELL_W, _TV_IDLE_ROW * FH
+        cx, cy = col * _TV_CELL_W, row * FH
         buf = np.zeros((FH, FW, 4), np.uint8)
         sub = sheet[cy:cy + FH, cx:cx + FW]
         buf[:sub.shape[0], :sub.shape[1]] = sub

@@ -576,32 +576,44 @@ def _reflective_color(arr_u8: np.ndarray, uColor: ColorLike = (1.0, 1.0, 1.0)) -
     return _brightness_clip(arr_u8, _col(uColor, [1.0, 1.0, 1.0]))
 
 
+def _pillar_time(name: str, u_time: float | None) -> float:
+    """Resolve the frozen uTime for an emissive pillar pass: the per-pass baked
+    `_PILLAR_TIME` representative frame by default, or an explicit override (the
+    dynamic-frame dev script sweeps this; production passes None -> unchanged)."""
+    return _PILLAR_TIME[name] if u_time is None else u_time
+
+
 def _gel(
     arr_u8: np.ndarray, uColor: ColorLike = (0.4, 0.7, 1.4), uSecondary: ColorLike = None,
     *, src_rect: SrcRect = _DEFAULT_RECT, sheet_size: SheetSize = _DEFAULT_SHEET,
+    u_time: float | None = None,
 ) -> np.ndarray:
     """ArmorGel: real Misc/noise jelly highlight; APPROX = brightness recolor by uColor."""
     uC = _col(uColor, [0.4, 0.7, 1.4])
     uS = _col(uSecondary, [0.0, 0.0, 0.1])
     return _noise_pass(arr_u8, "ArmorGel", uColor=uC, uSecondary=uS, uSat=1.0,
                        src_rect=src_rect, sheet_size=sheet_size,
+                       u_time=UTIME if u_time is None else u_time,
                        fallback=lambda: _brightness_clip(arr_u8, uC))
 
 
 def _phase(
     arr_u8: np.ndarray, uColor: ColorLike = (0.4, 0.2, 1.5), uSat: float = 1.0,
     *, src_rect: SrcRect = _DEFAULT_RECT, sheet_size: SheetSize = _DEFAULT_SHEET,
+    u_time: float | None = None,
 ) -> np.ndarray:
     """ArmorPhase: real noise window glow; APPROX = ArmorColored recolor by uColor."""
     uC = _col(uColor, [0.4, 0.2, 1.5])
     return _noise_pass(arr_u8, "ArmorPhase", uColor=uC, uSecondary=uC, uSat=uSat,
                        src_rect=src_rect, sheet_size=sheet_size,
+                       u_time=UTIME if u_time is None else u_time,
                        fallback=lambda: _armor_colored(arr_u8, np.clip(uC, 0.0, 1.0), uSat))
 
 
 def _nebula(
     arr_u8: np.ndarray, uColor: ColorLike = (1.0, 0.0, 1.0), uSecondary: ColorLike = None,
     uSat: float = 1.0, *, src_rect: SrcRect = _DEFAULT_RECT, sheet_size: SheetSize = _DEFAULT_SHEET,
+    u_time: float | None = None,
 ) -> np.ndarray:
     """ArmorNebula: real noise cloud over recolor (emissive); APPROX = ArmorColored.
 
@@ -612,7 +624,7 @@ def _nebula(
     uS = _col(uSecondary, [1.0, 1.0, 1.0])
     return _noise_pass(arr_u8, "ArmorNebula", uColor=uC, uSecondary=uS, uSat=uSat,
                        src_rect=src_rect, sheet_size=sheet_size,
-                       u_time=_PILLAR_TIME["ArmorNebula"], emissive=True,
+                       u_time=_pillar_time("ArmorNebula", u_time), emissive=True,
                        gain=_PILLAR_GAIN["ArmorNebula"],
                        fallback=lambda: _armor_colored(arr_u8, np.clip(uC, 0.0, 1.0), uSat))
 
@@ -620,6 +632,7 @@ def _nebula(
 def _vortex(
     arr_u8: np.ndarray, uColor: ColorLike = (0.1, 0.5, 0.35), uSecondary: ColorLike = None,
     *, src_rect: SrcRect = _DEFAULT_RECT, sheet_size: SheetSize = _DEFAULT_SHEET,
+    u_time: float | None = None,
 ) -> np.ndarray:
     """ArmorVortex: real swirling noise (emissive); APPROX = brightness recolor.
 
@@ -630,7 +643,7 @@ def _vortex(
     uS = _col(uSecondary, [1.0, 1.0, 1.0])
     return _noise_pass(arr_u8, "ArmorVortex", uColor=uC, uSecondary=uS, uSat=1.0,
                        src_rect=src_rect, sheet_size=sheet_size,
-                       u_time=_PILLAR_TIME["ArmorVortex"], emissive=True,
+                       u_time=_pillar_time("ArmorVortex", u_time), emissive=True,
                        gain=_PILLAR_GAIN["ArmorVortex"],
                        fallback=lambda: _brightness_clip(arr_u8, uC))
 
@@ -638,6 +651,7 @@ def _vortex(
 def _stardust(
     arr_u8: np.ndarray, uColor: ColorLike = (0.4, 0.6, 1.0), uSecondary: ColorLike = None,
     *, src_rect: SrcRect = _DEFAULT_RECT, sheet_size: SheetSize = _DEFAULT_SHEET,
+    u_time: float | None = None,
 ) -> np.ndarray:
     """ArmorStardust: real noise starfield (emissive); APPROX = uColor base.
 
@@ -653,37 +667,42 @@ def _stardust(
 
     return _noise_pass(arr_u8, "ArmorStardust", uColor=uC, uSecondary=uS, uSat=1.0,
                        src_rect=src_rect, sheet_size=sheet_size,
-                       u_time=_PILLAR_TIME["ArmorStardust"], emissive=True,
+                       u_time=_pillar_time("ArmorStardust", u_time), emissive=True,
                        gain=_PILLAR_GAIN["ArmorStardust"], fallback=approx)
 
 
 def _shifting_sands(
     arr_u8: np.ndarray, uColor: ColorLike = (1.1, 1.0, 0.5), uSecondary: ColorLike = None,
     *, src_rect: SrcRect = _DEFAULT_RECT, sheet_size: SheetSize = _DEFAULT_SHEET,
+    u_time: float | None = None,
 ) -> np.ndarray:
     """ArmorShiftingSands: real vertical-scroll noise; APPROX = brightness recolor."""
     uC = _col(uColor, [1.1, 1.0, 0.5])
     uS = _col(uSecondary, [0.7, 0.5, 0.3])
     return _noise_pass(arr_u8, "ArmorShiftingSands", uColor=uC, uSecondary=uS, uSat=1.0,
                        src_rect=src_rect, sheet_size=sheet_size,
+                       u_time=UTIME if u_time is None else u_time,
                        fallback=lambda: _brightness_clip(arr_u8, uC))
 
 
 def _shifting_pearlsands(
     arr_u8: np.ndarray, uColor: ColorLike = (1.1, 0.8, 0.9), uSecondary: ColorLike = None,
     *, src_rect: SrcRect = _DEFAULT_RECT, sheet_size: SheetSize = _DEFAULT_SHEET,
+    u_time: float | None = None,
 ) -> np.ndarray:
     """ArmorShiftingPearlsands: real noise + pearlescent 2nd tap; APPROX = recolor."""
     uC = _col(uColor, [1.1, 0.8, 0.9])
     uS = _col(uSecondary, [0.35, 0.25, 0.44])
     return _noise_pass(arr_u8, "ArmorShiftingPearlsands", uColor=uC, uSecondary=uS, uSat=1.0,
                        src_rect=src_rect, sheet_size=sheet_size,
+                       u_time=UTIME if u_time is None else u_time,
                        fallback=lambda: _brightness_clip(arr_u8, uC))
 
 
 def _fog(
     arr_u8: np.ndarray, uColor: ColorLike = (0.95, 0.95, 0.95), uSecondary: ColorLike = None,
     *, src_rect: SrcRect = _DEFAULT_RECT, sheet_size: SheetSize = _DEFAULT_SHEET,
+    u_time: float | None = None,
 ) -> np.ndarray:
     """ArmorFog: real noise soft overlay; APPROX = low-contrast gray lerp src->uColor."""
     uC = _col(uColor, [0.95, 0.95, 0.95])
@@ -696,11 +715,13 @@ def _fog(
         return (arr * 255.0 + 0.5).astype(np.uint8)
 
     return _noise_pass(arr_u8, "ArmorFog", uColor=uC, uSecondary=uS, uSat=1.0,
-                       src_rect=src_rect, sheet_size=sheet_size, fallback=approx)
+                       src_rect=src_rect, sheet_size=sheet_size,
+                       u_time=UTIME if u_time is None else u_time, fallback=approx)
 
 
 def _hallow_boss(
     arr_u8: np.ndarray, *, src_rect: SrcRect = _DEFAULT_RECT, sheet_size: SheetSize = _DEFAULT_SHEET,
+    u_time: float | None = None,
 ) -> np.ndarray:
     """ArmorHallowBoss: real Extra_156 palette lookup (emissive); APPROX = rainbow tint.
 
@@ -710,7 +731,7 @@ def _hallow_boss(
     return _noise_pass(arr_u8, "ArmorHallowBoss", uColor=np.array([1.0, 1.0, 1.0]),
                        uSecondary=np.array([1.0, 1.0, 1.0]), uSat=1.0,
                        src_rect=src_rect, sheet_size=sheet_size,
-                       u_time=_PILLAR_TIME["ArmorHallowBoss"], emissive=True,
+                       u_time=_pillar_time("ArmorHallowBoss", u_time), emissive=True,
                        gain=_PILLAR_GAIN["ArmorHallowBoss"],
                        fallback=lambda: _colored_rainbow(arr_u8))
 
@@ -718,6 +739,7 @@ def _hallow_boss(
 def _twilight(
     arr_u8: np.ndarray, uColor: ColorLike = (0.5, 0.1, 1.0),
     *, src_rect: SrcRect = _DEFAULT_RECT, sheet_size: SheetSize = _DEFAULT_SHEET,
+    u_time: float | None = None,
 ) -> np.ndarray:
     """ArmorTwilight (Twilight hair dye #12): real two-tap noise purple glow over src.
 
@@ -727,6 +749,7 @@ def _twilight(
     uC = _col(uColor, [0.5, 0.1, 1.0])
     return _noise_pass(arr_u8, "ArmorTwilight", uColor=uC, uSecondary=uC, uSat=1.0,
                        src_rect=src_rect, sheet_size=sheet_size,
+                       u_time=UTIME if u_time is None else u_time,
                        fallback=lambda: _brightness_clip(arr_u8, uC))
 
 
@@ -734,6 +757,7 @@ def _twilight(
 def apply_dye(
     arr_u8: np.ndarray, spec: dict[str, Any] | None,
     *, src_rect: SrcRect = _DEFAULT_RECT, sheet_size: SheetSize = _DEFAULT_SHEET,
+    u_time: float | None = None,
 ) -> np.ndarray:
     """Apply a dye to a straight-alpha (h,w,4) uint8 array. `spec` from dyes.json.
 
@@ -744,6 +768,14 @@ def apply_dye(
     (the cell's x,y,w,h in its sheet) + `sheet_size` (W,H) place the noise uv (the
     compositor threads them; non-noise passes ignore them). The two Reflective passes
     stay APPROX (uLightSource=0 offline). Unknown passes fall back to undyed (no crash).
+
+    `u_time` overrides the frozen GlobalTimeWrappedHourly of the time-animated and
+    noise-sampling passes (a phase for sweeping a dye's animation cycle; see the
+    dynamic-frame dev script). `None` (production default) keeps each pass's baked
+    representative still — UTIME=0 for the time/scroll passes, `_PILLAR_TIME[name]` for
+    the emissive pillar passes — so the production byte-output is unchanged. The APPROX
+    time passes (MidnightRainbow/Solar/Void/Hades/Mirage/Loki) ignore it (they have no
+    real uTime formula offline — see research/dynamic_effects_catalog.md §A.1).
     """
     if not spec:
         return arr_u8
@@ -752,6 +784,7 @@ def apply_dye(
     secondary = spec.get("secondary")
     sat = float(spec.get("sat", 1.0))
     geom = {"src_rect": src_rect, "sheet_size": sheet_size}
+    ngeom = {**geom, "u_time": u_time}  # noise passes additionally take a phase override
 
     # exact-static
     if name == "ArmorColored":
@@ -789,17 +822,18 @@ def apply_dye(
     if name == "ArmorHighContrastGlow":
         return _high_contrast_glow(arr_u8, _col(color, [0.0, 1.0, 0.0]), sat)
 
-    # time-animated (representative uTime=0)
+    # time-animated (representative uTime=0; u_time sweeps the real-formula ones)
+    _ut = UTIME if u_time is None else u_time
     if name == "ArmorFlow":
-        return _flow(arr_u8, color, secondary)
+        return _flow(arr_u8, color, secondary, _ut)
     if name == "ArmorLivingRainbow":
-        return _living_rainbow(arr_u8)
+        return _living_rainbow(arr_u8, _ut)
     if name == "ArmorLivingFlame":
-        return _living_flame(arr_u8, color, secondary)
+        return _living_flame(arr_u8, color, secondary, _ut)
     if name == "ArmorLivingOcean":
-        return _living_ocean(arr_u8)
+        return _living_ocean(arr_u8, _ut)
     if name == "ArmorAcid":
-        return _acid(arr_u8, _col(color, [0.5, 1.0, 0.3]))
+        return _acid(arr_u8, _col(color, [0.5, 1.0, 0.3]), _ut)
     if name == "ArmorMidnightRainbow":
         return _midnight_rainbow(arr_u8)
     if name == "ArmorSolar":
@@ -821,25 +855,25 @@ def apply_dye(
 
     # noise-sampling (real Misc/noise via dye_noise; APPROX fallback if asset missing)
     if name == "ArmorGel":
-        return _gel(arr_u8, _col(color, [0.4, 0.7, 1.4]), secondary, **geom)
+        return _gel(arr_u8, _col(color, [0.4, 0.7, 1.4]), secondary, **ngeom)
     if name == "ArmorPhase":
-        return _phase(arr_u8, _col(color, [0.4, 0.2, 1.5]), sat, **geom)
+        return _phase(arr_u8, _col(color, [0.4, 0.2, 1.5]), sat, **ngeom)
     if name == "ArmorNebula":
-        return _nebula(arr_u8, _col(color, [1.0, 0.0, 1.0]), secondary, sat, **geom)
+        return _nebula(arr_u8, _col(color, [1.0, 0.0, 1.0]), secondary, sat, **ngeom)
     if name == "ArmorVortex":
-        return _vortex(arr_u8, _col(color, [0.1, 0.5, 0.35]), secondary, **geom)
+        return _vortex(arr_u8, _col(color, [0.1, 0.5, 0.35]), secondary, **ngeom)
     if name == "ArmorStardust":
-        return _stardust(arr_u8, _col(color, [0.4, 0.6, 1.0]), secondary, **geom)
+        return _stardust(arr_u8, _col(color, [0.4, 0.6, 1.0]), secondary, **ngeom)
     if name == "ArmorShiftingSands":
-        return _shifting_sands(arr_u8, _col(color, [1.1, 1.0, 0.5]), secondary, **geom)
+        return _shifting_sands(arr_u8, _col(color, [1.1, 1.0, 0.5]), secondary, **ngeom)
     if name == "ArmorShiftingPearlsands":
-        return _shifting_pearlsands(arr_u8, _col(color, [1.1, 0.8, 0.9]), secondary, **geom)
+        return _shifting_pearlsands(arr_u8, _col(color, [1.1, 0.8, 0.9]), secondary, **ngeom)
     if name == "ArmorFog":
-        return _fog(arr_u8, _col(color, [0.95, 0.95, 0.95]), secondary, **geom)
+        return _fog(arr_u8, _col(color, [0.95, 0.95, 0.95]), secondary, **ngeom)
     if name == "ArmorHallowBoss":
-        return _hallow_boss(arr_u8, **geom)
+        return _hallow_boss(arr_u8, **ngeom)
     if name == "ArmorTwilight":
-        return _twilight(arr_u8, _col(color, [0.5, 0.1, 1.0]), **geom)
+        return _twilight(arr_u8, _col(color, [0.5, 0.1, 1.0]), **ngeom)
 
     # unknown / unlisted pass -> undyed
     return arr_u8
