@@ -55,7 +55,13 @@ def referenced_glow_masks() -> set[int]:
     data/glowmask.json (its `head`/`legs` sections map equip slot -> {mask, color}).
     Only these Glow_{id}.png are extracted; the ~348 other Glow_*.xnb are weapon/NPC/
     projectile glowmasks the player renderer never reads. (body/arm glow rides the
-    ArmorBody composite lower half, not a Glow_ strip — see glowmask_spec.md §1.3/§6.)"""
+    ArmorBody composite lower half, not a Glow_ strip — see glowmask_spec.md §1.3/§6.)
+
+    Also pulls each head entry's optional `fourtap` mask (head 211's hardcoded 4-tap
+    shimmer of GlowMask_241, PlayerDrawLayers.cs:2403-2415 — it has no normal `mask`) and
+    the top-level `aux_masks` list — auxiliary Glow_{id} the compositor draws BESIDE a
+    slot's primary mask: 308 (head 269 FrontShoulder extra, PlayerDrawLayers.cs:114) and
+    363 (ChickenBones coat front-238 glow, :1829)."""
     with open(os.path.join(DATA, "glowmask.json"), encoding="utf-8") as fh:
         table = json.load(fh)
     ids: set[int] = set()
@@ -63,6 +69,9 @@ def referenced_glow_masks() -> set[int]:
         for entry in table.get(section, {}).values():
             if isinstance(entry, dict) and "mask" in entry:
                 ids.add(int(entry["mask"]))
+            if isinstance(entry, dict) and "fourtap" in entry:
+                ids.add(int(entry["fourtap"]))
+    ids.update(int(m) for m in table.get("aux_masks", []))
     return ids
 
 # (source-dir-relative-glob regex, output-name-template) — output uses the captured groups
@@ -99,16 +108,20 @@ ACC_HAND_PATTERNS = [
     (re.compile(r"^Acc_HandsOn_(\d+)\.xnb$"), "Acc_HandsOn_{0}.png"),
     (re.compile(r"^Acc_HandsOff_(\d+)\.xnb$"), "Acc_HandsOff_{0}.png"),
 ]
-# individually-named textures: (content-relative-src, output-name). All are fmt-0 RGBA
-# (alpha==255) so unpremultiply is a no-op. noise -> all 8 noise dyes + ArmorTwilight hair
-# dye; Extra_156 -> HallowBoss palette (noise_dyes_spec.md). Extra_212/213 are the two
-# armor-set backpacks (5-frame vertical strips) drawn by DrawPlayer_08_Backpacks for the
-# displayed sets (266,235,218)/(268,237,222) — research/backcoat_tails_spec.md §4.
+# individually-named textures: (content-relative-src, output-name). noise -> all 8 noise
+# dyes + ArmorTwilight hair dye; Extra_156 -> HallowBoss palette (noise_dyes_spec.md).
+# Extra_212/213 are the two armor-set backpacks (5-frame vertical strips) drawn by
+# DrawPlayer_08_Backpacks for the displayed sets (266,235,218)/(268,237,222) —
+# research/backcoat_tails_spec.md §4. Extra_214 (40x1120 strip) is the white armor layer
+# drawn alongside GlowMask_308 for head 269's FrontShoulder extra (PlayerDrawLayers.cs:111
+# — the Extra_214 piece carries colorArmorHead, the GlowMask_308 the glow). All are fmt-0
+# RGBA (alpha==255) so unpremultiply is a no-op.
 SINGLE_TEXTURES = [
     (os.path.join("Misc", "noise.xnb"), "noise.png"),
     ("Extra_156.xnb", "Extra_156.png"),
     ("Extra_212.xnb", "Extra_212.png"),
     ("Extra_213.xnb", "Extra_213.png"),
+    ("Extra_214.xnb", "Extra_214.png"),
 ]
 
 

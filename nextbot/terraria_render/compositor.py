@@ -67,9 +67,12 @@ _ARMORSET_BACKPACKS = (
     ((266, 235, 218), 212, (-4, 0)),     # vec.X = -2 + -2*Directions.X (dir=1) = -4
     ((268, 237, 222), 213, (-8, -4)),    # vec = (-9 + 1*dir, -4*gravDir) = (-8, -4)
 )
-# the half-translucent backpack draw color new Color(250,250,250,200): we apply the
-# 200/255 alpha to the (already white) sprite (PlayerDrawLayers.cs:452/464).
-_ARMORSET_BACKPACK_ALPHA = 200
+# the half-translucent backpack draw color new Color(250,250,250,200): the DrawData color is
+# multiplied per-channel into the texture by sb.Draw, so ALL FOUR channels scale the sprite —
+# RGB by 250/255 (a ~2% dim) AND alpha by 200/255 (PlayerDrawLayers.cs:452/466). (Idle:
+# GetImmuneAlphaPure and *stealth are both no-ops -> 1.0.) Earlier this only applied the
+# alpha and treated the 250 RGB as negligible; the faithful behavior tints RGB too.
+_ARMORSET_BACKPACK_COLOR = (250, 250, 250, 200)
 # ChickenBonesRobe (item 5587) is a vanity/social accessory that sets NO *Slot; its only
 # visual effect is coat=251 (Player.UpdateVisibleAccessory:36585). Item.cs gives it no
 # slot, so it is absent from accessory_slots.json and must be special-cased on netId.
@@ -207,9 +210,69 @@ _GLOW_BODY: dict[str, Any] = _GLOW["body"]
 _GLOW_ARM: dict[str, Any] = _GLOW["arm"]
 _GLOW_HEAD: dict[str, Any] = _GLOW["head"]
 _GLOW_LEGS: dict[str, Any] = _GLOW["legs"]
+# composite torso/arm sub-parts whose glow is drawn in N jittered passes (body 227 Nebula:
+# torso + arm composite glow each draw twice with a sub-pixel Main.rand offset,
+# PlayerDrawLayers.cs:63-76/90-101). Keys are stringified body equip slots.
+_GLOW_BODY_JITTER: dict[str, int] = _GLOW.get("body_jitter", {})
+_GLOW_ARM_JITTER: dict[str, int] = _GLOW.get("arm_jitter", {})
 # the 'arkhalis' sentinel = ArkhalisColor = (underShirtColor.rgb, A=180) (PlayerDrawSet
 # .cs:515-516), resolved per-render from the appearance undershirt color.
 _GLOW_ARKHALIS_ALPHA = 180
+# Sub-pixel jitter: several glow layers are drawn multiple times at a small Main.rand
+# offset (max ±1.25px for the x0.125 jitters, ±2px for the x0.2 4-tap). Our pipeline is
+# integer-pixel, so we round to a fixed REPRESENTATIVE set of integer offsets (the random
+# jitter has no deterministic phase; this mirrors dye.py's UTIME=0 representative-still
+# convention). The first pass is on-grid (0,0) like the colored base; extra passes fan out
+# by ~1px so the glow visibly "spreads" (the in-game effect of the jitter) rather than
+# stacking exactly. PlayerDrawLayers.cs:68/95 (x0.125) and :125-126/2410-2411 (x0.2/x0.15).
+_JITTER_OFFSETS = ((0, 0), (1, 1), (-1, 1), (1, -1))
+# body 205 (ApprenticeAltShirt, netId 3875 — DrawCompositeArmorPiece FrontArm extra,
+# PlayerDrawLayers.cs:118-135): a SEPARATE 4-tap additive shimmer on the front-arm composite
+# glow (lower half), color (100,100,100,0), independent of armGlowColor (body 205 sets none).
+# The 4 taps use RandomInt(-10,11)*0.2 (X, ±2px) and RandomInt(-10,1)*0.15 (Y, [-1.5,0]) —
+# representative integer fan.
+_BODY205_FRONTARM_4TAP = 205
+_BODY205_4TAP_COLOR = (100, 100, 100, 0)
+# representative integer fan for the x0.2 / x0.15 4-taps (body 205): a small spread the
+# colored base does not have. (The exact per-frame offsets are Main.rand-driven; idle has no
+# fixed phase, so we use a deterministic representative fan — same spirit as dye.py UTIME=0.)
+_TAP4_OFFSETS = ((0, 0), (2, 0), (-2, -1), (1, -1))
+# head 211 (ApprenticeAltHead, netId 3874 — the head sibling of body 205's ApprenticeAltShirt,
+# PlayerDrawLayers.cs:2403-2415): the SAME 4-tap additive (100,100,100,0) shimmer mechanism,
+# but over the head cell via an INDEPENDENT GlowMask_241 strip (sourceRect = bodyFrame, idle
+# (0,0,40,56) — no composite +224 Y), carrying the head dye (cHead). It is NOT a normal
+# headGlowMask (head 211 sets none); this is a hardcoded special case, so it does not go
+# through the generic strip-glow path. The 4 taps: X = RandomInt(-10,11)*0.2 (±2px, same as
+# body 205), Y = RandomInt(-14,1)*0.15 ([-2.1,0] — a WIDER upward fan than body 205's [-1.5,0]).
+_HEAD211_4TAP = 211
+_HEAD211_4TAP_COLOR = (100, 100, 100, 0)
+# representative integer fan for head 211 (idle Main.rand has no fixed phase — same UTIME=0-style
+# convention as body 205 / dye.py). First pass on-grid; extras fan out: X up to ±2 (the x0.2
+# range), Y up to -2 (the x0.15 range reaches -2.1 → -2, the upward-only spread of head 211).
+_HEAD211_TAP4_OFFSETS = ((0, 0), (2, -1), (-2, -2), (1, -1))
+# TV-screen head glowmask (head 271, GlowMask_309): a 6-colx4-row grid of 42x56 cells in a
+# 252x224 sheet. The drawn rect is Frame(6,4,col,row,-2) => width 42-2 = 40 (the -2 trims
+# the right gutter), so it stacks 1:1 over the 40-wide head cell. PlayerDrawLayers.cs:2381.
+_TV_COLS, _TV_ROWS, _TV_CELL_W = 6, 4, 42
+# Idle column = DrawPlayer_Head_GetTVScreen (PlayerDrawLayers.cs:2514): an offline still
+# avatar is not in danger / low-health / a biome / wet / near town-NPCs, so it falls through
+# to the default `return 3`. (num19==0 would hide the glow; 3 is the calm/default screen.)
+_TV_IDLE_COL = 3
+# Idle row = miscCounter % 20 / 5 (0..3), frozen to the representative frame 0 (miscCounter
+# has no deterministic idle phase — same UTIME=0-style representative as dye.py). For the
+# default column (3) the row is purely this counter; only column 5 keys off eye state.
+_TV_IDLE_ROW = 0
+# vector5 offset at idle (PlayerDrawLayers.cs:2368-2370): OffsetsPlayerHeadgear[bodyFrame.Y
+# /56] with .Y-=2, then *= -(FlipVertically?1:-1). Idle bodyFrame.Y=0 => (0,2); -2 => (0,0);
+# no FlipVertically => *1 => (0,0). So the TV glow draws at the plain head-cell top-left.
+_TV_IDLE_VEC5 = (0, 0)
+# ChickenBones coat front extension (Armor_Legs_238) carries an extra GlowMask_363 glow with
+# the ChickenBones representative color (255,255,255,0)·0.9 = (229,229,229,0), drawn at the
+# same leg frame + cCoat dye (DrawLongCoat, PlayerDrawLayers.cs:1826-1834). coat 251 -> 238.
+_COAT_FRONT_GLOW = {238: 363}
+# ChickenBones representative glow color (spec §3.2: (255,255,255,0)·Remap mid 0.9). Shared
+# by the coat-238 GlowMask_363; the head-284 mask 365 entry already bakes the same value.
+_CHICKENBONES_GLOW_COLOR = (229, 229, 229, 0)
 _HAIR = _load_json("hair_sets.json")
 # hairDye index 1..11 -> replacement [r,g,b] (or null = keep hairColor); index 0 = no
 # dye, index 12 = Twilight (keeps hairColor, runs ArmorTwilight pass). hairdye_spec.md.
@@ -600,13 +663,27 @@ class _Compositor:
             return (r, g, b, a)
         return None
 
+    def _over_glow_passes(
+        self, buf: np.ndarray, color: tuple[int, int, int, int],
+        lx: int, ly: int, offsets: tuple[tuple[int, int], ...],
+    ) -> None:
+        """Composite a (dyed) glow frame `len(offsets)` times, each shifted by the integer
+        offset (the rounded representative of the in-game sub-pixel Main.rand jitter)."""
+        for ox, oy in offsets:
+            _over_glow_at(self.canvas, buf, color, lx + ox, ly + oy)
+
     def draw_body_glow(
         self, name: str, cell_key: str, color: tuple[int, int, int, int],
-        dye_spec: dict[str, Any] | None,
+        dye_spec: dict[str, Any] | None, *, jitter: int = 1,
     ) -> None:
         """Composite a body/arm composite-glow sub-part: the SAME ArmorBody sheet at the
         sub-part's colored cell + 36 (lower half, sourceRect.Y += 224), tinted by `color`
-        and still carrying the base body dye (glowmask_spec.md §5.1). Additive-aware."""
+        and still carrying the base body dye (glowmask_spec.md §5.1). Additive-aware.
+
+        `jitter` > 1 draws the glow that many times at representative integer offsets
+        (body 227 Nebula draws each composite glow twice with a ±1.25px Main.rand jitter,
+        PlayerDrawLayers.cs:63-76/90-101); idle has no deterministic phase, so we use the
+        fixed `_JITTER_OFFSETS` fan (first pass on-grid, extras fan out ~1px)."""
         if _sheet(name) is None:
             return
         glow_cell = self.cells[cell_key] + _GLOW_CELL_DELTA
@@ -616,15 +693,55 @@ class _Compositor:
         if dye_spec:
             src_rect, sheet_size = _frame_geom(name, glow_cell)
             buf = apply_dye(buf, dye_spec, src_rect=src_rect, sheet_size=sheet_size)
-        _over_glow_at(self.canvas, buf, color, PAD_L, PAD_T)
+        self._over_glow_passes(buf, color, PAD_L, PAD_T, _JITTER_OFFSETS[:max(1, jitter)])
+
+    def draw_body205_frontarm_4tap(
+        self, name: str, dye_spec: dict[str, Any] | None,
+    ) -> None:
+        """body 205's extra front-arm shimmer (DrawCompositeArmorPiece FrontArm branch,
+        PlayerDrawLayers.cs:118-135): a 4-tap additive (100,100,100,0) pass over the
+        front-arm composite glow (lower half), independent of armGlowColor. Idle uses the
+        representative `_TAP4_OFFSETS` fan (the per-frame offsets are Main.rand-driven)."""
+        if _sheet(name) is None:
+            return
+        glow_cell = self.cells["front_arm"] + _GLOW_CELL_DELTA
+        buf = _frame(name, glow_cell)
+        if buf[..., 3].max() == 0:
+            return
+        if dye_spec:
+            src_rect, sheet_size = _frame_geom(name, glow_cell)
+            buf = apply_dye(buf, dye_spec, src_rect=src_rect, sheet_size=sheet_size)
+        self._over_glow_passes(buf, _BODY205_4TAP_COLOR, PAD_L, PAD_T, _TAP4_OFFSETS)
+
+    def draw_head211_4tap(
+        self, name: str, dye_spec: dict[str, Any] | None,
+    ) -> None:
+        """head 211's hardcoded 4-tap shimmer (PlayerDrawLayers.cs:2403-2415): a 4-tap
+        additive (100,100,100,0) pass of the INDEPENDENT GlowMask_241 strip over the head
+        cell (idle frame 0 = (0,0,40,56), NOT the composite +224 lower half — head glow is
+        its own strip), carrying the head dye. Same mechanism as body 205's front-arm 4-tap
+        but in the head group; idle uses the representative `_HEAD211_TAP4_OFFSETS` fan (the
+        per-frame offsets are Main.rand-driven, [-2,+2] in X / [-2,0] in Y)."""
+        cell = self.cells["col"]
+        buf = _frame(name, cell)
+        if buf[..., 3].max() == 0:
+            return
+        if dye_spec:
+            src_rect, sheet_size = _frame_geom(name, cell)
+            buf = apply_dye(buf, dye_spec, src_rect=src_rect, sheet_size=sheet_size)
+        self._over_glow_passes(buf, _HEAD211_4TAP_COLOR, PAD_L, PAD_T, _HEAD211_TAP4_OFFSETS)
 
     def draw_strip_glow(
         self, name: str, cell_key: str, color: tuple[int, int, int, int],
-        dye_spec: dict[str, Any] | None,
+        dye_spec: dict[str, Any] | None, *, jitter: int = 1,
     ) -> None:
         """Composite an independent head/legs glowmask strip (Glow_{id}.png, 40x1120) at
         the same idle cell/frame as its base armor, tinted by `color` and still carrying
-        the base armor dye (glowmask_spec.md §5.2). Additive-aware."""
+        the base armor dye (glowmask_spec.md §5.2). Additive-aware.
+
+        `jitter` > 1 draws it that many times at representative integer offsets (head 240
+        mask 273 and legs 210 mask 274 each draw twice with a ±1.25px Main.rand jitter,
+        PlayerDrawLayers.cs:2389-2394 / 1559); idle representative = `_JITTER_OFFSETS`."""
         if _sheet(name) is None:
             return
         cell = self.cells[cell_key]
@@ -634,7 +751,32 @@ class _Compositor:
         if dye_spec:
             src_rect, sheet_size = _frame_geom(name, cell)
             buf = apply_dye(buf, dye_spec, src_rect=src_rect, sheet_size=sheet_size)
-        _over_glow_at(self.canvas, buf, color, PAD_L, PAD_T)
+        self._over_glow_passes(buf, color, PAD_L, PAD_T, _JITTER_OFFSETS[:max(1, jitter)])
+
+    def draw_tv_head_glow(
+        self, name: str, color: tuple[int, int, int, int],
+        dye_spec: dict[str, Any] | None,
+    ) -> None:
+        """The TV-screen head glow (head 271, GlowMask_309): pick the 6x4-grid cell
+        (col = GetTVScreen idle = 3, row = miscCounter frozen = 0), drawn rect width 40
+        (the Frame(...,-2) gutter trim), at the head-cell top-left + vector5 (=(0,0) idle).
+        Carries the head dye, additive-aware. PlayerDrawLayers.cs:2357-2385."""
+        sheet = _sheet(name)
+        if sheet is None:
+            return
+        # grid cell rect: x = col*42 (-2 trims to 40 wide), y = row*56, size 40x56.
+        cx, cy = _TV_IDLE_COL * _TV_CELL_W, _TV_IDLE_ROW * FH
+        buf = np.zeros((FH, FW, 4), np.uint8)
+        sub = sheet[cy:cy + FH, cx:cx + FW]
+        buf[:sub.shape[0], :sub.shape[1]] = sub
+        if buf[..., 3].max() == 0:
+            return
+        if dye_spec:
+            buf = apply_dye(
+                buf, dye_spec, src_rect=(cx, cy, FW, FH),
+                sheet_size=(sheet.shape[1], sheet.shape[0]))
+        vx, vy = _TV_IDLE_VEC5
+        _over_glow_at(self.canvas, buf, color, PAD_L + vx, PAD_T + vy)
 
     def draw_hair(self, hair_file: str, clip_rows: int | None = None) -> None:
         # Step A: tint. hairDye 1..11 replace hairColor; 0/12 keep it (hairdye_spec §2)
@@ -683,9 +825,10 @@ class _Compositor:
         self, name: str, offset: tuple[int, int], dye_spec: dict[str, Any] | None,
     ) -> None:
         """An armor-set backpack (Extra_212/213, DrawPlayer_08_Backpacks:446/458): a
-        5-frame vertical strip drawn at idle frame 0 (Frame(1,5,0,0)) with the body dye
-        and the half-translucent color (250,250,250,200) — we pre-multiply the 200/255
-        alpha into the (white) sprite. `offset` is its cell-local top-left."""
+        5-frame vertical strip drawn at idle frame 0 (Frame(1,5,0,0)) with the body dye and
+        the half-translucent color (250,250,250,200). sb.Draw multiplies the DrawData color
+        per-channel into the texture, so we scale RGB by 250/255 AND alpha by 200/255 (idle
+        GetImmuneAlphaPure/*stealth are 1.0). `offset` is its cell-local top-left."""
         sheet = _sheet(name)
         if sheet is None:
             return
@@ -694,10 +837,10 @@ class _Compositor:
         frame = sheet[:fh, :w].copy()
         if dye_spec:
             frame = apply_dye(frame, dye_spec, src_rect=(0, 0, w, fh), sheet_size=(w, h))
-        # the (250,250,250,200) draw color: A=200 scales the sprite alpha (the 250 RGB is
-        # a negligible <2% dim over the already-white sprite; alpha is what matters).
-        a = frame[..., 3].astype(np.uint16)
-        frame[..., 3] = (a * _ARMORSET_BACKPACK_ALPHA // 255).astype(np.uint8)
+        # the (250,250,250,200) draw color: RGB scaled by 250/255, alpha by 200/255.
+        cr, cg, cb, ca = _ARMORSET_BACKPACK_COLOR
+        frame = _tint(frame, (cr, cg, cb))
+        frame[..., 3] = (frame[..., 3].astype(np.uint16) * ca // 255).astype(np.uint8)
         self._over_cell(frame, *offset)
 
     def draw_acc_wing(self, slot: int, dye_spec: dict[str, Any] | None) -> None:
@@ -1006,11 +1149,21 @@ def render_character(
     head_glow_entry = _GLOW_HEAD.get(str(armor["head_slot"])) if armor["head_slot"] else None
     legs_glow_entry = _GLOW_LEGS.get(str(armor["leg_slot"])) if armor["leg_slot"] else None
 
+    # per-sub-part jitter pass counts (body 227 Nebula = 2 for torso + arm sub-parts).
+    body_jitter = _GLOW_BODY_JITTER.get(body_slot_str, 1) if body_slot_str else 1
+    arm_jitter = _GLOW_ARM_JITTER.get(body_slot_str, 1) if body_slot_str else 1
+
     def draw_body_arm_glow(cell_key: str, *, arm: bool) -> None:
-        """Draw the composite-glow for one body sub-part right after its colored draw."""
+        """Draw the composite-glow for one body sub-part right after its colored draw.
+        body 227 draws each composite glow in 2 jittered passes (glowmask_spec.md §5.1)."""
         color = arm_glow if arm else body_glow
         if armor_body and color is not None:
-            comp.draw_body_glow(armor_body, cell_key, color, body_dye)
+            comp.draw_body_glow(
+                armor_body, cell_key, color, body_dye,
+                jitter=arm_jitter if arm else body_jitter)
+        # body 205's extra 4-tap front-arm shimmer (independent of armGlowColor).
+        if arm and cell_key == "front_arm" and armor["body_slot"] == _BODY205_FRONTARM_4TAP:
+            comp.draw_body205_frontarm_4tap(armor_body, body_dye)
 
     hide_visuals = int(appearance.get("hideVisuals") or 0)
     acc = _resolve_accessories(
@@ -1153,7 +1306,8 @@ def render_character(
                 leg_color = comp._glow_color(legs_glow_entry["color"])
                 if leg_color is not None:
                     comp.draw_strip_glow(
-                        f"Glow_{legs_glow_entry['mask']}", "col", leg_color, leg_dye)
+                        f"Glow_{legs_glow_entry['mask']}", "col", leg_color, leg_dye,
+                        jitter=int(legs_glow_entry.get("jitter", 1)))
         elif not check_shoes:                 # default pants+shoes suppressed by shoe==15 (:1576)
             comp.draw_player(11, "col")
             comp.draw_player(12, "col")
@@ -1179,15 +1333,20 @@ def render_character(
     # 5b. armor long-coat (16_ArmorLongCoat, DrawPlayer_16:1791): TWO leg-armor skirts, in
     # order — first the BODY extension (GetMatchingBodyExtension(body), cBody dye), then the
     # COAT extension (GetMatchingBodyExtension(coat); only coat 251 -> Armor_Legs_238, cCoat
-    # dye). Both at the idle leg frame, just BEHIND the torso. (The 238 piece would also add
-    # a ChickenBones GlowMask_363 glow — that asset isn't shipped, so the glow is omitted;
-    # see research/backcoat_tails_spec.md §2.)
+    # dye). Both at the idle leg frame, just BEHIND the torso.
     ext_slot = _longcoat_ext_slot(armor["body_slot"], male=comp.male)
     if ext_slot is not None:
         comp.draw_armor(f"Armor_Legs_{ext_slot}", "col", body_dye)
     coat_front_ext = _COAT_FRONT_EXT.get(coat) if coat is not None else None
     if coat_front_ext is not None:
         comp.draw_armor(f"Armor_Legs_{coat_front_ext}", "col", coat_dye)
+        # the ChickenBones coat front piece (238) carries an extra GlowMask_363 glow with the
+        # ChickenBones representative color, same leg frame + cCoat dye (DrawLongCoat,
+        # PlayerDrawLayers.cs:1826-1834). Additive-aware (color A=0 -> pure additive).
+        coat_glow_mask = _COAT_FRONT_GLOW.get(coat_front_ext)
+        if coat_glow_mask is not None:
+            comp.draw_strip_glow(
+                f"Glow_{coat_glow_mask}", "col", _CHICKENBONES_GLOW_COLOR, coat_dye)
     # 6. torso + back shoulder
     if armor_body:
         comp.draw_armor(armor_body, "torso", body_dye)
@@ -1230,12 +1389,39 @@ def render_character(
     else:
         comp.draw_armor(armor_head, "col", armor["head_dye"])
     # head glowmask (Glow_{headGlowMask}) rides the same head cell (body frame) + head dye,
-    # right after the colored head armor (glowmask_spec.md §5.2).
+    # right after the colored head armor (glowmask_spec.md §5.2). Four shapes:
+    #   - 'grid':'tv'    -> head 271 TV screen (6x4-grid cell, draw_tv_head_glow);
+    #   - 'fourtap':<m>  -> head 211 hardcoded 4-tap shimmer of Glow_<m> (draw_head211_4tap,
+    #                       PlayerDrawLayers.cs:2403-2415) — a special case, no normal 'mask';
+    #   - normal 'mask'  -> draw_strip_glow (with optional 'jitter' for head 240);
+    #   - 'extra'        -> head 269 FrontShoulder extra (Extra_214 white armor + GlowMask_308
+    #                       glow), drawn at the same head cell (PlayerDrawLayers.cs:107-116).
     if head_glow_entry is not None:
         head_color = comp._glow_color(head_glow_entry["color"])
+        head_dye = armor["head_dye"]
         if head_color is not None:
-            comp.draw_strip_glow(
-                f"Glow_{head_glow_entry['mask']}", "col", head_color, armor["head_dye"])
+            if head_glow_entry.get("grid") == "tv":
+                comp.draw_tv_head_glow(
+                    f"Glow_{head_glow_entry['mask']}", head_color, head_dye)
+            elif "fourtap" in head_glow_entry:
+                # head 211 only: a hardcoded special case (PlayerDrawLayers.cs:2403), gated
+                # on head_slot == _HEAD211_4TAP so the constant is the on/off switch (mirrors
+                # body 205's _BODY205_FRONTARM_4TAP gate).
+                if armor["head_slot"] == _HEAD211_4TAP:
+                    comp.draw_head211_4tap(
+                        f"Glow_{head_glow_entry['fourtap']}", head_dye)
+            elif "mask" in head_glow_entry:
+                comp.draw_strip_glow(
+                    f"Glow_{head_glow_entry['mask']}", "col", head_color, head_dye,
+                    jitter=int(head_glow_entry.get("jitter", 1)))
+        extra = head_glow_entry.get("extra")
+        if extra is not None:
+            # Extra_{armor}: a white (colorArmorHead) armor layer + its GlowMask_{mask} glow,
+            # both at the head cell with the head dye. The glow reuses the slot's headGlowColor.
+            comp.draw_armor(f"Extra_{extra['armor']}", "col", head_dye)
+            if head_color is not None:
+                comp.draw_strip_glow(
+                    f"Glow_{extra['mask']}", "col", head_color, head_dye)
     # beard (drawn in the head group; Wilson beards tint by hair color).
     beard_slot = acc_slots.get("beard")
     if beard_slot:

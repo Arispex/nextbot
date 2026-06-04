@@ -854,6 +854,293 @@ def test_glow_color_arkhalis_uses_undershirt() -> None:
     assert comp._glow_color("arkhalis") == (0, 255, 0, 180)
 
 
+# ── glowmask corner-case details (glowmask_spec.md §8, reverse-engineered) ────
+# These exercise the C-class details previously deferred: the TV-screen head (271,
+# GlowMask_309 6x4 grid), head 269's FrontShoulder extra (Extra_214 + GlowMask_308),
+# sub-pixel jitter multi-passes (body 227 / head 240 / legs 210 / body 205 4-tap), the
+# ChickenBones coat-front-238 glow (GlowMask_363), and the armor-set backpack RGB.
+# Animated/jittered layers use a documented representative still. netIds
+# (equip_slots.json): head 271=5061, head 269=5054, head 240=4755, body 227=4756,
+# body 205=3875, legs 210=4757; ChickenBonesRobe=5587 (coat 251 -> front 238).
+
+
+def test_tv_head_glow_constants_match_decompiled() -> None:
+    # The TV-screen grid + idle selection (PlayerDrawLayers.cs:2357-2385 / GetTVScreen
+    # :2514, Frame(6,4,col,row,-2)). Idle column = GetTVScreen default = 3 (no danger,
+    # full health, no biome, not wet, no town NPCs); row = miscCounter%20/5 frozen = 0;
+    # vector5 = OffsetsPlayerHeadgear[0](0,2) -2 *1 = (0,0). Cell w 42, drawn rect 40.
+    from nextbot.terraria_render.compositor import (
+        _TV_CELL_W,
+        _TV_COLS,
+        _TV_IDLE_COL,
+        _TV_IDLE_ROW,
+        _TV_IDLE_VEC5,
+        _TV_ROWS,
+    )
+    assert (_TV_COLS, _TV_ROWS, _TV_CELL_W) == (6, 4, 42)
+    assert _TV_IDLE_COL == 3 and _TV_IDLE_ROW == 0
+    assert _TV_IDLE_VEC5 == (0, 0)
+    # head 271 is tagged as the TV grid glow with mask 309 (252x224 sheet).
+    assert glow_mod._GLOW_HEAD["271"]["grid"] == "tv"
+    assert glow_mod._GLOW_HEAD["271"]["mask"] == 309
+    sheet = glow_mod._sheet("Glow_309")
+    assert sheet is not None and sheet.shape[1] == _TV_COLS * _TV_CELL_W  # 252 wide
+
+
+def test_tv_head_glow_draws_default_column_not_empty_col0() -> None:
+    # The bug: the generic strip path read grid cell 0 (column 0), EMPTY at idle
+    # (0 opaque px) -> the TV screen never showed. The fix selects column 3 (the calm
+    # default screen) which has content. Assert the rendered glow == TV cell (col 3,
+    # row 0) and that column 0 would have been blank (the discriminator).
+    sheet = glow_mod._sheet("Glow_309")
+    assert sheet is not None
+    col0 = sheet[0:FH, 0:FW]                            # grid col 0 (old buggy cell)
+    col3 = sheet[0:FH, 3 * 42:3 * 42 + FW]             # grid col 3 (GetTVScreen idle)
+    assert int((col0[..., 3] > 0).sum()) == 0          # col 0 is blank at idle
+    assert int((col3[..., 3] > 0).sum()) > 0           # col 3 has the screen
+    # the composited TV glow (opaque A=255 cover) lands col 3's silhouette at the head.
+    comp = _Compositor(_APP_M)
+    comp.draw_tv_head_glow("Glow_309", (255, 255, 255, 255), None)
+    drawn = comp.canvas[PAD_T:PAD_T + FH, PAD_L:PAD_L + FW]
+    assert np.array_equal(drawn[..., 3] > 0, col3[..., 3] > 0)
+    assert not np.array_equal(drawn[..., 3] > 0, col0[..., 3] > 0)
+    # end-to-end: head 271 (netId 5061) renders and differs from the same head with the
+    # TV glow suppressed (the screen IS the difference).
+    with _without_glow(glow_mod._GLOW_HEAD, "271"):
+        base = render_character(_APP_M, {"head": _acc(5061)}, scale=1)
+    tv = render_character(_APP_M, {"head": _acc(5061)}, scale=1)
+    assert base != tv, "TV head glow changed nothing (screen not drawn)"
+
+
+def test_head269_frontshoulder_extra_glow() -> None:
+    # head 269 draws a FrontShoulder-context extra: Extra_214 (white colorArmorHead) +
+    # GlowMask_308 (the glow), both at the head cell with the head dye
+    # (PlayerDrawLayers.cs:107-116). The fix adds these two layers; suppressing head 269
+    # removes them, so the render must differ. Assets must ship with idle content.
+    extra = glow_mod._GLOW_HEAD["269"]["extra"]
+    assert extra == {"armor": 214, "mask": 308}
+    for name in ("Extra_214", "Glow_308"):
+        sheet = glow_mod._sheet(name)
+        assert sheet is not None, f"{name} missing"
+        assert int((sheet[:FH, :FW, 3] > 0).sum()) > 0
+    with _without_glow(glow_mod._GLOW_HEAD, "269"):
+        base = render_character(_APP_M, {"head": _acc(5054)}, scale=1)
+    glown = render_character(_APP_M, {"head": _acc(5054)}, scale=1)
+    assert base != glown, "head 269 FrontShoulder extra (Extra_214 + GlowMask_308) gone"
+
+
+def test_jitter_offsets_match_decompiled_magnitudes() -> None:
+    # The representative jitter fans: the x0.125 jitter spans +-1.25px (rounded to +-1),
+    # the x0.2/x0.15 4-tap spans up to +-2px in X. The first pass is on-grid (0,0). body
+    # 227 / head 240 / legs 210 declare 2 passes; body 205's 4-tap is a distinct color.
+    from nextbot.terraria_render.compositor import (
+        _BODY205_4TAP_COLOR,
+        _GLOW_ARM_JITTER,
+        _GLOW_BODY_JITTER,
+        _JITTER_OFFSETS,
+        _TAP4_OFFSETS,
+    )
+    assert _JITTER_OFFSETS[0] == (0, 0)                       # first pass on-grid
+    assert all(abs(x) <= 1 and abs(y) <= 1 for x, y in _JITTER_OFFSETS)  # +-1.25 -> +-1
+    assert _TAP4_OFFSETS[0] == (0, 0) and len(_TAP4_OFFSETS) == 4
+    assert max(abs(x) for x, _ in _TAP4_OFFSETS) == 2         # x0.2 -> +-2px in X
+    assert _BODY205_4TAP_COLOR == (100, 100, 100, 0)         # additive (A=0) shimmer
+    assert _GLOW_BODY_JITTER.get("227") == 2 and _GLOW_ARM_JITTER.get("227") == 2
+    assert glow_mod._GLOW_HEAD["240"].get("jitter") == 2
+    assert glow_mod._GLOW_LEGS["210"].get("jitter") == 2
+
+
+def _strip_glow_passes(name: str, color: tuple, jitter: int) -> int:
+    """Composite a strip glow with `jitter` passes onto a fresh canvas; return the count
+    of changed (glow-touched) pixels in the head cell + 1px halo."""
+    comp = _Compositor(_APP_M)
+    comp.draw_strip_glow(name, "col", color, None, jitter=jitter)
+    region = comp.canvas[PAD_T - 1:PAD_T + FH + 1, PAD_L - 1:PAD_L + FW + 1]
+    return int((region[..., 3] > 0).sum() + np.any(region[..., :3] > 0, axis=2).sum())
+
+
+def test_jitter_spreads_glow_region() -> None:
+    # A 2-pass jitter draws the glow at (0,0) AND a ~1px-offset spot, so the additive
+    # footprint is a superset of the single-pass one (the in-game "spread" of the
+    # sub-pixel jitter). Use head 240's mask 273 (an additive A=60 glow) as the probe.
+    one = _strip_glow_passes("Glow_273", (230, 230, 230, 60), 1)
+    two = _strip_glow_passes("Glow_273", (230, 230, 230, 60), 2)
+    assert one > 0
+    assert two >= one, "2-pass jitter footprint must cover the single-pass one"
+    # the multi-pass changed-pixel set strictly grows when the offset lands new pixels
+    # (Glow_273 has a non-trivial sprite, so the +1,+1 pass adds edge pixels).
+    assert two > one, "jitter second pass added no spread (offset ineffective)"
+
+
+def test_body227_jitter_renders_brighter_superset() -> None:
+    # body 227 (Nebula, netId 4756) draws torso + arm composite glow in 2 jitter passes.
+    # The 2-pass render must differ from a forced 1-pass render (the extra offset pass
+    # spreads the glow), and still be a valid brightening (no darkening artifacts).
+    saved_b = int(glow_mod._GLOW_BODY_JITTER["227"])
+    saved_a = int(glow_mod._GLOW_ARM_JITTER["227"])
+    try:
+        glow_mod._GLOW_BODY_JITTER["227"] = 1
+        glow_mod._GLOW_ARM_JITTER["227"] = 1
+        one = _decode(render_character(_APP_M, {"body": _acc(4756)}, scale=1))
+        glow_mod._GLOW_BODY_JITTER["227"] = 2
+        glow_mod._GLOW_ARM_JITTER["227"] = 2
+        two = _decode(render_character(_APP_M, {"body": _acc(4756)}, scale=1))
+    finally:
+        glow_mod._GLOW_BODY_JITTER["227"] = saved_b
+        glow_mod._GLOW_ARM_JITTER["227"] = saved_a
+    assert one.shape == two.shape
+    assert int(np.any(one != two, axis=2).sum()) > 0, "jitter pass changed nothing"
+
+
+def test_body205_frontarm_4tap_adds_shimmer() -> None:
+    # body 205 (netId 3875) has NO armGlowColor but draws a 4-tap additive shimmer,
+    # color (100,100,100,0), over the front-arm glow (PlayerDrawLayers.cs:118-135).
+    # Toggling the 4-tap off -> the render must differ (the shimmer is the diff).
+    from nextbot.terraria_render import compositor as cmod
+    saved = cmod._BODY205_FRONTARM_4TAP
+    on = render_character(_APP_M, {"body": _acc(3875)}, scale=1)
+    try:
+        cmod._BODY205_FRONTARM_4TAP = -1            # no body matches -> 4-tap disabled
+        off = render_character(_APP_M, {"body": _acc(3875)}, scale=1)
+    finally:
+        cmod._BODY205_FRONTARM_4TAP = saved
+    assert on != off, "body 205 front-arm 4-tap shimmer absent"
+
+
+def test_head211_4tap_constants_match_decompiled() -> None:
+    # head 211 (ApprenticeAltHead, netId 3874 — head sibling of body 205's
+    # ApprenticeAltShirt) draws the SAME 4-tap additive shimmer over the head cell via
+    # an independent GlowMask_241 strip (PlayerDrawLayers.cs:2403-2415). Color
+    # (100,100,100,0); X tap range RandomInt(-10,11)*0.2 = +-2px (same as body 205); Y
+    # range RandomInt(-14,1)*0.15 = [-2.1,0] (a WIDER upward fan than body 205's
+    # [-1.5,0]). The mask is tagged 'fourtap' in glowmask.json (no normal 'mask'), so it
+    # routes to the dedicated path and is extracted via referenced_glow_masks().
+    from nextbot.terraria_render.compositor import (
+        _HEAD211_4TAP,
+        _HEAD211_4TAP_COLOR,
+        _HEAD211_TAP4_OFFSETS,
+    )
+    assert _HEAD211_4TAP == 211
+    assert _HEAD211_4TAP_COLOR == (100, 100, 100, 0)        # additive (A=0)
+    assert _HEAD211_TAP4_OFFSETS[0] == (0, 0) and len(_HEAD211_TAP4_OFFSETS) == 4
+    assert max(abs(x) for x, _ in _HEAD211_TAP4_OFFSETS) == 2   # x0.2 -> +-2px in X
+    assert min(y for _, y in _HEAD211_TAP4_OFFSETS) == -2       # x0.15 [-2.1,0] -> -2
+    assert all(y <= 0 for _, y in _HEAD211_TAP4_OFFSETS)        # upward-only Y fan
+    # glowmask.json tags head 211 with 4-tap mask 241 (no 'mask'/'grid'/'extra').
+    entry = glow_mod._GLOW_HEAD["211"]
+    assert entry.get("fourtap") == 241 and "mask" not in entry
+    assert entry["color"] == [100, 100, 100, 0]
+    # the GlowMask_241 strip is extracted (referenced_glow_masks picks up 'fourtap') and
+    # has idle content (frame 0 = the head cell).
+    sheet = glow_mod._sheet("Glow_241")
+    assert sheet is not None and sheet.shape[1] == FW    # 40-wide vertical strip
+    assert int((sheet[:FH, :FW, 3] > 0).sum()) > 0       # idle head cell has glow px
+
+
+def test_head211_4tap_adds_additive_head_local_shimmer() -> None:
+    # head 211's 4-tap is the only difference between rendering it on vs off. Toggling
+    # _HEAD211_4TAP (the on/off gate, mirrors body 205) must change the render; the diff
+    # must be ADDITIVE (brighten, never darken) and HEAD-LOCAL, and a plain head stays
+    # untouched (regression).
+    from nextbot.terraria_render import compositor as cmod
+    saved = cmod._HEAD211_4TAP
+    on = render_character(_APP_M, {"head": _acc(3874)}, scale=1)
+    try:
+        cmod._HEAD211_4TAP = -1                  # no head matches -> 4-tap disabled
+        off = render_character(_APP_M, {"head": _acc(3874)}, scale=1)
+    finally:
+        cmod._HEAD211_4TAP = saved
+    assert on != off, "head 211 4-tap shimmer absent"
+    a, b = _decode(on), _decode(off)
+    assert a.shape == b.shape
+    both = (a[..., 3] > 0) & (b[..., 3] > 0)
+    delta = a[..., :3].astype(int) - b[..., :3].astype(int)
+    assert (delta[both] >= 0).all(), "4-tap must be additive (never darken pixels)"
+    assert int(np.any(a != b, axis=2).sum()) > 0
+    # head-local: the shimmer footprint sits in the upper head region (alt-head glow +
+    # the upward/rightward tap fan), within the head cell's vertical span (<= 56 rows).
+    ys = np.nonzero(np.any(a != b, axis=2))[0]
+    assert ys.size > 0 and int(ys.max()) <= FH
+    # head 211 carries the head dye through cHead -> a head dye changes the shimmer too.
+    plain = render_character(_APP_M, {"head": _acc(3874)}, scale=1)
+    dyed = render_character(
+        _APP_M, {"head": _acc(3874)}, dye={"head": _acc(1007)}, scale=1)
+    assert plain != dyed, "head 211 dye (cHead) did not reach the 4-tap glow"
+    # regression: an ordinary head (Copper helmet 690, no 4-tap) is stable re-rendered.
+    h = render_character(_APP_M, {"head": _acc(690)}, scale=2)
+    assert h == render_character(_APP_M, {"head": _acc(690)}, scale=2)
+
+
+def test_coat238_glow_constants_and_render() -> None:
+    # ChickenBones coat front piece (Armor_Legs_238) carries an extra GlowMask_363 glow
+    # with the ChickenBones representative color (255,255,255,0)*0.9 = (229,229,229,0),
+    # same leg frame + cCoat dye (DrawLongCoat, PlayerDrawLayers.cs:1826-1834). coat 251
+    # -> front 238.
+    from nextbot.terraria_render.compositor import (
+        _CHICKENBONES_GLOW_COLOR,
+        _COAT_FRONT_GLOW,
+    )
+    assert _COAT_FRONT_GLOW == {238: 363}
+    assert _CHICKENBONES_GLOW_COLOR == (229, 229, 229, 0)   # spec §3.2 representative
+    sheet = glow_mod._sheet("Glow_363")
+    assert sheet is not None and int((sheet[:FH, :FW, 3] > 0).sum()) > 0
+    # end-to-end: the robe (netId 5587 -> coat 251 -> front 238) render differs with vs
+    # without the 238 glow (the glow is the only difference between them).
+    robed = render_character(_APP_M, scale=1, accessories=_slots7(5587))
+    saved = dict(glow_mod._COAT_FRONT_GLOW)
+    try:
+        glow_mod._COAT_FRONT_GLOW.clear()           # disable the coat-front glow
+        no_glow = render_character(_APP_M, scale=1, accessories=_slots7(5587))
+    finally:
+        glow_mod._COAT_FRONT_GLOW.clear()
+        glow_mod._COAT_FRONT_GLOW.update(saved)
+    assert robed != no_glow, "ChickenBones coat-238 GlowMask_363 glow absent"
+
+
+def test_armorset_backpack_applies_rgb_factor() -> None:
+    # PlayerDrawLayers.cs:452/466: the backpack draw color (250,250,250,200) multiplies
+    # per-channel into the texture, so RGB scales by 250/255 (not just the alpha). The
+    # fixed color carries all four channels; drawing a white sprite must dim RGB to 250.
+    from nextbot.terraria_render.compositor import _ARMORSET_BACKPACK_COLOR, _Compositor
+    assert _ARMORSET_BACKPACK_COLOR == (250, 250, 250, 200)
+    # synthesize a fully-white opaque Extra sheet (5-frame strip) and draw it; the cell
+    # must come out RGB=250 (the 250/255 factor) with alpha scaled by 200/255.
+    comp = _Compositor(_APP_M)
+    white = np.full((FH * 5, FW, 4), 255, np.uint8)
+    glow_mod._sheet.cache_clear()
+    import unittest.mock as _mock
+    with _mock.patch.object(glow_mod, "_sheet", return_value=white):
+        comp.draw_armorset_backpack("Extra_FAKE", (0, 0), None)
+    cell = comp.canvas[PAD_T:PAD_T + FH, PAD_L:PAD_L + FW]
+    # over a transparent canvas the straight-alpha RGB is the (dimmed) sprite RGB = 250.
+    assert int(cell[0, 0, 0]) == 250, f"RGB not dimmed by 250/255 (got {cell[0, 0, 0]})"
+    assert int(cell[0, 0, 3]) == 255 * 200 // 255   # alpha scaled by 200/255
+    glow_mod._sheet.cache_clear()
+
+
+def test_glowmask_aux_masks_extracted() -> None:
+    # The auxiliary Glow ids (308 head-269 extra, 363 coat-238) are listed in
+    # glowmask.json's aux_masks and must be extracted as Glow_{id}.png (extract_assets
+    # referenced_glow_masks() now includes aux_masks; Extra_214 via SINGLE_TEXTURES).
+    assert set(glow_mod._GLOW.get("aux_masks", [])) == {308, 363}
+    for mask in (308, 363):
+        assert glow_mod._sheet(f"Glow_{mask}") is not None, f"Glow_{mask} not extracted"
+
+
+def test_glow_detail_changes_dont_affect_plain_equipment() -> None:
+    # KEY REGRESSION: the glowmask-detail changes (TV head, head-269 extra, jitter,
+    # coat-238 glow, backpack RGB) must NOT alter the output for ordinary, non-glow
+    # equipment. A plain body (GoldChainmail 80, no glow), a glow body that is NOT
+    # jittered (Spectre 176) and a plain head (no glow) stay byte-identical re-rendered.
+    a = render_character(_APP_M, {"head": _acc(690), "body": _acc(80)}, scale=2)
+    assert a == render_character(_APP_M, {"head": _acc(690), "body": _acc(80)}, scale=2)
+    # a non-jitter glow body (Spectre, slot 176, netId 2761) is unchanged by the jitter
+    # code (its slot has no jitter entry -> single pass, exactly as before).
+    spectre = render_character(_APP_M, {"body": _acc(2761)}, scale=2)
+    assert spectre == render_character(_APP_M, {"body": _acc(2761)}, scale=2)
+    assert spectre[:8] == _PNG_SIG
+
+
 # ── backcoat / tails / backpacks / body→back routing (backcoat_tails_spec.md) ──
 # netIds (Item.cs / data tables):
 #   tail accessories: 4769 DogTail (backSlot 25), 4775 BunnyTail (backSlot 28);
@@ -1020,14 +1307,16 @@ def test_armorset_backpack_triggers_match_decompiled() -> None:
     # Transcription cross-check of the two armor-set triggers + their Extra ids/offsets
     # (DrawPlayer_08_Backpacks:446/458). A wrong triple/offset => wrong/absent backpack.
     from nextbot.terraria_render.compositor import (
-        _ARMORSET_BACKPACK_ALPHA,
+        _ARMORSET_BACKPACK_COLOR,
         _ARMORSET_BACKPACKS,
     )
     assert _ARMORSET_BACKPACKS == (
         ((266, 235, 218), 212, (-4, 0)),
         ((268, 237, 222), 213, (-8, -4)),
     )
-    assert _ARMORSET_BACKPACK_ALPHA == 200
+    # full draw color (250,250,250,200): RGB 250/255 + alpha 200/255 (PlayerDrawLayers
+    # .cs:452/466 -- sb.Draw multiplies all four channels into the texture).
+    assert _ARMORSET_BACKPACK_COLOR == (250, 250, 250, 200)
     # the Extra backpack sheets ship and have content in their idle (frame-0) cell.
     for _triple, extra_id, _off in _ARMORSET_BACKPACKS:
         sheet = glow_mod._sheet(f"Extra_{extra_id}")
@@ -1132,6 +1421,19 @@ def _run() -> int:
         test_glow_head_changes_and_legs_glow_render,
         test_non_glow_body_unaffected_by_glow_code,
         test_glow_color_arkhalis_uses_undershirt,
+        test_tv_head_glow_constants_match_decompiled,
+        test_tv_head_glow_draws_default_column_not_empty_col0,
+        test_head269_frontshoulder_extra_glow,
+        test_jitter_offsets_match_decompiled_magnitudes,
+        test_jitter_spreads_glow_region,
+        test_body227_jitter_renders_brighter_superset,
+        test_body205_frontarm_4tap_adds_shimmer,
+        test_head211_4tap_constants_match_decompiled,
+        test_head211_4tap_adds_additive_head_local_shimmer,
+        test_coat238_glow_constants_and_render,
+        test_armorset_backpack_applies_rgb_factor,
+        test_glowmask_aux_masks_extracted,
+        test_glow_detail_changes_dont_affect_plain_equipment,
         test_tail_accessory_routes_to_tail_field,
         test_tail_accessory_renders_behind_body,
         test_tail_female_x_offset,
