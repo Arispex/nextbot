@@ -17,7 +17,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from nextbot.terraria_render import render_character
 from nextbot.terraria_render.compositor import (
+    FH,
+    FW,
+    PAD_L,
+    PAD_T,
+    _acc_wing_frame,
     _back_hair_style,
+    _Compositor,
+    _frame,
     _resolve_accessories,
 )
 from nextbot.terraria_render.dye import apply_dye
@@ -364,6 +371,317 @@ def test_animated_wing_renders_nothing_grounded() -> None:
     assert hover == none
 
 
+# ── draw-order / visibility-gate regressions (audit_frames_*.md) ──────
+# These exercise the layer-order, visibility-gate and missing-layer fixes ("shoe-bug
+# family": all assets present but drawn in the wrong order / wrongly hidden or shown).
+# Body skinVariant 0 (male) keeps the body cell at column 0 so the cell maths are
+# simple.
+_APP_M = {**_APPEARANCE, "skinVariant": 0, "hair": 5}
+
+
+def _opaque_cells(name: str, cell: int) -> np.ndarray:
+    """Boolean (FH,FW) mask of the opaque pixels of a sheet's idle cell."""
+    return _frame(name, cell)[..., 3] > 0
+
+
+def test_handoff_acc_draws_over_body_armor_back_arm() -> None:
+    # P1 (item 3): the off-hand composite accessory (HandsOff) is the LAST thing in the
+    # back-arm group, drawn OVER the body armor's back arm (PlayerDrawLayers.cs:1365
+    # body back arm, 1421 handoff acc). The bug drew it UNDER the armor, so where the
+    # handoff sits entirely inside the armor's back-arm sprite the armor swallowed it.
+    #
+    # Fixture check: HandsOff_1 (handoff slot 1) sits entirely inside body 1's (netId
+    # 80) back-arm sprite, so under the buggy order it contributes ZERO visible pixels.
+    back_cell = _Compositor(_APP_M).cells["back_arm"]
+    arm = _opaque_cells("ArmorBody_80", back_cell)
+    hoff = _opaque_cells("Acc_HandsOff_1", back_cell)
+    assert int(hoff.sum()) > 0
+    assert int((hoff & ~arm).sum()) == 0, (
+        "fixture: the handoff must lie wholly inside the armor back arm so the buggy "
+        "under-armor order would hide it entirely")
+
+    # Gauntlet netId 1343 = handOff 1 (back arm) + handOn 6 (front arm). The handOn
+    # always shows over the front arm (left cluster); the handOff only shows over the
+    # armor back arm (right cluster) when drawn AFTER the armor. So the back-arm (right)
+    # cluster of the body-vs-body+gauntlet diff is the discriminator: present after the
+    # fix, empty before.
+    none = _decode(render_character(_APP_M, {"body": _acc(80)}, scale=1))
+    handed = _decode(render_character(
+        _APP_M, {"body": _acc(80)}, accessories=_slots7(1343)))
+    assert none.shape == handed.shape
+    diff = np.any(none != handed, axis=2)
+    _ys, xs = np.nonzero(diff)
+    assert xs.size > 0
+    w = none.shape[1]
+    # the back-arm sits on the player's right (image-right) half; the handOff pixels
+    # there only appear once the accessory is drawn over the armor (the fix).
+    right_cluster = int((xs >= w * 7 // 10).sum())
+    assert right_cluster > 0, (
+        "off-hand accessory not visible over the body armor back arm "
+        "(it is being drawn under the armor and swallowed)")
+
+
+def test_skin_hide_gates_match_decompiled_sets() -> None:
+    # P1 (item 5): the torso/leg skin-hide gates. A pure-logic transcription cross-check
+    # of the decompiled sets (same approach as test_back_hair_predicate_matches_game),
+    # because the bare skin is almost fully covered by the armor sprites at idle so a
+    # pixel test would be flaky (the leg/torso skin only leaks through holes vanilla
+    # idle sprites barely have -- see audit_frames_body_equip.md B6). A wrong set =>
+    # wrong gate, so this guards the fix directly.
+    from nextbot.terraria_render.compositor import (
+        _HIDES_BOTTOM_SKIN_LEGS,
+        _HIDES_TOP_SKIN_BODIES,
+        _LEG_OVERRIDE_SLOTS,
+        _SHOE_OVERRIDE_EXCEPTION,
+    )
+
+    # PlayerDrawSet.cs:1755 hidesTopSkin.
+    assert set(_HIDES_TOP_SKIN_BODIES) == {21, 22, 82, 83, 93}
+    # PlayerDrawSet.cs:1756 hidesBottomSkin legs (body 93 handled separately in code).
+    assert set(_HIDES_BOTTOM_SKIN_LEGS) == {20, 21, 214, 215, 216}
+    # PlayerDrawLayers.cs:1218-1241 ShouldOverrideLegs_CheckPants legs.
+    assert set(_LEG_OVERRIDE_SLOTS) == {
+        55, 63, 67, 106, 138, 140, 143, 217, 222, 226, 228}
+    # PlayerDrawLayers.cs:1246 ShouldOverrideLegs_CheckShoes.
+    assert _SHOE_OVERRIDE_EXCEPTION == 15
+
+
+def test_masked_body_render_is_valid() -> None:
+    # P1 (item 5), end-to-end sanity: a hidesTopSkin body (82, netId 1755) still renders
+    # a valid PNG with the torso-skin gate applied (the gate only changes pixels where
+    # the armor has a hole exposing the torso, which vanilla body 82 does not at idle,
+    # so the render matches the no-gate output here -- the gate is correctness for
+    # hole-y bodies).
+    png = render_character(
+        {**_APP_M, "skinColor": -65281}, {"body": _acc(1755)}, scale=2)
+    assert png[:8] == _PNG_SIG
+
+
+def test_back_head_front_to_back_set_matches_decompiled() -> None:
+    # P1 (item 6): the FrontToBackID map (ArmorIDs.cs:14 = CreateIntSet(-1, 242,246,
+    # 243,247, 244,248, 245,249, 133,252, 224,253)) drives the behind-body back-head
+    # texture (DrawPlayer_01_3_BackHead, LegacyPlayerRenderer.cs:185), which the bug
+    # omitted entirely. Transcription cross-check + assets-present check (a
+    # wrong/missing entry => no back head).
+    from nextbot.terraria_render.compositor import _HEAD_FRONT_TO_BACK
+    assert _HEAD_FRONT_TO_BACK == {
+        242: 246, 243: 247, 244: 248, 245: 249, 133: 252, 224: 253}
+    for back in _HEAD_FRONT_TO_BACK.values():
+        assert int(_opaque_cells(f"Armor_Head_{back}", 0).sum()) > 0
+
+
+def test_back_head_adds_visible_pixels_behind_body() -> None:
+    # P1 (item 6), the layer actually shows: the back-head is drawn behind the body, so
+    # it only contributes where it pokes out from behind the head skin / front helmet /
+    # front hair. Head 224 (netId 4560 -> back 253) is the one vanilla head whose back
+    # piece is exposed at idle. Reproduce the head-cell stack the renderer builds and
+    # assert the back-head has surviving (uncovered) pixels -- the ones the bug dropped.
+    from nextbot.terraria_render.compositor import _resolve_player
+    back = _opaque_cells("Armor_Head_253", 0)            # behind-body back head
+    head_skin = _opaque_cells(_resolve_player(0, 0), 0)  # layer 0 head skin (in front)
+    front_helm = _opaque_cells("Armor_Head_224", 0)      # front helmet (in front)
+    front_hair = _opaque_cells("Player_Hair_1", 0)       # head 224 fullHair: hair draws
+    surviving = back & ~head_skin & ~front_helm & ~front_hair
+    assert int(surviving.sum()) > 0, (
+        "the back-head texture is fully covered -- it would be invisible either way")
+
+    # end-to-end: head 224 renders (the back-head poking out is what makes its render
+    # differ from the bare head; the front helmet shares the same idle frame anyway).
+    helmeted = render_character({**_APP_M, "hair": 0}, {"head": _acc(4560)}, scale=1)
+    assert helmeted[:8] == _PNG_SIG
+
+
+def test_shoe_acc_suppressed_by_leg_override() -> None:
+    # P1 (item 4): DrawPlayer_14_Shoes is gated by !ShouldOverrideLegs_CheckPants
+    # (PlayerDrawLayers.cs:1758): leg slots {55,63,67,106,138,140,143,217,222,226,228}
+    # suppress the shoe accessory -- UNLESS shoe==15 (ShouldOverrideLegs_CheckShoes,
+    # 1246) which short-circuits and keeps it. legs 55 = netId 1505; RocketBoots = netId
+    # 128 (shoe slot 12); FrogLeg = netId 2423 (shoe slot 15).
+    override_legs = {"legs": _acc(1505)}
+    legs_only = render_character(_APP_M, override_legs, scale=1)
+    legs_shoe = render_character(_APP_M, override_legs, accessories=_slots7(128))
+    # under override legs the shoe accessory (slot 12) is suppressed: render unchanged.
+    assert legs_shoe == legs_only
+    # control: with the default (non-override) legs the same shoe IS visible.
+    assert render_character(_APP_M, accessories=_slots7(128)) != render_character(
+        _APP_M, scale=1)
+    # exception: shoe slot 15 (FrogLeg) is NOT suppressed even under the override legs.
+    legs_frog = render_character(_APP_M, override_legs, accessories=_slots7(2423))
+    assert legs_frog != legs_only
+
+
+def test_under_hair_face_is_occluded_by_hair() -> None:
+    # P1 (item 7): a DrawInFaceUnderHairLayer face (ArmorIDs.cs:2144 = {5}, the
+    # Blindfold, netId 888) is drawn in the head group BEFORE the front hair
+    # (PlayerDrawLayers.cs:2631) and NOT again at layer 22. The bug drew every face OVER
+    # the hair. Hair index 5 (a forehead-covering style) overlaps the blindfold, so
+    # under the fix the hair occludes part of the blindfold: its visible footprint is
+    # strictly smaller than its own sprite footprint (over-hair would show more).
+    blindfold_footprint = int(_opaque_cells("Acc_Face_5", 0).sum())
+    assert blindfold_footprint > 0
+    none = _decode(render_character(_APP_M, scale=1))
+    with_face = _decode(render_character(_APP_M, accessories=_slots7(888)))
+    assert none.shape == with_face.shape
+    visible = int(np.any(none != with_face, axis=2).sum())
+    assert 0 < visible < blindfold_footprint, (
+        f"blindfold visible={visible} should be >0 and < "
+        f"footprint {blindfold_footprint} "
+        "(hair must occlude part of it; over-hair would show ~the full sprite)")
+
+
+def test_shield_and_front_acc_render_is_stable() -> None:
+    # P0 (items 1/2): the shield (DrawPlayer_25_Shield, LegacyPlayerRenderer.cs:230) and
+    # the FrontAcc back-half (DrawPlayer_32_FrontAcc_BackPart, 229) were moved to the
+    # correct spot relative to the head group and front arm. With vanilla assets at idle
+    # the shield / front-acc-front-half occupy disjoint x-regions from the front arm and
+    # the head, so the reorder produces no pixel difference (verified in the audit).
+    # This is a sanity guard that the combined shield + front-acc + head + body render
+    # stays valid and deterministic after the reorder.
+    app = {**_APP_M, "hair": 1}
+    # CobaltShield = netId 156 (shield slot 1); CrimsonCloak = netId 2284 (front slot 1,
+    # which exercises both the front-acc back-half and front-half layers).
+    a = render_character(
+        app, {"head": _acc(1824), "body": _acc(80)},
+        accessories=_slots7(156, 2284), scale=2)
+    b = render_character(
+        app, {"head": _acc(1824), "body": _acc(80)},
+        accessories=_slots7(156, 2284), scale=2)
+    assert a[:8] == _PNG_SIG
+    assert a == b
+
+
+# ── draw-offset / frame-formula regressions (audit_frames_*.md, P1 round) ──────
+# These pin the per-category draw offsets that the previous round got wrong: the four
+# bespoke wings (47/49/50/51 used the default formula but the game uses their own base +
+# 2px frame crop) and the Get*DrawOffset additions (face 19 (0,-6), front 13 (-2,0),
+# roller skates 27-30 (0,2)). Offsets are derived for idle direction=1 / gravDir=1
+# (Directions=(1,1)).
+
+
+def _wing_topleft(slot: int) -> tuple[tuple[int, int], np.ndarray]:
+    """Recompute (cell-local top-left, drawn frame) for a wing exactly as draw_acc_wing
+    does, from the decompiled-derived _WING_BESPOKE / _WING_FRAMES."""
+    from nextbot.terraria_render.compositor import _WING_BESPOKE, _WING_FRAMES
+
+    n = _WING_FRAMES.get(slot, 4)
+    cx, cy, crop = _WING_BESPOKE[slot]
+    frame, _src, _size = _acc_wing_frame(f"Wings_{slot}", n, crop=crop)
+    lx, ly = cx - frame.shape[1] // 2, cy - frame.shape[0] // 2
+    return (lx, ly), frame
+
+
+def test_bespoke_wing_offsets_match_decompiled() -> None:
+    # P1 (item 1): wings 47/49/50/51 use bespoke offsets + frame crops in
+    # DrawPlayer_09_Wings, NOT the default (num13-9, num12+2) formula. Pin each one's
+    # cell-local top-left (derived from the decompiled branch; see _WING_BESPOKE) AND
+    # confirm the composited canvas places the source frame there. The expected values
+    # differ from the OLD default-formula top-lefts (the bug) -> this is a real guard.
+    expect = {                       # slot -> (top_left, (frame_w, frame_h))
+        47: ((-42, -14), (118, 92)),  # crop 120x94 -> 118x92, center (17,32)
+        49: ((-42, -14), (118, 92)),  # same as 47
+        50: ((-44, -16), (120, 94)),  # NO crop, center (16,31)
+        51: ((-26, 0), (84, 60)),     # crop 86x62 -> 84x60, center (16,30)
+    }
+    # the buggy default-formula top-lefts these REPLACE (must be different now).
+    old_buggy = {47: (-49, -14), 49: (-49, -14), 50: (-53, -14), 51: (-32, 2)}
+    for slot, (exp_tl, exp_dims) in expect.items():
+        (lx, ly), frame = _wing_topleft(slot)
+        assert (lx, ly) == exp_tl, f"wing {slot} top-left {(lx, ly)} != {exp_tl}"
+        assert (frame.shape[1], frame.shape[0]) == exp_dims, (
+            f"wing {slot} frame {(frame.shape[1], frame.shape[0])} != {exp_dims}")
+        assert (lx, ly) != old_buggy[slot], (
+            f"wing {slot} still at the old default-formula offset {old_buggy[slot]}")
+        # the composited canvas holds the (uncropped-corner) source frame at that spot.
+        comp = _Compositor(_APP_M)
+        comp.draw_acc_wing(slot, None)
+        y0, x0 = PAD_T + ly, PAD_L + lx
+        region = comp.canvas[y0:y0 + frame.shape[0], x0:x0 + frame.shape[1]]
+        assert np.array_equal(region, frame[:region.shape[0], :region.shape[1]]), (
+            f"wing {slot} not composited at its derived top-left")
+
+
+def test_bespoke_wing_frame_crop() -> None:
+    # P1 (item 1, crop part): 47/49/51 trim the frame Width/Height by 2px
+    # (rectangle.Width-=2; Height-=2); 50 draws the full frame (uses `value10`). The
+    # cropped frame is the sheet's top-left, 2px shorter on each axis.
+    from nextbot.terraria_render.compositor import _WING_FRAMES, _sheet
+    for slot, crop in ((47, True), (49, True), (50, False), (51, True)):
+        sheet = _sheet(f"Wings_{slot}")
+        assert sheet is not None
+        n = _WING_FRAMES.get(slot, 4)
+        full_h = sheet.shape[0] // n
+        full_w = sheet.shape[1]
+        _tl, frame = _wing_topleft(slot)
+        if crop:
+            assert (frame.shape[1], frame.shape[0]) == (full_w - 2, full_h - 2)
+        else:
+            assert (frame.shape[1], frame.shape[0]) == (full_w, full_h)
+
+
+def test_default_wing_offset_unchanged() -> None:
+    # Guard: a NON-bespoke wing (AngelWings, slot 2) still uses the default formula
+    # center = (11+num13, 33+num12) = (11, 33) (num13=num12=0), unaffected by the fix.
+    comp = _Compositor(_APP_M)
+    comp.draw_acc_wing(2, None)
+    frame, _src, _size = _acc_wing_frame("Wings_2", 4)
+    lx, ly = 11 - frame.shape[1] // 2, 33 - frame.shape[0] // 2
+    y0, x0 = PAD_T + ly, PAD_L + lx
+    region = comp.canvas[y0:y0 + frame.shape[0], x0:x0 + frame.shape[1]]
+    assert np.array_equal(region, frame[:region.shape[0], :region.shape[1]])
+
+
+def _strip_shift(name: str, offset: tuple[int, int]) -> bool:
+    """True iff drawing strip `name` at `offset` equals drawing it at (0,0) shifted by
+    `offset` (i.e. the offset moves the whole cell content by exactly (dx, dy))."""
+    base = _Compositor(_APP_M)
+    base.draw_acc_strip(name, None, offset=(0, 0))
+    moved = _Compositor(_APP_M)
+    moved.draw_acc_strip(name, None, offset=offset)
+    dx, dy = offset
+    a = base.canvas[PAD_T:PAD_T + FH, PAD_L:PAD_L + FW]
+    b = moved.canvas[PAD_T + dy:PAD_T + dy + FH, PAD_L + dx:PAD_L + dx + FW]
+    return bool(np.array_equal(a, b))
+
+
+def test_face19_draw_offset_applied() -> None:
+    # P1 (item 2): face 19 (BoneHelm) carries GetFaceDrawOffset (0,-6)*Directions
+    # (Player.cs:4384). The renderer must shift it up 6px; other faces stay at (0,0).
+    from nextbot.terraria_render.compositor import _FACE_DRAW_OFFSET
+    assert _FACE_DRAW_OFFSET == {19: (0, -6)}
+    # the offset plumbing moves the Acc_Face_19 cell content up by exactly 6 rows.
+    assert _strip_shift("Acc_Face_19", (0, -6))
+    # end-to-end: face 19 (netId 5100) renders and differs from a no-accessory render
+    # (BoneHelm also PreventHairDraw, but the face sprite itself dominates the change).
+    none = render_character(_APP_M, scale=2)
+    boned = render_character(_APP_M, scale=2, accessories=_slots7(5100))
+    assert boned[:8] == _PNG_SIG
+    assert boned != none
+
+
+def test_front13_and_rollerskate_offsets_match_decompiled() -> None:
+    # P1 item 3 / P2 item 4: GetFrontDrawOffset front==13 -> (-2,0) (Player.cs:4712).
+    # GetShoeDrawOffset roller skates 27-30 -> (0,2) (4732). No vanilla netId maps to
+    # front 13 / shoe 27-30, so these are exercised at the offset level (the constants +
+    # the draw-offset plumbing), not end-to-end.
+    from nextbot.terraria_render.compositor import (
+        _FRONT_DRAW_OFFSET,
+        _SHOE_DRAW_OFFSET,
+    )
+    assert _FRONT_DRAW_OFFSET == {13: (-2, 0)}
+    assert _SHOE_DRAW_OFFSET == {27: (0, 2), 28: (0, 2), 29: (0, 2), 30: (0, 2)}
+    # front 13 (-2,0): both halves of the split front acc shift left by 2px. Use the
+    # front-half draw with the same offset the renderer passes (front_offset).
+    base = _Compositor(_APP_M)
+    base.draw_acc_front_half("Acc_Front_1", None, front=True, offset=(0, 0))
+    moved = _Compositor(_APP_M)
+    moved.draw_acc_front_half("Acc_Front_1", None, front=True, offset=(-2, 0))
+    a = base.canvas[PAD_T:PAD_T + FH, PAD_L:PAD_L + FW]
+    b = moved.canvas[PAD_T:PAD_T + FH, PAD_L - 2:PAD_L - 2 + FW]
+    assert np.array_equal(a, b)
+    # roller-skate (0,2): the shoe strip shifts down by 2px (use a real shoe sheet).
+    assert _strip_shift("Acc_Shoes_27", (0, 2))
+
+
 def _run() -> int:
     tests = [
         test_render_returns_valid_png,
@@ -388,6 +706,19 @@ def _run() -> int:
         test_shoe_accessory_is_visible,
         test_accessory_dye_routes_to_category,
         test_animated_wing_renders_nothing_grounded,
+        test_handoff_acc_draws_over_body_armor_back_arm,
+        test_skin_hide_gates_match_decompiled_sets,
+        test_masked_body_render_is_valid,
+        test_back_head_front_to_back_set_matches_decompiled,
+        test_back_head_adds_visible_pixels_behind_body,
+        test_shoe_acc_suppressed_by_leg_override,
+        test_under_hair_face_is_occluded_by_hair,
+        test_shield_and_front_acc_render_is_stable,
+        test_bespoke_wing_offsets_match_decompiled,
+        test_bespoke_wing_frame_crop,
+        test_default_wing_offset_unchanged,
+        test_face19_draw_offset_applied,
+        test_front13_and_rollerskate_offsets_match_decompiled,
     ]
     failed = 0
     for t in tests:

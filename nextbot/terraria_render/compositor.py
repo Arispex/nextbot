@@ -57,6 +57,26 @@ _BACK_TAIL = {18, 19, 21, 25, 26, 27, 28}
 _BALLOON_TORSO = {18}
 # face items that suppress the front hair draw. ArmorIDs.cs:2140.
 _FACE_PREVENT_HAIR = {2, 3, 4, 19}
+# per-category draw offsets that are NONZERO for a bare-headed idle player (Directions =
+# (direction, gravDir) = (1, 1), so the offset == the base vector). The other Get*DrawOffset
+# cases (face 1/6/8/9/22 etc., beard) only fire for specific equipped head slots / mounts and
+# are 0 at idle. (Player.cs GetFaceDrawOffset:4365 / GetFrontDrawOffset:4708 / GetShoeDrawOffset
+# :4729.) Each maps slot -> (lx, ly) added to the cell-local top-left.
+_FACE_DRAW_OFFSET = {19: (0, -6)}          # GetFaceDrawOffset case 19: (0,-6)*Directions
+_FRONT_DRAW_OFFSET = {13: (-2, 0)}         # GetFrontDrawOffset front==13: (-2,0)*Directions
+_SHOE_DRAW_OFFSET = {27: (0, 2), 28: (0, 2), 29: (0, 2), 30: (0, 2)}  # roller skates
+# face items drawn UNDER the front hair (ArmorIDs.Face.Sets.DrawInFaceUnderHairLayer,
+# ArmorIDs.cs:2144 = CreateBoolSet(false, 5)): only face 5 (Blindfold). It is drawn
+# inside the head group right after the eyes (PlayerDrawLayers.cs:2631) and is the ONE
+# face that is NOT drawn at layer 22 (DrawPlayer_22_FaceAcc guards on the same set,
+# 2807). Every other face draws over the hair at layer 22.
+_FACE_UNDER_HAIR = {5}
+# head equip slots that have a separate behind-body back-head texture
+# (ArmorIDs.Head.Sets.FrontToBackID, ArmorIDs.cs:14 = CreateIntSet(-1, 242,246, 243,247,
+# 244,248, 245,249, 133,252, 224,253)): head slot -> its back-head ArmorHead texture id,
+# drawn behind the body (DrawPlayer_01_3_BackHead, LegacyPlayerRenderer.cs:185) with the
+# body frame + head dye.
+_HEAD_FRONT_TO_BACK = {242: 246, 243: 247, 244: 248, 245: 249, 133: 252, 224: 253}
 # beards tinted by the player's hair color (Wilson beards). ArmorIDs.cs:2281.
 _BEARD_HAIR_COLOR = {2, 3, 4}
 # GlassSlipper male->female shoe-slot remap when the player is female. ArmorIDs.cs:1841
@@ -74,6 +94,26 @@ _WEARS_ROBE_BODIES = frozenset({
 })
 # slot 81 is a robe only when no leg armor is worn (Player.cs:36850 guards its num2).
 _WEARS_ROBE_LEGLESS_ONLY = frozenset({81})
+# leg equip slots that suppress both the shoe accessory (DrawPlayer_14_Shoes guarded by
+# !ShouldOverrideLegs_CheckPants, PlayerDrawLayers.cs:1758) AND the leg skin (layer 10,
+# guarded by !IsBottomOverridden, 1193/1205). ShouldOverrideLegs_CheckPants (1218-1241)
+# returns true for these legs — UNLESS shoe == 15 (ShouldOverrideLegs_CheckShoes, 1243),
+# which short-circuits CheckPants to false (the shoe acc and leg skin are then drawn).
+_LEG_OVERRIDE_SLOTS = frozenset({55, 63, 67, 106, 138, 140, 143, 217, 222, 226, 228})
+# the shoe slot that short-circuits the leg-override (ShouldOverrideLegs_CheckShoes,
+# PlayerDrawLayers.cs:1246: shoe == 15).
+_SHOE_OVERRIDE_EXCEPTION = 15
+# body equip slots that hide the torso skin (PlayerDrawSet.hidesTopSkin,
+# PlayerDrawSet.cs:1755): the body armor fully replaces the torso, so the bare skin must
+# not show through.
+_HIDES_TOP_SKIN_BODIES = frozenset({21, 22, 82, 83, 93})
+# leg equip slots that hide the leg skin (PlayerDrawSet.hidesBottomSkin,
+# PlayerDrawSet.cs:1756). The leg skin is additionally hidden when the body is
+# _HIDES_BOTTOM_SKIN_BODY, or by IsBottomOverridden (the _LEG_OVERRIDE_SLOTS / shoe==15
+# logic above).
+_HIDES_BOTTOM_SKIN_LEGS = frozenset({20, 21, 214, 215, 216})
+# the one body slot that also hides the leg skin (PlayerDrawSet.cs:1756: body == 93).
+_HIDES_BOTTOM_SKIN_BODY = 93
 # the 7 accessory inventory slots map to hideVisibleAccessory bits 3..9 (a still standing
 # player hides functional wings too, since velocity.Y==0). accessories_spec.md §X2.
 _HIDE_BIT_BASE = 3
@@ -101,6 +141,27 @@ _WING_META = _load_json("wing_meta.json")
 _WING_ALWAYS_ANIMATED = set(_WING_META["always_animated"])
 _WING_FRAMES = {int(k): v for k, v in _WING_META["frames"].items()}
 _WING_OFFSET = {int(k): tuple(v) for k, v in _WING_META["offset"].items()}
+# Wings 47/49/50/51 use bespoke offsets in DrawPlayer_09_Wings, NOT the default
+# (num13-9, num12+2) formula. Each maps slot -> (center_x, center_y, crop): `center` is the
+# drawn frame's cell-local center (body cell top-left = (0,0)) derived from the decompiled
+# branch, and `crop` trims the source frame Width/Height by 2px (rectangle.Width-=2;
+# Height-=2) before drawing. The top-left is then center - frameDims//2 (same integer-origin
+# convention as the default formula). Derivations (PlayerDrawLayers.cs, idle direction=1,
+# gravDir=1, bodyFrame.Y=0 so OffsetsPlayerHeadgear[0]=(0,2)):
+#   47 (:800-808) / 49 (:816-827): vector8=(0,2); .Y-=2 -> (0,0); vector9=(1,1)+(0,0)=(1,1);
+#       vec = vector + (1,1)*Directions - UnitX*direction*4 = vector + (-3,1) -> center (17,32)
+#   50 (:916-923): zero2=(0,0); vec = vector - UnitX*direction*4 = vector + (-4,0); the frame
+#       uses `value10` directly (no -2 crop) -> center (16,31)
+#   51 (:773-784): builds its OWN base with (0,6) instead of the common (0,7), then
+#       - UnitX*direction*4; vec = [Position-screen+(width/2, height-bodyFrame.H/2)] + (0,6)
+#       - (4,0) -> center (16,30)
+# (vector's cell-local center = (20,31); see draw_acc_wing for the default-formula identity.)
+_WING_BESPOKE: dict[int, tuple[int, int, bool]] = {
+    47: (17, 32, True),
+    49: (17, 32, True),
+    50: (16, 31, False),
+    51: (16, 30, True),
+}
 _DYES = _load_json("dyes.json")                 # dye netId -> {pass,color,sat,...}
 _HAIR = _load_json("hair_sets.json")
 # hairDye index 1..11 -> replacement [r,g,b] (or null = keep hairColor); index 0 = no
@@ -198,17 +259,22 @@ def _acc_balloon_frame(
 
 
 def _acc_wing_frame(
-    name: str, n_frames: int,
+    name: str, n_frames: int, *, crop: bool = False,
 ) -> tuple[np.ndarray | None, tuple[int, int, int, int], tuple[int, int]]:
     """Wing idle frame 0 of a vertical N-frame strip: (0,0,W,H/N). For a grounded
-    standing player wingFrame==0 (folded). Returns (frame|None, src_rect, sheet_size)."""
+    standing player wingFrame==0 (folded). `crop` trims the right/bottom 2px
+    (rectangle.Width-=2; Height-=2 — wings 47/49/51). Returns (frame|None, src_rect,
+    sheet_size); src_rect/sheet_size feed the dye and reflect the (possibly cropped) frame."""
     sheet = _sheet(name)
     if sheet is None:
         return None, (0, 0, FW, FH), (FW, FH)
     h, w = sheet.shape[0], sheet.shape[1]
     fh = h // max(1, n_frames)
-    frame = sheet[:fh, :w].copy()
-    return frame, (0, 0, w, fh), (w, h)
+    fw = w
+    if crop:
+        fw, fh = fw - 2, fh - 2
+    frame = sheet[:fh, :fw].copy()
+    return frame, (0, 0, fw, fh), (w, h)
 
 
 def _tint(layer: np.ndarray, rgb: tuple[int, int, int] | None) -> np.ndarray:
@@ -427,11 +493,14 @@ class _Compositor:
 
     # ── accessory draws (untinted white + the accessory's own dye) ──
     def draw_acc_strip(
-        self, name: str, dye_spec: dict[str, Any] | None, *, hair_color: bool = False,
+        self, name: str, dye_spec: dict[str, Any] | None, *,
+        hair_color: bool = False, offset: tuple[int, int] = (0, 0),
     ) -> None:
         """A strip/shield/torso-framed accessory: idle frame 0 = (0,0,texW,56), top-left
-        aligned in the cell (0,0). Untinted white (display-doll path) + its dye; beards
-        with UseHairColor tint by the player's hair color instead (accessories_spec §12)."""
+        aligned in the cell at `offset` (default (0,0)). Untinted white (display-doll path)
+        + its dye; beards with UseHairColor tint by the player's hair color instead
+        (accessories_spec §12). `offset` carries the per-category draw offset (e.g. face 19's
+        GetFaceDrawOffset (0,-6); most categories are 0 at idle)."""
         frame, src_rect, sheet_size = _acc_strip_frame(name)
         if frame is None:
             return
@@ -439,7 +508,7 @@ class _Compositor:
             frame = _tint(frame, _hair_tint_color(self.hair_dye, self.hair_rgb))
         if dye_spec:
             frame = apply_dye(frame, dye_spec, src_rect=src_rect, sheet_size=sheet_size)
-        self._over_cell(frame)
+        self._over_cell(frame, *offset)
 
     def draw_acc_balloon(self, name: str, dye_spec: dict[str, Any] | None) -> None:
         """A normal (non-torso) balloon: 52x56 frame 0, cell-local top-left
@@ -454,19 +523,27 @@ class _Compositor:
     def draw_acc_wing(self, slot: int, dye_spec: dict[str, Any] | None) -> None:
         """A wing: idle frame 0 (folded) of the vertical N-frame strip, at the
         cell-local offset derived from DrawPlayer_09_Wings (accessories_spec §1).
-        AlwaysAnimated wings draw nothing grounded and are filtered by the caller."""
+        AlwaysAnimated wings draw nothing grounded and are filtered by the caller.
+
+        Most wings use the default formula center = (11+num13, 33+num12) (= vector's
+        cell-local center (20,31) + (num13-9, num12+2)); wings 47/49/50/51 use their own
+        bespoke center + frame crop (_WING_BESPOKE)."""
         name = f"Wings_{slot}"
         n = _WING_FRAMES.get(slot, 4)
-        frame, src_rect, sheet_size = _acc_wing_frame(name, n)
+        bespoke = _WING_BESPOKE.get(slot)
+        crop = bespoke[2] if bespoke else False
+        frame, src_rect, sheet_size = _acc_wing_frame(name, n, crop=crop)
         if frame is None:
             return
         if dye_spec:
             frame = apply_dye(frame, dye_spec, src_rect=src_rect, sheet_size=sheet_size)
         w, fh = frame.shape[1], frame.shape[0]
-        num13, num12 = _WING_OFFSET.get(slot, (0, 0))
-        lx = 11 + num13 - w // 2
-        ly = 33 + num12 - fh // 2
-        self._over_cell(frame, lx, ly)
+        if bespoke:
+            cx, cy, _ = bespoke
+        else:
+            num13, num12 = _WING_OFFSET.get(slot, (0, 0))
+            cx, cy = 11 + num13, 33 + num12
+        self._over_cell(frame, cx - w // 2, cy - fh // 2)
 
     def draw_acc_hand(self, name: str, cell: int, dye_spec: dict[str, Any] | None) -> None:
         """A composite hand accessory (on/off): 360x224 9x4 grid, drawn at the same
@@ -481,11 +558,13 @@ class _Compositor:
 
     def draw_acc_front_half(
         self, name: str, dye_spec: dict[str, Any] | None, *, front: bool,
+        offset: tuple[int, int] = (0, 0),
     ) -> None:
         """One half of a split front accessory (accessories_spec §11): the BACK half
         (right 20px, cols [20,40)) draws behind the shield/arm; the FRONT half (left
         20px, cols [0,20)) draws over the front arm. Dye uses the full 40x56 frame rect
-        (ArmorShaderData.Apply reads the drawn sub-rect — here the half we keep)."""
+        (ArmorShaderData.Apply reads the drawn sub-rect — here the half we keep). `offset`
+        is GetFrontDrawOffset (front 13 -> (-2,0); 0 otherwise); both halves share it."""
         frame, _src, sheet_size = _acc_strip_frame(name)
         if frame is None:
             return
@@ -500,7 +579,7 @@ class _Compositor:
             masked[:, half:] = 0          # keep the left half only
         else:
             masked[:, :half] = 0          # keep the right half only
-        self._over_cell(masked)
+        self._over_cell(masked, *offset)
 
 
 def _resolve_hair(hair: int, head_slot: int | None) -> dict[str, Any]:
@@ -531,6 +610,7 @@ def _resolve_armor(
     return {
         "head_slot": head_slot,
         "body_slot": body_slot,
+        "leg_slot": leg_slot,
         "head": f"Armor_Head_{head_slot}" if head_slot else None,
         "body": f"ArmorBody_{body_slot}" if body_slot else None,
         "legs": f"Armor_Legs_{leg_slot}" if leg_slot else None,
@@ -676,6 +756,12 @@ def render_character(
     back_slot = acc_slots.get("back")
     if back_slot and back_slot not in _BACK_BACKPACK and back_slot not in _BACK_TAIL:
         comp.draw_acc_strip(f"Acc_Back_{back_slot}", acc_dyes.get("back"))
+    # 2b. back-head texture (DrawPlayer_01_3_BackHead, LegacyPlayerRenderer.cs:185): a few
+    #     helmets have a behind-body back piece (FrontToBackID), drawn at the head cell with
+    #     the body frame + head dye, behind the body.
+    back_head = _HEAD_FRONT_TO_BACK.get(armor["head_slot"])
+    if back_head is not None:
+        comp.draw_armor(f"Armor_Head_{back_head}", "col", armor["head_dye"])
     # 3. balloon — normal balloons float behind the body; balloon 18 (torso-framed) is
     #    drawn later in front of the back arm (balloonFront).
     balloon_slot = acc_slots.get("balloon")
@@ -685,30 +771,58 @@ def render_character(
     # ===== BACK ARM group (+ off-hand composite) =====
     comp.draw_player(7, "back_arm")
     comp.draw_player(5, "back_arm")
+    comp.draw_armor(armor_body, "back_arm", body_dye)
+    # balloon 18 (balloonFront): torso-framed, in front of the back arm.
+    if balloon_slot and balloon_slot in _BALLOON_TORSO:
+        comp.draw_acc_strip(f"Acc_Balloon_{balloon_slot}", acc_dyes.get("balloon"))
+    # off-hand accessory (composite) is the LAST thing in the back-arm group, drawn OVER
+    # the body armor's back arm (DrawPlayer_12_SkinComposite_BackArmShirt: body back arm at
+    # PlayerDrawLayers.cs:1365, handoff acc at 1421).
     handoff_slot = acc_slots.get("handOff")
     if handoff_slot:
         comp.draw_acc_hand(
             f"Acc_HandsOff_{handoff_slot}", comp.cells["back_arm"],
             acc_dyes.get("handOff"))
-    comp.draw_armor(armor_body, "back_arm", body_dye)
-    # balloon 18 (balloonFront): torso-framed, in front of the back arm.
-    if balloon_slot and balloon_slot in _BALLOON_TORSO:
-        comp.draw_acc_strip(f"Acc_Balloon_{balloon_slot}", acc_dyes.get("balloon"))
 
     # ===== BODY + LEG SKIN (+ shoe accessory) =====
-    comp.draw_player(3, "torso")
-    comp.draw_player(10, "col")
-
+    body_slot = armor["body_slot"]
+    leg_slot = armor["leg_slot"]
     shoe_slot = acc_slots.get("shoe")
+    # IsBottomOverridden (PlayerDrawLayers.cs:1205): a robe/mermaid leg or shoe==15 fully
+    # replaces the legs, so the shoe accessory AND the leg skin are suppressed. CheckPants
+    # short-circuits to false when shoe==15 (CheckShoes), but CheckShoes itself still makes
+    # IsBottomOverridden true — so the combined gate is (shoe==15) OR (legs in override set).
+    bottom_overridden = (
+        shoe_slot == _SHOE_OVERRIDE_EXCEPTION or leg_slot in _LEG_OVERRIDE_SLOTS)
+    # torso skin (layer 3) is hidden by hidesTopSkin bodies (PlayerDrawSet.cs:1755).
+    if body_slot not in _HIDES_TOP_SKIN_BODIES:
+        comp.draw_player(3, "torso")
+    # leg skin (layer 10) is hidden by hidesBottomSkin (legs/body93, PlayerDrawSet.cs:1756)
+    # OR IsBottomOverridden (PlayerDrawLayers.cs:1193).
+    hides_bottom_skin = (
+        leg_slot in _HIDES_BOTTOM_SKIN_LEGS or body_slot == _HIDES_BOTTOM_SKIN_BODY)
+    if not hides_bottom_skin and not bottom_overridden:
+        comp.draw_player(10, "col")
 
     def draw_shoe_acc() -> None:
-        if shoe_slot:
-            comp.draw_acc_strip(f"Acc_Shoes_{shoe_slot}", acc_dyes.get("shoe"))
+        # DrawPlayer_14_Shoes is guarded by !ShouldOverrideLegs_CheckPants
+        # (PlayerDrawLayers.cs:1758): a leg-override slot suppresses the shoe accessory,
+        # but shoe==15 (CheckShoes) short-circuits CheckPants to false so the shoe shows.
+        if not shoe_slot:
+            return
+        if shoe_slot != _SHOE_OVERRIDE_EXCEPTION and leg_slot in _LEG_OVERRIDE_SLOTS:
+            return
+        # roller skates (27-30) get GetShoeDrawOffset (0,2); other shoes are 0 at idle.
+        comp.draw_acc_strip(
+            f"Acc_Shoes_{shoe_slot}", acc_dyes.get("shoe"),
+            offset=_SHOE_DRAW_OFFSET.get(shoe_slot, (0, 0)))
 
     def draw_leggings() -> None:
         # leggings = leg armor (replaces pants+shoes) or the default pants+shoes.
         if armor_legs:
-            comp.draw_armor(armor_legs, "col", armor["leg_dye"])
+            # when wearing a robe the leg-armor layer is dyed with the BODY dye, not the
+            # leg dye (UpdateDyes: cLegs = cBody when wearsRobe, Player.cs:9309-9311).
+            comp.draw_armor(armor_legs, "col", body_dye if wears_robe else armor["leg_dye"])
         else:
             comp.draw_player(11, "col")
             comp.draw_player(12, "col")
@@ -719,7 +833,6 @@ def render_character(
     # first either way; the shoe accessory rides the leg frame. (The game also guards the
     # robe branch with `body != 166`, but body 166 is intentionally not in the robe set, so
     # it already falls through to the normal branch here.)
-    body_slot = armor["body_slot"]
     wears_robe = body_slot in _WEARS_ROBE_BODIES and (
         # slot 81 only counts as a robe when no leg armor is worn.
         body_slot not in _WEARS_ROBE_LEGLESS_ONLY or not armor_legs)
@@ -745,7 +858,7 @@ def render_character(
         comp.draw_player(4, "torso")
         comp.draw_player(6, "torso")
 
-    # ===== IN FRONT, torso accessories (waist / neck / front-acc back-half) =====
+    # ===== IN FRONT, torso accessories (waist / neck) =====
     waist_slot = acc_slots.get("waist")
     if waist_slot:
         comp.draw_acc_strip(f"Acc_Waist_{waist_slot}", acc_dyes.get("waist"))
@@ -753,15 +866,20 @@ def render_character(
     if neck_slot:
         comp.draw_acc_strip(f"Acc_Neck_{neck_slot}", acc_dyes.get("neck"))
     front_slot = acc_slots.get("front")
-    if front_slot:
-        comp.draw_acc_front_half(
-            f"Acc_Front_{front_slot}", acc_dyes.get("front"), front=False)
 
     # ===== HEAD group (+ beard) =====
     comp.draw_player(0, "col")
     comp.draw_player(1, "col")
     comp.draw_player(2, "col")
     comp.draw_player(15, "col")
+    face_slot = acc_slots.get("face")
+    # face-under-hair (DrawInFaceUnderHairLayer = {5}, PlayerDrawLayers.cs:2631): drawn in
+    # the head group right after the eyes and BEFORE the front hair. These faces are NOT
+    # drawn again at layer 22 (DrawPlayer_22_FaceAcc guards on the same set, 2807).
+    if face_slot in _FACE_UNDER_HAIR:
+        comp.draw_acc_strip(
+            f"Acc_Face_{face_slot}", acc_dyes.get("face"),
+            offset=_FACE_DRAW_OFFSET.get(face_slot, (0, 0)))
     # 8. front hair (unless a PreventHairDraw face acc), then head armor over it
     if draw_front_hair:
         comp.draw_hair(hair_file, clip_rows=_FRONT_HAIR_CLIP if is_back else FH)
@@ -772,10 +890,26 @@ def render_character(
         comp.draw_acc_strip(
             f"Acc_Beard_{beard_slot}", acc_dyes.get("beard"),
             hair_color=beard_slot in _BEARD_HAIR_COLOR)
-    # face accessory (over the head/hair).
-    face_slot = acc_slots.get("face")
-    if face_slot:
-        comp.draw_acc_strip(f"Acc_Face_{face_slot}", acc_dyes.get("face"))
+    # face accessory (layer 22, over the head/hair) — every face EXCEPT the under-hair set.
+    # face 19 carries GetFaceDrawOffset (0,-6); others are 0 for a bare-headed idle player.
+    if face_slot and face_slot not in _FACE_UNDER_HAIR:
+        comp.draw_acc_strip(
+            f"Acc_Face_{face_slot}", acc_dyes.get("face"),
+            offset=_FACE_DRAW_OFFSET.get(face_slot, (0, 0)))
+
+    # ===== IN FRONT, after the head/face group (front-acc back-half / shield) =====
+    # FrontAcc back-half (DrawPlayer_32_FrontAcc_BackPart, LegacyPlayerRenderer.cs:229) is
+    # drawn AFTER the head/face group (it covers the head/neck region), then the shield
+    # (DrawPlayer_25_Shield, 230) — both BEFORE the front arm so the arm occludes them.
+    # front 13 carries GetFrontDrawOffset (-2,0); other fronts are 0. Both halves share it.
+    front_offset = _FRONT_DRAW_OFFSET.get(front_slot or 0, (0, 0))
+    if front_slot:
+        comp.draw_acc_front_half(
+            f"Acc_Front_{front_slot}", acc_dyes.get("front"), front=False,
+            offset=front_offset)
+    shield_slot = acc_slots.get("shield")
+    if shield_slot:
+        comp.draw_acc_strip(f"Acc_Shield_{shield_slot}", acc_dyes.get("shield"))
 
     # ===== FRONT ARM group (+ on-hand composite) =====
     comp.draw_player(7, "front_arm")
@@ -791,13 +925,13 @@ def render_character(
             f"Acc_HandsOn_{handon_slot}", comp.cells["front_arm"],
             acc_dyes.get("handOn"))
 
-    # ===== IN FRONT, outermost (front-acc front-half / shield) =====
+    # ===== IN FRONT, outermost (front-acc front-half over the front arm) =====
+    # FrontAcc front-half (DrawPlayer_32_FrontAcc_FrontPart, LegacyPlayerRenderer.cs:243)
+    # is the last accessory, drawn OVER the front arm.
     if front_slot:
         comp.draw_acc_front_half(
-            f"Acc_Front_{front_slot}", acc_dyes.get("front"), front=True)
-    shield_slot = acc_slots.get("shield")
-    if shield_slot:
-        comp.draw_acc_strip(f"Acc_Shield_{shield_slot}", acc_dyes.get("shield"))
+            f"Acc_Front_{front_slot}", acc_dyes.get("front"), front=True,
+            offset=front_offset)
 
     canvas = _crop_to_content(comp.canvas)
     if scale > 1:
