@@ -16,7 +16,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from nextbot.terraria_render import compositor as glow_mod
-from nextbot.terraria_render import render_character
+from nextbot.terraria_render import dye_noise, render_character
 from nextbot.terraria_render.compositor import (
     FH,
     FW,
@@ -29,7 +29,15 @@ from nextbot.terraria_render.compositor import (
     _over_glow,
     _resolve_accessories,
 )
-from nextbot.terraria_render.dye import apply_dye
+from nextbot.terraria_render.dye import (
+    _PILLAR_GAIN,
+    _PILLAR_TIME,
+    _emissive_tonemap,
+    _nebula,
+    _stardust,
+    _vortex,
+    apply_dye,
+)
 from nextbot.terraria_render.image_io import read_png
 
 _PNG_SIG = b"\x89PNG\r\n\x1a\n"
@@ -233,6 +241,118 @@ def test_gel_dye_preserves_source_arm_body_shading() -> None:
     assert fa_clip < 0.05, (
         f"Gel clipped the forearm to white ({fa_clip:.0%} of px R==255), "
         "oC0 exploded past unity")
+
+
+_HEAD_GEOM = ((0, 0, FW, FH), (FW, FH))           # idle head/leg strip cell + sheet
+
+
+def _raw_noise_rgb(
+    frame: np.ndarray, name: str, color: list, u_time: float,
+) -> np.ndarray:
+    """Run the real ps_2_0 bytecode for `name`; return un-premultiplied (h,w,3) float
+    rgb (the over-unity shader output BEFORE any clip/tone-map). uSecondary=(1,1,1)."""
+    arr = frame.astype(np.float64) / 255.0
+    a = arr[..., 3]
+    pr = arr.copy()
+    pr[..., :3] = arr[..., :3] * a[..., None]
+    out = dye_noise.run_noise_pass(
+        pr, name, u_color=np.asarray(color, dtype=np.float64),
+        u_secondary=np.array([1.0, 1.0, 1.0]), u_sat=1.0,
+        src_rect=_HEAD_GEOM[0], sheet_size=_HEAD_GEOM[1], u_time=u_time)
+    assert out is not None                                   # noise asset must ship
+    oa = out[..., 3]
+    nz = oa > 1e-6
+    return np.where(nz[..., None], out[..., :3] / np.where(nz, oa, 1.0)[..., None], 0.0)
+
+
+def _compose_rgb(frame: np.ndarray, rgb: np.ndarray) -> np.ndarray:
+    """Put float rgb back onto the frame's alpha and quantize -> straight uint8."""
+    res = frame.astype(np.float64) / 255.0
+    res[..., :3] = np.clip(rgb, 0.0, 1.0)
+    return (np.clip(res, 0.0, 1.0) * 255.0 + 0.5).astype(np.uint8)
+
+
+def _near_white_pct(out: np.ndarray, op: np.ndarray) -> float:
+    """% of opaque pixels whose min channel > 0.7 (near-white streak coverage)."""
+    rgb = out[op][:, :3].astype(np.float64) / 255.0
+    return float((rgb.min(axis=1) > 0.7).mean() * 100.0)
+
+
+def test_vortex_dye_is_faithful_hard_clip_not_overexposed() -> None:
+    # research/vortex_dye_bug.md plan A: ArmorVortex (netId 3528) must equal the
+    # faithful bytecode HARD-CLIPPED to [0,1] (the game GPU), NOT the old emissive path
+    # (gain=1.5 + overflow tone-map) which double-exposed the teal/white streaks (~1.5x
+    # more near-white than the game, desaturating the teal toward white). The bytecode
+    # already makes the bright streaks (sparkle = noise*luma*5*uSecondary, over-unity on
+    # bright source pixels); the fix just stops re-amplifying them offline.
+    assert "ArmorVortex" not in _PILLAR_GAIN            # no extra emissive lift
+    u_time = _PILLAR_TIME["ArmorVortex"]               # swirl phase still bakes
+    color = [0.1, 0.5, 0.35]
+    for sheet in ("Armor_Head_276", "Armor_Legs_217"):
+        frame = _frame(sheet, 0)
+        if frame[..., 3].sum() == 0:                   # asset absent -> APPROX fallback
+            continue
+        op = frame[..., 3] > 0
+        raw = _raw_noise_rgb(frame, "ArmorVortex", color, u_time)
+        # 1) production _vortex == faithful bytecode hard-clipped (bit-for-bit).
+        got = _vortex(frame.copy(), src_rect=_HEAD_GEOM[0], sheet_size=_HEAD_GEOM[1])
+        assert np.array_equal(got, _compose_rgb(frame, raw)), (
+            f"{sheet}: Vortex no longer matches the faithful hard-clip "
+            "(emissive gain/tone-map still applied?)")
+        # 2) ...and meaningfully LESS white than the old emissive path (gain 1.5 +
+        #    overflow tone-map), so the over-exposure regression cannot return.
+        old = _compose_rgb(frame, _emissive_tonemap(raw, 1.5))
+        assert _near_white_pct(got, op) < _near_white_pct(old, op), (
+            f"{sheet}: fixed Vortex not less white than the old emissive path")
+
+
+def test_stardust_dye_is_faithful_hard_clip_not_overexposed() -> None:
+    # research/vortex_dye_bug.md (same mechanism as ArmorVortex): ArmorStardust (netId
+    # 3529) must equal the faithful bytecode HARD-CLIPPED to [0,1] (the game GPU), NOT
+    # the old emissive path (gain=1.35 + overflow tone-map) which double-exposed the
+    # starfield (~+0.14 mean brightness, 2-13x more near-white than the game,
+    # desaturating the deep blue toward white). The bytecode already makes the bright
+    # sparkles (noise-threshold * uSecondary * 8, over-unity on bright source pixels);
+    # the fix just stops re-amplifying them offline. uColor/uSecondary/sat stay faithful
+    # to DyeInitializer.cs (3529 binds UseColor(0.4,0.6,1)/UseSecondaryColor(1,1,1)/1).
+    assert "ArmorStardust" not in _PILLAR_GAIN          # no extra emissive lift
+    u_time = _PILLAR_TIME["ArmorStardust"]              # starfield phase still bakes
+    color = [0.4, 0.6, 1.0]
+    for sheet in ("Armor_Head_276", "Armor_Legs_217"):
+        frame = _frame(sheet, 0)
+        if frame[..., 3].sum() == 0:                 # asset absent -> APPROX fallback
+            continue
+        op = frame[..., 3] > 0
+        raw = _raw_noise_rgb(frame, "ArmorStardust", color, u_time)
+        # 1) production _stardust == faithful bytecode hard-clipped (bit-for-bit).
+        got = _stardust(frame.copy(), src_rect=_HEAD_GEOM[0], sheet_size=_HEAD_GEOM[1])
+        assert np.array_equal(got, _compose_rgb(frame, raw)), (
+            f"{sheet}: Stardust no longer matches the faithful hard-clip "
+            "(emissive gain/tone-map still applied?)")
+        # 2) ...and meaningfully LESS white than the old emissive path (gain 1.35 +
+        #    overflow tone-map), so the over-exposure regression cannot return.
+        old = _compose_rgb(frame, _emissive_tonemap(raw, 1.35))
+        assert _near_white_pct(got, op) < _near_white_pct(old, op), (
+            f"{sheet}: fixed Stardust not less white than the old emissive path")
+
+
+def test_stardust_fix_leaves_other_noise_pillars_unchanged() -> None:
+    # Regression: the Stardust fix touched only ArmorStardust. Nebula (3527) keeps its
+    # emissive lift (per-pass _PILLAR_GAIN=1.4), so its output is NOT a plain faithful
+    # hard-clip -- it stays brighter (gain + tone-map). HallowBoss (4778) stays emissive
+    # at gain 1.0 (in-gamut, but still routed through the tone-map). Guards against
+    # accidentally turning off emissive globally for the still-emissive pillars.
+    assert _PILLAR_GAIN["ArmorNebula"] == 1.4          # untouched (Nebula needs lift)
+    assert _PILLAR_GAIN["ArmorHallowBoss"] == 1.0      # untouched (in-gamut emissive)
+    frame = _frame("Armor_Head_276", 0)
+    if frame[..., 3].sum() == 0:
+        return
+    got = _nebula(frame.copy(), src_rect=_HEAD_GEOM[0], sheet_size=_HEAD_GEOM[1])
+    raw = _raw_noise_rgb(
+        frame, "ArmorNebula", [1.0, 0.0, 1.0], _PILLAR_TIME["ArmorNebula"])
+    # the emissive lift makes Nebula differ from a plain hard-clip (still emissive).
+    assert not np.array_equal(got, _compose_rgb(frame, raw)), (
+        "ArmorNebula collapsed to the faithful hard-clip -- emissive lift lost")
 
 
 def _hair_appearance(hair_dye: int) -> dict:
@@ -1433,6 +1553,9 @@ def _run() -> int:
         test_noise_dye_falls_back_without_geometry,
         test_twilight_dye_changes_input,
         test_gel_dye_preserves_source_arm_body_shading,
+        test_vortex_dye_is_faithful_hard_clip_not_overexposed,
+        test_stardust_dye_is_faithful_hard_clip_not_overexposed,
+        test_stardust_fix_leaves_other_noise_pillars_unchanged,
         test_hairdye_twilight_differs_from_none,
         test_hairdye_legacy_changes_hair_color,
         test_back_hair_predicate_matches_game,

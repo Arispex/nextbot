@@ -494,8 +494,12 @@ def _loki(
 _PILLAR_TIME: dict[str, float] = {
     "ArmorSolar": 5.0,       # brightness pulse c2=sin(uTime*0.477+0.5)*0.2+1 peaks ~1.13
     "ArmorNebula": 3.0,      # cloud uv-scroll phase with the most pink coverage
-    "ArmorVortex": 0.5,      # swirl phase with the brightest teal energy streaks
-    "ArmorStardust": 1.0,    # starfield phase showing the most bright white sparkles
+    "ArmorVortex": 0.5,      # swirl phase (uTime only rotates the noise uv -> which
+                             # streaks appear; it does NOT change brightness, see
+                             # research/vortex_dye_bug.md §2)
+    "ArmorStardust": 1.0,    # starfield phase: uTime only scrolls the noise uv (which
+                             # sparkles appear), NOT brightness -- the sparkles are
+                             # hard-clipped like the game GPU (no emissive gain)
     "ArmorHallowBoss": 0.0,  # palette uv barely time-shifts; 0 already bright pastel
 }
 # Per-pass emissive gain applied before the tone-map: a mild lift so the glow reads as
@@ -503,10 +507,14 @@ _PILLAR_TIME: dict[str, float] = {
 # Tuned by eye (temp/xnb_probe/out/tonemap_<pass>.png): high enough to glow, low enough
 # to keep the hue (>~2.0 washes everything to white). HallowBoss is already bright and
 # in-gamut -> 1.0 (no gain, stays accurate).
+# ArmorVortex AND ArmorStardust are intentionally ABSENT: their bright streaks/sparkles
+# already exist in the faithful bytecode (sparkle = noise*luma*N*uSecondary, over-unity on
+# bright source pixels) and the game just hard-clips them to white. An extra gain + overflow
+# tone-map double-exposed them (~1.5x more near-white than the game for Vortex; ~+0.14 mean
+# brightness / 2-13x near-white for Stardust), so both go through the plain np.clip hard-clip
+# = GPU behaviour (research/vortex_dye_bug.md plan A).
 _PILLAR_GAIN: dict[str, float] = {
     "ArmorNebula": 1.4,
-    "ArmorVortex": 1.5,
-    "ArmorStardust": 1.35,
     "ArmorHallowBoss": 1.0,
 }
 
@@ -634,17 +642,21 @@ def _vortex(
     *, src_rect: SrcRect = _DEFAULT_RECT, sheet_size: SheetSize = _DEFAULT_SHEET,
     u_time: float | None = None,
 ) -> np.ndarray:
-    """ArmorVortex: real swirling noise (emissive); APPROX = brightness recolor.
+    """ArmorVortex: real swirling noise, hard-clipped exactly like the game GPU.
 
     Teal/green energy glow: the bytecode swirls polar-coord noise into bright
-    `uSecondary` streaks (over-unity) over a `uColor*luma` base. Frozen at a bright
-    swirl phase and tone-mapped so the energy streaks read as glow."""
+    `uSecondary` streaks over a `uColor*luma` base. The streaks are already over-unity
+    in the faithful bytecode (sparkle = noise*luma*5*uSecondary on bright source pixels);
+    the game simply hard-clips them to white. So this runs the faithful bytecode and
+    clips to [0,1] (`emissive=False`) -- NO extra gain / overflow tone-map, which would
+    double-expose it (~1.5x more near-white than the game; research/vortex_dye_bug.md).
+    `_PILLAR_TIME` still picks the representative swirl phase, but uTime only rotates the
+    noise uv (which streaks appear), not the brightness."""
     uC = _col(uColor, [0.1, 0.5, 0.35])
     uS = _col(uSecondary, [1.0, 1.0, 1.0])
     return _noise_pass(arr_u8, "ArmorVortex", uColor=uC, uSecondary=uS, uSat=1.0,
                        src_rect=src_rect, sheet_size=sheet_size,
-                       u_time=_pillar_time("ArmorVortex", u_time), emissive=True,
-                       gain=_PILLAR_GAIN["ArmorVortex"],
+                       u_time=_pillar_time("ArmorVortex", u_time), emissive=False,
                        fallback=lambda: _brightness_clip(arr_u8, uC))
 
 
@@ -653,12 +665,18 @@ def _stardust(
     *, src_rect: SrcRect = _DEFAULT_RECT, sheet_size: SheetSize = _DEFAULT_SHEET,
     u_time: float | None = None,
 ) -> np.ndarray:
-    """ArmorStardust: real noise starfield (emissive); APPROX = uColor base.
+    """ArmorStardust: real swirling-noise starfield, hard-clipped exactly like the game GPU.
 
-    Deep blue (uColor*luma*0.666) with bright white star sparkles
-    (`noise-threshold * uSecondary * 8`, strongly over-unity). Frozen at a phase
-    (`_PILLAR_TIME`, via the now-correct uTime preshader input) showing the most
-    sparkles; tone-mapped so the specks read as hot white stars, not clipped blue."""
+    Deep blue base (uColor*luma*0.666) with bright white star sparkles
+    (`noise-threshold * uSecondary * 8`). The sparkles are already over-unity in the
+    faithful bytecode on bright source pixels; the game GPU simply hard-clips them to
+    white. So this runs the faithful bytecode and clips to [0,1] (`emissive=False`) --
+    NO extra gain / overflow tone-map, which double-exposed it (~+0.14 mean brightness,
+    2-13x more near-white than the game, desaturating the blue toward white;
+    research/vortex_dye_bug.md, same mechanism as ArmorVortex). `_PILLAR_TIME` still
+    picks the representative starfield phase (the now-correct uTime preshader input),
+    but it only scrolls the noise uv (which sparkles appear), not the brightness.
+    uColor/uSecondary/sat are faithful to DyeInitializer.cs (3529: 0.4,0.6,1 / 1,1,1 / 1)."""
     uC = _col(uColor, [0.4, 0.6, 1.0])
     uS = _col(uSecondary, [1.0, 1.0, 1.0])
 
@@ -667,8 +685,8 @@ def _stardust(
 
     return _noise_pass(arr_u8, "ArmorStardust", uColor=uC, uSecondary=uS, uSat=1.0,
                        src_rect=src_rect, sheet_size=sheet_size,
-                       u_time=_pillar_time("ArmorStardust", u_time), emissive=True,
-                       gain=_PILLAR_GAIN["ArmorStardust"], fallback=approx)
+                       u_time=_pillar_time("ArmorStardust", u_time), emissive=False,
+                       fallback=approx)
 
 
 def _shifting_sands(
