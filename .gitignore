@@ -150,3 +150,6 @@ app.db-wal
 .webui_auth.json
 .vscode/
 .DS_Store
+
+# scratch: 反编译产物 / 本地 sqlite / 渲染草稿（勿提交）
+temp/
