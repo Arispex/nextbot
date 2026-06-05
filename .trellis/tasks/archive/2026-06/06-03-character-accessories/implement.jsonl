@@ -1,0 +1,5 @@
+{"file": ".trellis/tasks/06-03-character-accessories/research/accessories_spec.md", "reason": "全部 12 配饰类别的权威渲染规格：贴图/idle 帧/绘制偏移/层序、社交覆盖规则、hideVisuals 位映射、配饰染料对应、手部 composite 对齐、贴图提取清单、合成集成顺序"}
+{"file": ".trellis/tasks/06-03-character-accessories/research/terraria_render_spec.md", "reason": "身体 composite 帧/cell/绘制顺序——配饰层需与之交织（前/后、手臂 cell 2/20）"}
+{"file": ".trellis/tasks/06-03-character-accessories/research/dye_passes_spec.md", "reason": "染料 pass 公式——配饰染料复用 dye.apply_dye（同 GameShaders.Armor 体系）"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "复用现有 compositor/dye/资源提取与查表生成模式，避免重复；配饰染料复用 apply_dye"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "API accessories/vanityAccessories/accessoryDyes 三组 → 渲染的数据流与社交覆盖/隐藏分支一致性"}

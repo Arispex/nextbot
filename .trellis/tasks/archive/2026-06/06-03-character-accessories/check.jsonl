@@ -1,0 +1,4 @@
+{"file": ".trellis/tasks/06-03-character-accessories/research/accessories_spec.md", "reason": "核对各配饰类别的层序/偏移/帧、社交覆盖、hideVisuals、染料是否符合逆向规格"}
+{"file": ".trellis/tasks/06-03-character-accessories/research/terraria_render_spec.md", "reason": "核对配饰与身体层的交织顺序（前后、手臂 cell）正确"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "核对三组配饰字段→渲染数据流、空槽/隐藏/社交覆盖分支"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "核对复用现有渲染/染料/提取链路、无重复、模块仍不依赖 NoneBot"}
