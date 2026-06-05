@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-5.md`
-- **Total Sessions**: 215
+- **Total Sessions**: 216
 - **Last Active**: 2026-06-05
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-5.md` | ~73 | Active |
+| `journal-5.md` | ~106 | Active |
 | `journal-4.md` | ~1973 | Archived |
 | `journal-3.md` | ~1984 | Archived |
 | `journal-2.md` | ~1973 | Archived |
@@ -33,6 +33,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 216 | 2026-06-05 | 菜单将查询系统分类移到序号 2 | `dda62ac` | `main` |
 | 215 | 2026-06-05 | 在线图片卡片显示 QQ 头像与 QQ 号 | `ceda72d` | `main` |
 | 214 | 2026-06-05 | 在线图片模式显示服务器 ID | `8e1b036` | `main` |
 | 213 | 2026-06-05 | 在线命令图片模式 | `ec0005b`, `cd754ae` | `main` |
