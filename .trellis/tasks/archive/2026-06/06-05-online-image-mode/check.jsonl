@@ -1,0 +1,6 @@
+{"file": ".trellis/tasks/06-05-online-image-mode/prd.md", "reason": "对照验收标准核查：默认走图片、image_mode=False 不回归、复用管线、降级、字段原样透传、测试覆盖"}
+{"file": ".trellis/tasks/06-05-online-image-mode/research/online-players-api.md", "reason": "核查 API 字段名/结构原样保留（vanityAccessories→vanity_accessories、accessoryDyes→accessory_dyes 映射正确），appearance=null 跳过、颜色 packed int 不解码"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "核查降级分支与错误语义：全失败/无可渲染→文字，部分失败→渲可用部分，原因原样透传不拼接动作"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "核查关键路径日志齐全、复用统一入口、无无意义堆砌、风格一致"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "核查 ruff/pyright/测试全绿；用户反馈文案遵循动作+结果/动作+结果，原因，无对象名"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "核查确实复用既有渲染管线、未重复造轮子（HTML 注入转义、截图发送、立绘合成）"}

@@ -1,0 +1,9 @@
+{"file": ".trellis/tasks/06-05-online-image-mode/prd.md", "reason": "任务需求与验收标准：image_mode 开关、图片/文字二选一、降级策略、复用管线"}
+{"file": ".trellis/tasks/06-05-online-image-mode/research/online-players-api.md", "reason": "新 API /nextbot/online-players 契约——字段名/结构/值必须原样使用，不翻译不改写（CLAUDE.md 规则 5）；含 appearance=null 跳过、sessionOnlineSeconds 语义、颜色 packed int"}
+{"file": ".trellis/tasks/06-05-online-image-mode/research/implementation-blueprint.md", "reason": "精确实现落点：handler 分支/params schema、_build_character_sprite_uri 抽核复用、新增 online_players_page+模板+web_server+render 路由四处、截图发送、降级、日志、测试"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "本任务核心是复用既有渲染管线（render_character / _build_character_sprite_uri / create_*_page / render_and_send_screenshot），避免重复实现"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "跨层改动：plugin handler ↔ server/pages 模板 ↔ web_server 工厂 ↔ routes/render 路由，需保持四层一致"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "降级与错误语义：无服务器/全失败/无可渲染玩家→文字降级，部分失败→渲可用部分；错误原因原样透传"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "入口/外部依赖调用/降级分支需打日志，复用统一日志入口，machine-search-first 风格 key=value"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "新增 server/pages/online_players_page.py + server/templates/online_players.html 需符合目录约定"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "ruff/pyright/测试全绿的质量基线；用户反馈文案规范（动作+结果/动作+结果，原因）"}
