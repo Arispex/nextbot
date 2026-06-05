@@ -40,6 +40,23 @@ def _normalize_player(player: dict[str, Any]) -> dict[str, str]:
     }
 
 
+def _normalize_server_id(raw: Any) -> int | None:
+    """服务器 ID 兜底：合法 int（含数字字符串）→ int，缺失 / 非法 → None。
+
+    返回 None 时模板只显示服务器名，不渲染孤立的 ID 前缀（与 best-effort 一致）。
+    """
+    if isinstance(raw, bool):  # bool 是 int 子类，但不应作为服务器 ID
+        return None
+    if isinstance(raw, int):
+        return raw
+    if isinstance(raw, str):
+        try:
+            return int(raw.strip())
+        except ValueError:
+            return None
+    return None
+
+
 def _normalize_servers(servers: list[dict[str, Any]]) -> list[dict[str, Any]]:
     normalized: list[dict[str, Any]] = []
     for server in servers:
@@ -56,6 +73,7 @@ def _normalize_servers(servers: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 players.append(_normalize_player(player))
         normalized.append(
             {
+                "server_id": _normalize_server_id(server.get("server_id")),
                 "server_name": str(server.get("server_name", "")).strip(),
                 "players": players,
             }
@@ -69,9 +87,10 @@ def build_payload(
 ) -> dict[str, Any]:
     """构建在线玩家榜单页 payload。
 
-    ``servers``：按服务器分区的列表，每项 ``{server_name, players:[{name,
-    online_time_text, character_sprite_data_uri}]}``。立绘 data URI 已由
-    handler 侧 ``render_character`` 合成；本页只负责布局展示。
+    ``servers``：按服务器分区的列表，每项 ``{server_id, server_name, players:
+    [{name, online_time_text, character_sprite_data_uri}]}``。``server_id`` 用于
+    分区头展示「ID. 名称」（缺失 / 非法 → None，模板只显示名称）。立绘 data URI
+    已由 handler 侧 ``render_character`` 合成；本页只负责布局展示。
     """
     return {
         "generated_at": beijing_now_text(),

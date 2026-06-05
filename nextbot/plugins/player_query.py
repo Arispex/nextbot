@@ -543,7 +543,11 @@ async def _handle_online_image(
         if cards:
             total_renderable += len(cards)
             page_servers.append(
-                {"server_name": result.server.name, "players": cards}
+                {
+                    "server_id": result.server.id,
+                    "server_name": result.server.name,
+                    "players": cards,
+                }
             )
 
     if total_renderable == 0:

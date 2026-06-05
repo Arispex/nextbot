@@ -148,6 +148,7 @@ def test_build_payload_normalizes_servers_and_players() -> None:
         "list[dict[str, Any]]",
         [
             {
+                "server_id": 3,
                 "server_name": "Server A",
                 "players": [
                     {
@@ -159,13 +160,14 @@ def test_build_payload_normalizes_servers_and_players() -> None:
                 ],
             },
             "not-a-dict",  # 非 dict 服务器应被跳过
-            # players 非 list → 规整为空列表
+            # players 非 list → 规整为空列表；缺 server_id → 兜底 None
             {"server_name": "Server B", "players": "not-a-list"},
         ],
     )
     payload = online_players_page.build_payload(servers=malformed_servers)
     servers = payload["servers"]
     assert len(servers) == 2, servers
+    assert servers[0]["server_id"] == 3
     assert servers[0]["server_name"] == "Server A"
     assert len(servers[0]["players"]) == 1
     assert servers[0]["players"][0]["name"] == "Alice"
@@ -173,6 +175,7 @@ def test_build_payload_normalizes_servers_and_players() -> None:
         servers[0]["players"][0]["character_sprite_data_uri"]
         == "data:image/png;base64,AAA"
     )
+    assert servers[1]["server_id"] is None  # 缺失 server_id 兜底为 None
     assert servers[1]["server_name"] == "Server B"
     assert servers[1]["players"] == []
     assert payload["generated_at"]  # 非空时间戳
@@ -186,6 +189,47 @@ def test_build_payload_player_missing_fields_default_empty() -> None:
     assert player["name"] == "Bob"
     assert player["online_time_text"] == ""
     assert player["character_sprite_data_uri"] == ""
+
+
+def test_build_payload_server_id_fallback() -> None:
+    # int / 数字字符串 → int；非法字符串 / bool / 缺失 → None（不崩、模板省略前缀）。
+    payload = online_players_page.build_payload(
+        servers=cast(
+            "list[dict[str, Any]]",
+            [
+                {"server_id": 5, "server_name": "A", "players": []},
+                {"server_id": "7", "server_name": "B", "players": []},
+                {"server_id": "abc", "server_name": "C", "players": []},
+                {"server_id": True, "server_name": "D", "players": []},
+                {"server_name": "E", "players": []},
+            ],
+        )
+    )
+    ids = [s["server_id"] for s in payload["servers"]]
+    assert ids == [5, 7, None, None, None], ids
+
+
+def test_render_outputs_server_id_in_html() -> None:
+    payload = online_players_page.build_payload(
+        servers=[
+            {
+                "server_id": 3,
+                "server_name": "生存服",
+                "players": [
+                    {
+                        "name": "Alice",
+                        "online_time_text": "1 秒",
+                        "character_sprite_data_uri": "data:image/png;base64,AAA",
+                    }
+                ],
+            }
+        ]
+    )
+    html = online_players_page.render(payload).decode("utf-8")
+    json_blob = html.split('type="application/json">', 1)[1].split("</script>", 1)[0]
+    data = json.loads(json_blob.replace("<\\/", "</"))
+    assert data["servers"][0]["server_id"] == 3
+    assert data["servers"][0]["server_name"] == "生存服"
 
 
 def test_render_escapes_closing_script_tag() -> None:
@@ -354,6 +398,7 @@ def test_image_mode_data_flow_filters_and_renders() -> None:
         page_servers = captured["page_servers"]
         assert page_servers is not None
         assert len(page_servers) == 1, page_servers
+        assert page_servers[0]["server_id"] == 1
         assert page_servers[0]["server_name"] == "Server A"
         assert len(page_servers[0]["players"]) == 1
         assert page_servers[0]["players"][0]["name"] == "Alice"
@@ -498,6 +543,8 @@ def _run() -> int:
     tests = [
         test_build_payload_normalizes_servers_and_players,
         test_build_payload_player_missing_fields_default_empty,
+        test_build_payload_server_id_fallback,
+        test_render_outputs_server_id_in_html,
         test_render_escapes_closing_script_tag,
         test_render_outputs_player_data_in_html,
         test_render_card_skips_when_appearance_null,

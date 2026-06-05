@@ -85,6 +85,14 @@
       font-weight: 600;
     }
 
+    /* 分区头服务器 ID 前缀（「3. 生存服」中的「3.」）；弱化但与名称同基线。 */
+    .server-id {
+      color: var(--color-muted);
+      font-weight: 600;
+      font-feature-settings: "tnum";
+      margin-right: 0.25em;
+    }
+
     .server-count {
       color: var(--color-muted);
       font-size: 12px;
@@ -209,7 +217,17 @@
         head.className = "server-head";
         const name = document.createElement("h2");
         name.className = "server-name type-title-md";
-        name.textContent = String((server && server.server_name) || "未知服务器");
+        // 服务器 ID 存在（非 null/undefined）时以「ID.」弱化前缀展示，缺失只显示名称。
+        const serverId = server && server.server_id;
+        if (serverId !== null && serverId !== undefined && serverId !== "") {
+          const idSpan = document.createElement("span");
+          idSpan.className = "server-id";
+          idSpan.textContent = `${String(serverId)}.`;
+          name.appendChild(idSpan);
+        }
+        name.appendChild(
+          document.createTextNode(String((server && server.server_name) || "未知服务器"))
+        );
         const count = document.createElement("span");
         count.className = "server-count";
         count.textContent = `${players.length} 名玩家`;
