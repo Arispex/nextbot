@@ -1,0 +1,2 @@
+{"file": ".trellis/tasks/06-05-server-config-boss-summon-toggle/prd.md", "reason": "需求：servers.js「玩家事件推送」加 playerEvents.bossSummon schema 项；后端透传已支持；只改前端一行"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "其它事件开关/dialog 不回归；前端改动符合质量基线"}
