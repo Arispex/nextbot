@@ -10,11 +10,12 @@ a single annotated frame instead.
 DYE sheets are split into four per-part variants — since a dye is an ArmorShaderData applied
 per equip slot, head / body / legs are dyed independently. Each dye sheet is a stack of four
 labelled row-bands (HEAD-only / BODY-only / LEGS-only / ALL-three), each band a row of the
-swept animation frames (columns = phase). The base armor was picked so every band shows the
-dye: head = DeerclopsMask (netId 5109, slot 276; opaque skull+antlers with strong internal
-shading — replaces the old transparent FishBowl that hid head dye), body = PumpkinShirt
-(netId 1755, slot 82), legs = MoonLordLegs (netId 5001, slot 217). GLOW sheets are unchanged
-(they still wear their matching glow item, no per-part split).
+swept animation frames (columns = phase). The base armor is the SILVER set — a neutral
+mid-grey across head/body/legs that shows each dye's TRUE colour (a near-greyscale base lets
+the dye's own colour come through faithfully instead of being skewed by a coloured base):
+head = SilverHelmet (netId 91, slot 3), body = SilverChainmail (netId 82, slot 3),
+legs = SilverGreaves (netId 78, slot 3). GLOW sheets are unchanged (they still wear their
+matching glow item, no per-part split).
 
 It does NOT touch the production render path: the public `render_character` signature /
 defaults are unchanged. The dye sweeps drive the documented control points
@@ -61,19 +62,16 @@ BASE_APP = {
     "shirtColor": -4021652, "underShirtColor": -4639811,
     "pantsColor": -12772014, "shoeColor": -4963208,
 }
-# Base armor set for the DYE sheets — opaque, broad coverage, strong INTERNAL light/dark
-# layering so a dye that mis-handles shading (gradient/recolor bugs) shows immediately.
-# Chosen by measuring idle-frame opaque-pixel count + per-pixel luma variance across every
-# Armor_Head_*.png (head was the transparent FishBowl before, hiding all head dye):
-#   head: DeerclopsMask  netId 5109 (slot 276) — skull+antlers, 684 opaque px (the largest of
-#         any vanilla head), near-greyscale skull (chroma ~22 → recolors cleanly) with clear
-#         highlight / mid / shadow bands + tan antlers. Replaces FishBowl (netId 250 / slot 20),
-#         whose transparent glass made head-dye invisible.
-#   body: PumpkinShirt   netId 1755 (slot 82) — kept; the arm vs torso are different shades, so
-#         body/arm dye discrepancies are easy to spot.
-#   legs: MoonLordLegs   netId 5001 (slot 217) — kept; boots carry visible highlight/shadow so
-#         the gradient dyes read on the legs.
-ARMOR = {"head": {"netId": 5109}, "body": {"netId": 1755}, "legs": {"netId": 5001}}
+# Base armor set for the DYE sheets — the SILVER set (neutral mid-grey across head/body/legs).
+# A near-greyscale base is the best canvas for reading a dye's TRUE colour: with no strong
+# native hue of its own, the silver armour lets the dye's own colour come through faithfully
+# (a coloured base would multiply/skew the dye and muddy what colour it actually produces),
+# while still carrying clear highlight / mid / shadow bands so gradient/recolor shading bugs
+# remain visible. The whole set is one consistent grey so head / body / legs read alike.
+#   head: SilverHelmet     netId 91 (slot 3)
+#   body: SilverChainmail  netId 82 (slot 3)
+#   legs: SilverGreaves    netId 78 (slot 3)
+ARMOR = {"head": {"netId": 91}, "body": {"netId": 82}, "legs": {"netId": 78}}
 SCALE = 3  # each cell is upscaled this much in the sheets
 # DYE sheets split each effect into 4 per-part variants (catalog: every dye is an
 # ArmorShaderData applied per equip slot, so head / body / legs can be dyed independently):
@@ -285,6 +283,27 @@ def _pillar(name: str, value: float) -> Iterator[None]:
         dye._PILLAR_TIME[name] = saved
 
 
+@contextlib.contextmanager
+def _batch2(name: str, value: float) -> Iterator[None]:
+    """Temporarily set a batch-2 pass's frozen uTime so the production render path (which
+    calls apply_dye with u_time=None) sweeps it.
+
+    The batch-2 animated passes resolve their still through dye._batch2_time(name, None):
+    Acid/Void read dye._BATCH2_TIME[name] (their swept representative), the rest fall to
+    dye.UTIME. So Acid/Void sweep by overriding _BATCH2_TIME[name]; the others sweep by
+    overriding dye.UTIME (the _utime CM)."""
+    if name in dye._BATCH2_TIME:
+        saved = dye._BATCH2_TIME[name]
+        dye._BATCH2_TIME[name] = value
+        try:
+            yield
+        finally:
+            dye._BATCH2_TIME[name] = saved
+    else:
+        with _utime(value):
+            yield
+
+
 def _animates(cells: list[_Cell]) -> bool:
     """True iff the swept frames are not all identical (the dye really moves offline).
 
@@ -317,19 +336,43 @@ def _sweep_noise_dye(
     """Render n frames over a noise pass's uTime for one part variant (`slots`); highlight
     the production frame.
 
-    Emissive pillar passes (Nebula/Vortex/Stardust/HallowBoss) pin their frozen frame in
-    `dye._PILLAR_TIME[name]`, so they sweep through that table; the other noise passes
-    (Phase/Gel/ShiftingSands/Pearlsands/Fog) default to `dye.UTIME`, so they sweep that."""
-    is_pillar = pass_name in dye._PILLAR_TIME
+    Picks the right phase-override CM per pass family:
+    - emissive pillar passes (Nebula/Vortex/Stardust/HallowBoss) pin their frozen frame in
+      `dye._PILLAR_TIME[name]` -> sweep that;
+    - batch-2 animated / self-sampling passes (Flow/Living*/Acid/Void/Mirage/Hades/Loki) run
+      the real bytecode and resolve via `dye._batch2_time` (Acid/Void from `dye._BATCH2_TIME`,
+      the rest from `dye.UTIME`) -> `_batch2` overrides the right one;
+    - the remaining scroll passes (Phase/Gel/ShiftingSands/Pearlsands/Fog/MidnightRainbow)
+      default to `dye.UTIME` -> sweep that."""
+    if pass_name in dye._PILLAR_TIME:
+        ctx = _pillar
+    elif pass_name in _BATCH2_PASSES:
+        ctx = _batch2
+    else:
+        ctx = _utime_named
     cur_i = min(range(n), key=lambda i: abs((lo + (hi - lo) * i / n) - current))
     cells = []
     for i in range(n):
         t = lo + (hi - lo) * i / n
-        ctx = _pillar(pass_name, t) if is_pillar else _utime(t)
-        with ctx:
+        with ctx(pass_name, t):
             img = _render_dye(net_id, slots=slots)
         cells.append(_Cell(img, f"T={t:.2f}", current=(i == cur_i)))
     return cells
+
+
+@contextlib.contextmanager
+def _utime_named(_name: str, value: float) -> Iterator[None]:
+    """`_utime` with a (name, value) signature so the sweep can pick a CM uniformly."""
+    with _utime(value):
+        yield
+
+
+# batch-2 passes that run the real bytecode (research/dye_bytecode_audit.md §"third tier"):
+# all sweep via `_batch2` (Acid/Void through dye._BATCH2_TIME, the rest through dye.UTIME).
+_BATCH2_PASSES = frozenset({
+    "ArmorFlow", "ArmorLivingRainbow", "ArmorLivingFlame", "ArmorLivingOcean", "ArmorAcid",
+    "ArmorVoid", "ArmorMirage", "ArmorHades", "ArmorLoki",
+})
 
 
 # ── catalog data (from research/dynamic_effects_catalog.md, authoritative) ──
@@ -354,17 +397,21 @@ _DYE_NAMES = {
     3553: "ReflectiveCopper", 3554: "ReflectiveObsidian", 3555: "ReflectiveMetal",
 }
 
-# table A.1 time-animated WITH a real uTime formula (catalog: 7 netId scannable now).
-# (netId, lo, hi, N) — uTime range + step from the catalog "sweep" column.
-_SCAN_TIME = [
-    (2869, 0.0, 1.0, 24), (2873, 0.0, 1.0, 24), (2870, 0.0, 1.39, 32),
-    (3025, 0.0, 1.0, 24), (3040, 0.0, 1.0, 24), (3028, 0.0, 1.0, 24), (3560, 0.0, 1.0, 24),
-]
-# table A.2 noise/self-sampling scroll passes (all scannable). (netId, pass, lo, hi, N).
-# MidnightRainbow (3556) is a self-emboss pass (no noise texture) whose uTime scrolls the
-# rainbow hue with period 1/0.4 = 2.5 (research/midnight_rainbow.md §4) -> sweep [0,2.5) N=24
-# for one full color cycle. It is NOT an emissive pillar (uTime does not change brightness),
-# so it sweeps via dye.UTIME like the other scroll passes (not _PILLAR_TIME).
+# table A.1 time-animated WITH a real uTime formula. Empty after batch 2: the Living*/Flow/
+# Acid passes that used to live here now run the real compiled bytecode (dye_noise) and so
+# moved into _SCAN_NOISE (the dye_noise sweep group), alongside the other animatable bytecode.
+_SCAN_TIME: list[tuple[int, float, float, int]] = []
+# table A.2 animatable dye_noise passes (real ps_2_0 bytecode, all scannable). (netId, pass,
+# lo, hi, N). Three families share this sweep:
+#   - the original noise-texture / emboss scroll passes (Nebula/Vortex/Stardust/HallowBoss/
+#     MidnightRainbow/Phase/Gel/Shifting*/Fog);
+#   - the batch-2 animated band passes (Flow 3025 / LivingFlame 2869 / LivingOcean 2873 /
+#     LivingRainbow 2870 / Acid 3028,3040,3560) — moved here from _SCAN_TIME;
+#   - the batch-2 self-sampling passes (Void 3530 / Hades 3038,3597,3598,3600 / Mirage 3534 /
+#     Loki 3599) — moved here from _APPROX_TIME (they are no longer flat-tint approximations).
+# MidnightRainbow (3556) is a self-emboss pass whose uTime scrolls the hue with period
+# 1/0.4 = 2.5 (research/midnight_rainbow.md §4). The batch-2 Living*/Acid period is ~1.0-2.5;
+# Hades/Loki/Void/Mirage scroll over a few seconds -> swept [0,6).
 _SCAN_NOISE = [
     (3527, "ArmorNebula", 0.0, 6.0, 24), (3528, "ArmorVortex", 0.0, 6.0, 24),
     (3529, "ArmorStardust", 0.0, 4.0, 24), (4778, "ArmorHallowBoss", 0.0, 8.0, 8),
@@ -373,14 +420,33 @@ _SCAN_NOISE = [
     (3561, "ArmorGel", 0.0, 6.28, 24), (3562, "ArmorGel", 0.0, 6.28, 24),
     (4663, "ArmorGel", 0.0, 6.28, 24), (3533, "ArmorShiftingSands", 0.0, 1.0, 24),
     (3535, "ArmorShiftingPearlsands", 0.0, 1.0, 24), (4662, "ArmorFog", 0.0, 1.0, 24),
+    # ── batch 2: animated band passes (uTime=0 representative unless noted) ──
+    (3025, "ArmorFlow", 0.0, 1.0, 24), (2869, "ArmorLivingFlame", 0.0, 1.0, 24),
+    (2873, "ArmorLivingOcean", 0.0, 1.0, 24), (2870, "ArmorLivingRainbow", 0.0, 1.39, 32),
+    (3040, "ArmorAcid", 0.0, 6.0, 24), (3028, "ArmorAcid", 0.0, 6.0, 24),
+    (3560, "ArmorAcid", 0.0, 6.0, 24),
+    # ── batch 2: self-sampling passes (uTime scroll over a few seconds) ──
+    (3530, "ArmorVoid", 0.0, 6.0, 24), (3534, "ArmorMirage", 0.0, 6.0, 24),
+    (3038, "ArmorHades", 0.0, 6.0, 24), (3597, "ArmorHades", 0.0, 6.0, 24),
+    (3598, "ArmorHades", 0.0, 6.0, 24), (3600, "ArmorHades", 0.0, 6.0, 24),
+    (3599, "ArmorLoki", 0.0, 6.0, 24),
 ]
-# A.1 APPROX time passes (no real uTime offline -> single frame) + A.3 Reflective.
-_APPROX_TIME = [3526, 3530, 3038, 3597, 3598, 3600, 3534, 3599]
+# A.1 APPROX time passes left after batch 3: only Solar (3526). Its real bytecode IS baked +
+# wired (dye._solar), but offline (v0=white, no additive bloom) it collapses to a dark reddish
+# ember -- markedly dimmer than the in-game bright Solar -- so the PRODUCTION dispatch keeps the
+# handwritten emissive fire approximation (dye._solar_approx) by default. The production path is
+# therefore offline-static (no uTime animation), so Solar stays a single-frame dye_static sheet.
+# A.3 Reflective stays here too (class C: faithful bytecode wired, but uLightSource=0 offline ->
+# the moving specular highlight is absent; a single no-highlight frame).
+_APPROX_TIME = [3526]
 _REFLECTIVE = [3190, 3026, 3027, 3553, 3554, 3555]
 
-# pillar default frames (where the production still is pinned), for the highlight.
+# default frames (where the production still is pinned), for the highlight. Emissive pillars
+# pin _PILLAR_TIME; the batch-2 swept passes pin _BATCH2_TIME (Acid 2.5 / Void 1.0); every
+# other animatable noise pass pins uTime=0 (the default _PILLAR_CURRENT.get fallback).
 _PILLAR_CURRENT = {
     "ArmorNebula": 3.0, "ArmorVortex": 0.5, "ArmorStardust": 1.0, "ArmorHallowBoss": 0.0,
+    "ArmorAcid": 2.5, "ArmorVoid": 1.0,
 }
 
 
@@ -430,20 +496,26 @@ def render_static_dyes() -> None:
     head-only dye be inspected next to body/legs/all even when nothing animates."""
     for net_id in _APPROX_TIME:
         spec = _DYES.get(str(net_id), {})
-        title = f"{_name(net_id)} #{net_id} {spec.get('pass', '')} (APPROX, no uTime)"
+        # Solar (3526): bytecode baked + wired (dye._solar) but the production default is the
+        # handwritten emissive approx (the bytecode is dim offline -- no additive bloom), so this
+        # sheet shows the handwritten fire ramp (offline-static).
+        title = f"{_name(net_id)} #{net_id} {spec.get('pass', '')} (handwritten default; bytecode dim offline)"
         fn = _save(f"dye_static_{_name(net_id)}_{net_id}",
                    _dye_band_sheet(_static_dye_bands(net_id), title))
         _INDEX.append((
             _name(net_id), str(net_id), spec.get("pass", ""),
-            "single (APPROX, no uTime)", fn, "no"))
+            "single (handwritten; bytecode dim offline)", fn, "no"))
     for net_id in _REFLECTIVE:
         spec = _DYES.get(str(net_id), {})
-        title = f"{_name(net_id)} #{net_id} {spec.get('pass', '')} (uLightSource=0 offline)"
+        # Reflective (class C): the real bytecode IS wired (dye._reflective[_color]); offline
+        # uLightSource=0 so the moving specular highlight is absent -> a faithful no-highlight
+        # frame (embossed source *0.5, ReflectiveColor + uColor tint). The physical offline limit.
+        title = f"{_name(net_id)} #{net_id} {spec.get('pass', '')} (offline no-highlight, uLightSource=0)"
         fn = _save(f"dye_static_{_name(net_id)}_{net_id}",
                    _dye_band_sheet(_static_dye_bands(net_id), title))
         _INDEX.append((
             _name(net_id), str(net_id), spec.get("pass", ""),
-            "single (view-dependent)", fn, "no"))
+            "single (offline no-highlight)", fn, "no"))
 
 
 # ── dynamic glow rendering ────────────────────────────────────────────
@@ -601,17 +673,15 @@ def write_index() -> str:
         "(columns = phase / uTime; the current frame is the green-bordered cell). Static dyes "
         "use one frame per band (the 4 variants side by side).",
         "",
-        "Base armor for the dye sheets (opaque, broad coverage, strong internal light/dark "
-        "layering so dye bugs show):",
+        "Base armor for the dye sheets is the **Silver set** (neutral mid-grey across "
+        "head/body/legs). A near-greyscale base shows each dye's TRUE colour: with no strong "
+        "native hue of its own the silver armour lets the dye's own colour come through "
+        "faithfully (a coloured base would skew/muddy it), while its highlight / mid / shadow "
+        "bands keep gradient/recolor shading bugs visible.",
         "",
-        "- head: **DeerclopsMask** netId 5109 (slot 276) — skull+antlers, 684 opaque px (the "
-        "largest vanilla head), near-greyscale skull recolors cleanly with clear highlight / "
-        "mid / shadow bands. Replaces the old transparent FishBowl (netId 250 / slot 20), "
-        "which hid all head dye.",
-        "- body: **PumpkinShirt** netId 1755 (slot 82) — arm vs torso differ in shade, so "
-        "body/arm dye discrepancies stand out.",
-        "- legs: **MoonLordLegs** netId 5001 (slot 217) — boots carry visible highlight/shadow "
-        "so the gradient reads on the legs.",
+        "- head: **SilverHelmet** netId 91 (slot 3)",
+        "- body: **SilverChainmail** netId 82 (slot 3)",
+        "- legs: **SilverGreaves** netId 78 (slot 3)",
         "",
         "GLOW sheets are unchanged: each still wears its matching glow item (no per-part "
         "split).",

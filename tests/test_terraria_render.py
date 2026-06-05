@@ -30,13 +30,23 @@ from nextbot.terraria_render.compositor import (
     _resolve_accessories,
 )
 from nextbot.terraria_render.dye import (
+    _BATCH2_TIME,
     _PILLAR_GAIN,
     _PILLAR_TIME,
     _emissive_tonemap,
+    _high_contrast_glow_approx,
+    _loki,
     _midnight_rainbow,
     _midnight_rainbow_real,
     _nebula,
+    _reflective,
+    _reflective_approx,
+    _reflective_color,
+    _reflective_color_approx,
+    _solar,
+    _solar_approx,
     _stardust,
+    _void,
     _vortex,
     apply_dye,
 )
@@ -158,6 +168,142 @@ def test_unknown_pass_falls_back_undyed() -> None:
     f = _gray_frame(200)
     assert np.array_equal(apply_dye(f.copy(), {"pass": "NotARealPass"}), f)
     assert np.array_equal(apply_dye(f.copy(), None), f)
+
+
+# ── batch 1: non-animated recolor/gradient passes run the REAL compiled bytecode ──────
+# research/dye_bytecode_audit.md: these 16 passes were handwritten approximations; they
+# now dispatch through the real ps_2_0 bytecode (dye_noise.run_noise_pass), with the
+# handwritten fn kept only as the offline fallback (baked blob / noise.png absent).
+_BATCH1_SPECS = (
+    {"pass": "ArmorColored", "color": [1.0, 0.0, 0.0], "sat": 1.2},
+    {"pass": "ArmorColoredAndBlack", "color": [1.0, 0.0, 0.0], "sat": 1.2},
+    {"pass": "ArmorColoredAndSilverTrim", "color": [1.0, 0.0, 0.0], "sat": 1.2},
+    {"pass": "ArmorColoredGradient", "color": [1.0, 0.0, 0.0],
+     "secondary": [1.0, 1.0, 0.0], "sat": 1.2},
+    {"pass": "ArmorColoredAndBlackGradient", "color": [1.0, 0.0, 0.0],
+     "secondary": [1.0, 1.0, 0.0], "sat": 1.5},
+    {"pass": "ArmorColoredAndSilverTrimGradient", "color": [1.0, 0.0, 0.0],
+     "secondary": [1.0, 1.0, 0.0], "sat": 1.5},
+    {"pass": "ArmorBrightnessGradient", "color": [1.0, 0.0, 0.0],
+     "secondary": [1.0, 1.0, 0.0]},
+    {"pass": "ArmorColoredRainbow"},
+    {"pass": "ArmorBrightnessRainbow"},
+    {"pass": "ArmorBrightnessColored", "color": [1.0, 1.0, 1.0]},
+    {"pass": "ArmorInvert"},
+    {"pass": "ColorOnly"},
+    {"pass": "ArmorMartian", "color": [0.0, 2.0, 3.0]},
+    {"pass": "ArmorPolarized"},
+    {"pass": "ArmorMushroom", "color": [0.05, 0.2, 1.0]},
+    {"pass": "ArmorWisp", "color": [0.7, 1.0, 0.9], "secondary": [0.35, 0.85, 0.8]},
+)
+
+
+def test_batch1_passes_dispatch_through_bytecode() -> None:
+    # Every batch-1 pass must call dye_noise.run_noise_pass (the real bytecode), NOT
+    # silently use the handwritten fallback. Spy on run_noise_pass and assert it fires
+    # for each. Also asserts the six no-preshader passes (BrightnessColored/Invert/
+    # ColorOnly/Martian/Polarized/Mushroom) survive the FXLC-guard fix (crashed before).
+    from nextbot.terraria_render import dye as dye_mod
+
+    f = _structured_frame()
+    calls: list[str] = []
+    orig = dye_mod.dye_noise.run_noise_pass
+
+    def spy(premul: np.ndarray, name: str, **k: object) -> "np.ndarray | None":
+        calls.append(name)
+        return orig(premul, name, **k)  # type: ignore[arg-type]
+
+    dye_mod.dye_noise.run_noise_pass = spy
+    try:
+        for spec in _BATCH1_SPECS:
+            calls.clear()
+            out = apply_dye(
+                f.copy(), dict(spec), src_rect=(0, 0, FW, FH), sheet_size=(FW, FH))
+            assert calls == [spec["pass"]], (
+                f"{spec['pass']} did not dispatch through the bytecode (calls={calls})")
+            assert out is not None and out.shape == f.shape
+    finally:
+        dye_mod.dye_noise.run_noise_pass = orig
+
+
+def test_armor_colored_copper_is_bytecode_faithful() -> None:
+    # The user-verified hero case: ArmorColored RedDye on a SILVER (neutral gray) ramp
+    # -> COPPER with the brightness preserved (highlight bright, shadow dark), NOT flat
+    # red. The real bytecode must reproduce it bit-for-bit, equal to the handwritten
+    # (which dye_shader_spec validated). Pins the spec ramp value + per-band ordering.
+    from nextbot.terraria_render import dye as dye_mod
+
+    bands = np.array([230, 180, 130, 90, 50], np.uint8)      # highlight..shadow, gray
+    f = np.zeros((bands.size, 1, 4), np.uint8)
+    f[..., 3] = 255
+    f[:, 0, :3] = bands[:, None]
+    spec = {"pass": "ArmorColored", "color": [1.0, 0.0, 0.0], "sat": 1.2}
+    bc = apply_dye(f.copy(), spec, src_rect=(0, 0, FW, FH), sheet_size=(FW, FH))
+    hw = dye_mod._armor_colored(f.copy(), [1.0, 0.0, 0.0], 1.2)
+    # 1) bytecode == handwritten copper on neutral silver (verified case), bit-for-bit.
+    assert np.array_equal(bc, hw), "bytecode ArmorColored diverged from verified copper"
+    # 2) every band is copper (R > G == B > 0), not flat red.
+    for i in range(bands.size):
+        r, g, b = (int(bc[i, 0, c]) for c in range(3))
+        assert r > g and g == b and g > 0, f"band {i} not copper: {(r, g, b)}"
+    # 3) brightness preserved: the highlight band stays brighter than the shadow band.
+    assert int(bc[0, 0, 0]) > int(bc[-1, 0, 0])
+    # 4) the exact spec ramp pixel (0.8 gray -> (213,183,183)).
+    px = np.array([[[204, 204, 204, 255]]], np.uint8)
+    out = apply_dye(px, dict(spec), src_rect=(0, 0, FW, FH), sheet_size=(FW, FH))
+    assert tuple(int(out[0, 0, c]) for c in range(3)) == (213, 183, 183)
+
+
+def test_batch1_no_preshader_passes_run_without_crash() -> None:
+    # The FXLC empty-guard fix (dye_noise._decode_preshader): the 6 no-preshader passes
+    # have an empty pres_inputs; without the guard the interpreter read past the blob,
+    # crashed. Each must now run the bytecode + return a sane frame (ColorOnly = white
+    # silhouette). Compared against run_noise_pass directly (not the fallback).
+    f = _structured_frame()
+    arr = f.astype(np.float64) / 255.0
+    pr = arr.copy()
+    pr[..., :3] = arr[..., :3] * arr[..., 3][..., None]
+    for name, col in (
+        ("ArmorBrightnessColored", [1.0, 1.0, 1.0]), ("ArmorInvert", [1.0, 1.0, 1.0]),
+        ("ColorOnly", [1.0, 1.0, 1.0]), ("ArmorMartian", [0.0, 2.0, 3.0]),
+        ("ArmorPolarized", [1.0, 1.0, 1.0]), ("ArmorMushroom", [0.05, 0.2, 1.0]),
+    ):
+        out = dye_noise.run_noise_pass(
+            pr, name, u_color=np.asarray(col, dtype=np.float64),
+            u_secondary=np.asarray(col, dtype=np.float64), u_sat=1.0,
+            src_rect=(0, 0, FW, FH), sheet_size=(FW, FH))
+        assert out is not None, f"{name} bytecode None (FXLC guard / blob missing)"
+        assert np.isfinite(out).all(), f"{name} produced non-finite output"
+    # ColorOnly = white silhouette where opaque (out.rgb == src.a, premult).
+    co = dye_noise.run_noise_pass(
+        pr, "ColorOnly", u_color=np.array([1.0, 1.0, 1.0]),
+        u_secondary=np.array([1.0, 1.0, 1.0]), u_sat=1.0,
+        src_rect=(0, 0, FW, FH), sheet_size=(FW, FH))
+    assert co is not None
+    op = arr[..., 3] > 0
+    assert np.allclose(co[op][:, :3], arr[op][:, 3:4], atol=1e-6)
+
+
+def test_batch1_falls_back_to_handwritten_without_baked_blob() -> None:
+    # Offline-safe: when a batch-1 baked blob is absent, apply_dye falls back to
+    # the handwritten function (no crash), same as every noise pass. Drop the baked
+    # ArmorColored blob and assert the result equals the handwritten _armor_colored.
+    from nextbot.terraria_render import dye as dye_mod
+
+    f = _structured_frame()
+    shaders = dye_noise._shaders()
+    saved = shaders.pop("ArmorColored", None)
+    dye_noise._parse_blob.cache_clear()
+    try:
+        fb = apply_dye(
+            f.copy(), {"pass": "ArmorColored", "color": [1.0, 0.0, 0.0], "sat": 1.2},
+            src_rect=(0, 0, FW, FH), sheet_size=(FW, FH))
+    finally:
+        if saved is not None:
+            shaders["ArmorColored"] = saved
+        dye_noise._parse_blob.cache_clear()
+    assert np.array_equal(fb, dye_mod._armor_colored(f.copy(), [1.0, 0.0, 0.0], 1.2)), (
+        "ArmorColored asset-missing fallback is not the documented handwritten port")
 
 
 def _structured_frame() -> np.ndarray:
@@ -452,6 +598,380 @@ def test_offset_tap_fix_leaves_center_only_noise_pass_unchanged() -> None:
     q = lambda x: (np.clip(x, 0.0, 1.0) * 255.0 + 0.5).astype(np.uint8)  # noqa: E731
     assert np.array_equal(q(fixed), q(old)), (
         "offset-tap fix changed a center-only noise pass (ArmorFog) -- regression")
+
+
+# ── batch 2: animated / self-sampling time passes run the REAL compiled bytecode ──────
+# research/dye_bytecode_audit.md §"third tier": these 9 passes were handwritten time /
+# flat-tint approximations; they now dispatch through the real ps_2_0 bytecode
+# (dye_noise.run_noise_pass), the handwritten fn kept only as the offline fallback
+# (baked blob / noise.png absent). Representative still = uTime=0 for the passes lit
+# there, the swept _BATCH2_TIME for the two that collapse at 0 (Acid=2.5/Void=1.0).
+_BATCH2_SPECS = (
+    {"pass": "ArmorFlow", "color": [1.0, 0.5, 1.0], "secondary": [0.6, 0.1, 1.0]},
+    {"pass": "ArmorLivingRainbow"},
+    {"pass": "ArmorLivingFlame", "color": [1.0, 0.9, 0.0],
+     "secondary": [1.0, 0.2, 0.0]},
+    {"pass": "ArmorLivingOcean"},
+    {"pass": "ArmorAcid", "color": [0.5, 1.0, 0.3]},
+    {"pass": "ArmorVoid"},
+    {"pass": "ArmorMirage"},
+    {"pass": "ArmorHades", "color": [0.5, 0.7, 1.3], "secondary": [0.5, 0.7, 1.3]},
+    {"pass": "ArmorLoki", "color": [0.1, 0.1, 0.1]},
+)
+
+
+def test_batch2_passes_dispatch_through_bytecode() -> None:
+    # Every batch-2 pass must call dye_noise.run_noise_pass (the real bytecode), NOT
+    # silently use the handwritten fallback. Spy on run_noise_pass and assert it fires
+    # once per pass with the right name + a sane (finite, shape-preserving) frame back.
+    from nextbot.terraria_render import dye as dye_mod
+
+    f = _structured_frame()
+    calls: list[str] = []
+    orig = dye_mod.dye_noise.run_noise_pass
+
+    def spy(premul: np.ndarray, name: str, **k: object) -> "np.ndarray | None":
+        calls.append(name)
+        return orig(premul, name, **k)  # type: ignore[arg-type]
+
+    dye_mod.dye_noise.run_noise_pass = spy
+    try:
+        for spec in _BATCH2_SPECS:
+            calls.clear()
+            out = apply_dye(
+                f.copy(), dict(spec), src_rect=(0, 0, FW, FH), sheet_size=(FW, FH))
+            assert calls == [spec["pass"]], (
+                f"{spec['pass']} did not dispatch through the bytecode (calls={calls})")
+            assert out is not None and out.shape == f.shape
+            assert np.isfinite(out.astype(np.float64)).all()
+    finally:
+        dye_mod.dye_noise.run_noise_pass = orig
+
+
+def test_batch2_faithful_differs_from_handwritten_approx() -> None:
+    # The whole point of batch 2: the faithful bytecode must produce a DIFFERENT image
+    # than the old handwritten approximation for the passes that collapsed (Void flat
+    # 0.35 wash, Hades/Loki flat uColor tint, Mirage passthrough, Acid/Living* band).
+    # ArmorFlow is the documented exception: its handwritten port was already a faithful
+    # uTime=0 transcription, so it is BIT-IDENTICAL (asserted separately below).
+    frame = _frame("Armor_Head_276", 0)
+    if frame[..., 3].sum() == 0:                 # asset absent -> fallback path, skip
+        return
+    op = frame[..., 3] > 0
+    from nextbot.terraria_render import dye as dye_mod
+
+    # passes whose faithful bytecode must visibly differ from the old approx (>1% px),
+    # each paired with the handwritten approximation dye.py used before batch 2.
+    differs = (
+        {"pass": "ArmorLivingRainbow"},
+        {"pass": "ArmorLivingFlame", "color": [1.0, 0.9, 0.0],
+         "secondary": [1.0, 0.2, 0.0]},
+        {"pass": "ArmorLivingOcean"},
+        {"pass": "ArmorAcid", "color": [0.5, 1.0, 0.3]},
+        {"pass": "ArmorVoid"},
+        {"pass": "ArmorMirage"},
+        {"pass": "ArmorHades", "color": [0.5, 0.7, 1.3], "secondary": [0.5, 0.7, 1.3]},
+        {"pass": "ArmorLoki", "color": [0.1, 0.1, 0.1]},
+    )
+    handwritten = {
+        "ArmorLivingRainbow": lambda f: dye_mod._living_rainbow_approx(f, 0.0),
+        "ArmorLivingFlame": lambda f: dye_mod._living_flame_approx(
+            f, [1.0, 0.9, 0.0], [1.0, 0.2, 0.0], 0.0),
+        "ArmorLivingOcean": lambda f: dye_mod._living_ocean_approx(f, 0.0),
+        "ArmorAcid": lambda f: dye_mod._acid_approx(f, [0.5, 1.0, 0.3], 0.0),
+        "ArmorVoid": lambda f: dye_mod._brightness_clip(f, (0.35, 0.35, 0.35)),
+        "ArmorMirage": lambda f: f,
+        "ArmorHades": lambda f: dye_mod._brightness_clip(f, [0.5, 0.7, 1.3]),
+        "ArmorLoki": lambda f: dye_mod._brightness_clip(f, [0.1, 0.1, 0.1]),
+    }
+    for spec in differs:
+        name = spec["pass"]
+        faithful = apply_dye(
+            frame.copy(), dict(spec), src_rect=(0, 0, FW, FH), sheet_size=(FW, FH))
+        old = handwritten[name](frame.copy())
+        changed = float(np.any(faithful[op][:, :3] != old[op][:, :3], axis=1).mean())
+        assert changed > 0.01, (
+            f"{name}: faithful bytecode equals the old handwritten approx "
+            f"({changed:.0%} differ) -- the wire-up did not change the visual")
+
+
+def test_batch2_flow_is_bit_identical_to_handwritten_at_utime0() -> None:
+    # ArmorFlow: the handwritten `_flow_approx` already transcribed the bytecode exact,
+    # so at uTime=0 the faithful path must be BIT-FOR-BIT equal to it (documents the one
+    # "SAME" pass; the others all differ). Guards that Flow still goes through the
+    # bytecode without drifting.
+    frame = _frame("Armor_Head_276", 0)
+    if frame[..., 3].sum() == 0:
+        return
+    from nextbot.terraria_render import dye as dye_mod
+
+    faithful = apply_dye(
+        frame.copy(), {"pass": "ArmorFlow", "color": [1.0, 0.5, 1.0],
+                       "secondary": [0.6, 0.1, 1.0]},
+        src_rect=(0, 0, FW, FH), sheet_size=(FW, FH))
+    hw = dye_mod._flow_approx(frame.copy(), [1.0, 0.5, 1.0], [0.6, 0.1, 1.0], 0.0)
+    assert np.array_equal(faithful, hw), (
+        "ArmorFlow faithful bytecode diverged from its handwritten port")
+
+
+def test_batch2_animates_with_utime() -> None:
+    # These are animated passes: the faithful bytecode MOVES with uTime (the flat-tint
+    # approximations did not). uTime 0.0 vs 0.5 differs for every batch-2 pass (each has
+    # a different hue/swirl/scroll period, but a half-second step always lands on a
+    # different phase for all 9 -- verified by sweeping).
+    frame = _frame("Armor_Head_276", 0)
+    if frame[..., 3].sum() == 0:
+        return
+    for spec in _BATCH2_SPECS:
+        a = apply_dye(frame.copy(), dict(spec), u_time=0.0,
+                      src_rect=(0, 0, FW, FH), sheet_size=(FW, FH))
+        b = apply_dye(frame.copy(), dict(spec), u_time=0.5,
+                      src_rect=(0, 0, FW, FH), sheet_size=(FW, FH))
+        assert not np.array_equal(a, b), (
+            f"{spec['pass']} did not change with uTime (the animation phase was lost)")
+
+
+def test_batch2_acid_void_swept_representative_not_collapsed() -> None:
+    # The two passes whose uTime=0 phase collapses must pin a swept representative more
+    # lit than their uTime=0 frame (research: Acid 38%->100% at 2.5, Void 73%->~95% at
+    # 1.0). Guards the _BATCH2_TIME pins (a bad pin would dim the dye).
+    frame = _frame("Armor_Head_276", 0)
+    if frame[..., 3].sum() == 0:
+        return
+    op = frame[..., 3] > 0
+    assert _BATCH2_TIME == {"ArmorAcid": 2.5, "ArmorVoid": 1.0}
+
+    def lit_pct(out: np.ndarray) -> float:
+        rgb = out[op][:, :3].astype(np.float64) / 255.0
+        return float((rgb.max(axis=1) >= 0.08).mean())
+
+    for spec, rep in (({"pass": "ArmorAcid", "color": [0.5, 1.0, 0.3]}, 2.5),
+                      ({"pass": "ArmorVoid"}, 1.0)):
+        at0 = apply_dye(frame.copy(), dict(spec), u_time=0.0,
+                        src_rect=(0, 0, FW, FH), sheet_size=(FW, FH))
+        # production default (None) -> the swept representative pin
+        prod = apply_dye(frame.copy(), dict(spec),
+                         src_rect=(0, 0, FW, FH), sheet_size=(FW, FH))
+        at_rep = apply_dye(frame.copy(), dict(spec), u_time=rep,
+                           src_rect=(0, 0, FW, FH), sheet_size=(FW, FH))
+        assert np.array_equal(prod, at_rep), (
+            f"{spec['pass']} production still is not the swept _BATCH2_TIME pin {rep}")
+        assert lit_pct(prod) > lit_pct(at0) + 0.1, (
+            f"{spec['pass']} swept pin {rep} not clearly more lit than the collapsed "
+            f"uTime=0 ({lit_pct(prod):.0%} vs {lit_pct(at0):.0%})")
+
+
+def test_batch2_falls_back_to_handwritten_without_baked_blob() -> None:
+    # Offline-safe: when a batch-2 baked blob is absent, the faithful helper falls back
+    # to the handwritten approximation (no crash), same contract as every noise pass.
+    # Drop the baked ArmorVoid/ArmorLoki blobs; result must equal the handwritten body.
+    from nextbot.terraria_render import dye as dye_mod
+
+    frame = _structured_frame()
+    shaders = dye_noise._shaders()
+    for name, helper, expect in (
+        ("ArmorVoid", lambda f: _void(f, src_rect=(0, 0, FW, FH), sheet_size=(FW, FH)),
+         lambda f: dye_mod._brightness_clip(f, (0.35, 0.35, 0.35))),
+        ("ArmorLoki", lambda f: _loki(f, [0.1, 0.1, 0.1],
+                                      src_rect=(0, 0, FW, FH), sheet_size=(FW, FH)),
+         lambda f: dye_mod._brightness_clip(f, [0.1, 0.1, 0.1])),
+    ):
+        saved = shaders.pop(name, None)
+        dye_noise._parse_blob.cache_clear()
+        try:
+            fb = helper(frame.copy())
+        finally:
+            if saved is not None:
+                shaders[name] = saved
+            dye_noise._parse_blob.cache_clear()
+        assert np.array_equal(fb, expect(frame.copy())), (
+            f"{name} asset-missing fallback is not the documented handwritten approx")
+
+
+# ── batch 3 (final): the last 3 special passes run the REAL compiled bytecode ─────
+# research/dye_bytecode_audit.md §"batch 3/5": HighContrastGlow (correction: restores
+# the dropped v0 glow + chroma gating) + Reflective / ReflectiveColor (class C:
+# faithful no-highlight offline, uLightSource=0). ArmorSolar's bytecode is baked +
+# wired but stays OFF by default (dimmer offline -- see test_solar_bytecode_*).
+_BATCH3_BYTECODE_SPECS = (
+    {"pass": "ArmorHighContrastGlow", "color": [0.0, 1.0, 0.0], "sat": 1.0},
+    {"pass": "ArmorReflective"},
+    {"pass": "ArmorReflectiveColor", "color": [1.0, 0.85, 0.1]},
+)
+_HCG = {"pass": "ArmorHighContrastGlow", "color": [0.0, 1.0, 0.0], "sat": 1.0}
+_GEOM = {"src_rect": (0, 0, FW, FH), "sheet_size": (FW, FH)}
+
+
+def test_batch3_passes_dispatch_through_bytecode() -> None:
+    # The 3 wired batch-3 passes must call dye_noise.run_noise_pass (the real bytecode),
+    # NOT the handwritten fallback. Spy on run_noise_pass and assert it fires once per
+    # pass with a sane (finite, shape-preserving) frame back.
+    from nextbot.terraria_render import dye as dye_mod
+
+    f = _structured_frame()
+    calls: list[str] = []
+    orig = dye_mod.dye_noise.run_noise_pass
+
+    def spy(premul: np.ndarray, name: str, **k: object) -> "np.ndarray | None":
+        calls.append(name)
+        return orig(premul, name, **k)  # type: ignore[arg-type]
+
+    dye_mod.dye_noise.run_noise_pass = spy
+    try:
+        for spec in _BATCH3_BYTECODE_SPECS:
+            calls.clear()
+            out = apply_dye(f.copy(), dict(spec), **_GEOM)
+            assert calls == [spec["pass"]], (
+                f"{spec['pass']} did not dispatch through the bytecode (calls={calls})")
+            assert out is not None and out.shape == f.shape
+            assert np.isfinite(out.astype(np.float64)).all()
+    finally:
+        dye_mod.dye_noise.run_noise_pass = orig
+
+
+def test_high_contrast_glow_chroma_gated_bytecode() -> None:
+    # ArmorHighContrastGlow correction: the real bytecode restores the v0-driven glow
+    # and GATES it on per-pixel chroma. A zero-chroma (grey) pixel is crushed toward
+    # black; a chromatic (green) pixel glows toward uColor. The handwritten approx
+    # (recolor) did neither, so the faithful result DIFFERS and crushes grey ramps dark.
+    grey = _gray_frame(204)                                  # 0.8 grey, zero chroma
+    real = apply_dye(grey.copy(), dict(_HCG), **_GEOM)
+    approx = _high_contrast_glow_approx(grey.copy(), [0.0, 1.0, 0.0], 1.0)
+    if np.array_equal(real, approx):
+        return                                               # blob absent -> fell back
+    # 1) the faithful (chroma-gated) result crushes the zero-chroma grey to near-black,
+    #    far darker than the handwritten recolor (which kept it a green-grey mid).
+    real_mean = float(real[..., :3].mean())
+    assert real_mean < approx[..., :3].mean(), (
+        "HighContrastGlow bytecode not darker than the approx on grey "
+        f"(real {real_mean:.1f} >= approx {approx[..., :3].mean():.1f})")
+    assert real_mean < 20.0, (
+        f"zero-chroma grey should crush toward black under the chroma gate "
+        f"({real_mean:.1f})")
+    # 2) a CHROMATIC (green) pixel survives and glows green (G dominant), proving the
+    #    gate passes chroma rather than killing everything.
+    green = np.array([[[51, 178, 51, 255]]], np.uint8)       # (0.2,0.7,0.2) chroma
+    gout = apply_dye(green.copy(), dict(_HCG), **_GEOM)
+    gr, gg, gb = (int(gout[0, 0, c]) for c in range(3))
+    assert gg > gr and gg > gb and gg > 20, (
+        f"chromatic pixel did not glow green under HighContrastGlow: {(gr, gg, gb)}")
+
+
+def test_high_contrast_glow_falls_back_without_baked_blob() -> None:
+    # Offline-safe: when the baked ArmorHighContrastGlow blob is absent, apply_dye falls
+    # back to the handwritten approx (no crash), same contract as every noise pass.
+    f = _structured_frame()
+    shaders = dye_noise._shaders()
+    saved = shaders.pop("ArmorHighContrastGlow", None)
+    dye_noise._parse_blob.cache_clear()
+    try:
+        fb = apply_dye(f.copy(), dict(_HCG), **_GEOM)
+    finally:
+        if saved is not None:
+            shaders["ArmorHighContrastGlow"] = saved
+        dye_noise._parse_blob.cache_clear()
+    expected = _high_contrast_glow_approx(f.copy(), [0.0, 1.0, 0.0], 1.0)
+    assert np.array_equal(fb, expected), (
+        "HighContrastGlow asset-missing fallback is not the handwritten approx")
+
+
+def test_reflective_offline_is_no_highlight_not_crash() -> None:
+    # ArmorReflective / ArmorReflectiveColor (class C): the faithful bytecode runs
+    # offline (uLightSource=0) without crashing and produces the honest NO-HIGHLIGHT
+    # version -- Reflective ~= the source darkened by the emboss DC (*0.5),
+    # ReflectiveColor + a uColor tint. The moving specular is the offline limit (gone).
+    frame = _frame("Armor_Head_276", 0)
+    if frame[..., 3].sum() == 0:                             # asset absent -> approx
+        return
+    op = frame[..., 3] > 0
+    refl = _reflective(frame.copy(), **_GEOM)
+    assert np.isfinite(refl.astype(np.float64)).all() and refl.shape == frame.shape
+    src_luma = frame[op][:, :3].astype(np.float64).mean()
+    refl_luma = refl[op][:, :3].astype(np.float64).mean()
+    # no live specular -> the embossed source is DARKER than the source (the *0.5 DC),
+    # so this no-highlight version is darker than the old flat passthrough (= source).
+    assert refl_luma < src_luma, (
+        f"Reflective bytecode not the darkened no-highlight emboss "
+        f"(refl {refl_luma:.1f} >= source {src_luma:.1f})")
+    # ReflectiveColor with a gold uColor tints the result gold (R,G > B) on the emboss.
+    rc = _reflective_color(frame.copy(), [1.0, 0.85, 0.1], **_GEOM)
+    assert np.isfinite(rc.astype(np.float64)).all() and rc.shape == frame.shape
+    rr, rg, rb = rc[op][:, :3].astype(np.float64).mean(0)
+    assert rr > rb and rg > rb, (
+        f"ReflectiveColor gold tint not applied (mean rgb {(rr, rg, rb)})")
+
+
+def test_reflective_falls_back_without_baked_blob() -> None:
+    # Offline-safe: with the baked Reflective/ReflectiveColor blobs absent, the faithful
+    # helpers fall back to the documented approximations (Reflective passthrough,
+    # ReflectiveColor uColor tint) -- no crash, same contract as every noise pass.
+    frame = _structured_frame()
+    shaders = dye_noise._shaders()
+    for name, helper, expect in (
+        ("ArmorReflective",
+         lambda f: _reflective(f, **_GEOM),
+         _reflective_approx),
+        ("ArmorReflectiveColor",
+         lambda f: _reflective_color(f, [1.0, 1.0, 1.0], **_GEOM),
+         lambda f: _reflective_color_approx(f, [1.0, 1.0, 1.0])),
+    ):
+        saved = shaders.pop(name, None)
+        dye_noise._parse_blob.cache_clear()
+        try:
+            fb = helper(frame.copy())
+        finally:
+            if saved is not None:
+                shaders[name] = saved
+            dye_noise._parse_blob.cache_clear()
+        assert np.array_equal(fb, expect(frame.copy())), (
+            f"{name} asset-missing fallback is not the documented approximation")
+
+
+def test_solar_bytecode_runs_but_default_stays_handwritten() -> None:
+    # ArmorSolar: the bytecode is baked + `_solar` runs it without crashing, BUT the
+    # production dispatch (apply_dye) keeps the handwritten `_solar_approx` by default,
+    # because offline (v0=white, no additive bloom) the bytecode reads markedly DIMMER
+    # than the in-game bright Solar. This pins that call (flip the dispatch to switch).
+    frame = _frame("Armor_Head_276", 0)
+    if frame[..., 3].sum() == 0:
+        return
+    op = frame[..., 3] > 0
+    solar = {"pass": "ArmorSolar", "color": [1.0, 0.0, 0.0],
+             "secondary": [1.0, 1.0, 0.0]}
+    # 1) production apply_dye(ArmorSolar) == the handwritten approx (default).
+    prod = apply_dye(frame.copy(), dict(solar), **_GEOM)
+    hw = _solar_approx(frame.copy(), [1.0, 0.0, 0.0], [1.0, 1.0, 0.0])
+    assert np.array_equal(prod, hw), (
+        "ArmorSolar default dispatch is no longer the handwritten approx")
+    # 2) the bytecode path runs (faithful-but-dim) and is meaningfully DARKER than the
+    #    handwritten fire ramp -- the documented offline limitation (no additive bloom).
+    bc = _solar(frame.copy(), [1.0, 0.0, 0.0], [1.0, 1.0, 0.0], **_GEOM)
+    assert np.isfinite(bc.astype(np.float64)).all() and bc.shape == frame.shape
+    bc_mean, hw_mean = bc[op][:, :3].mean(), hw[op][:, :3].mean()
+    assert bc_mean < hw_mean, (
+        f"Solar bytecode not dimmer than the handwritten fire ramp offline "
+        f"(bc {bc_mean:.1f} >= hw {hw_mean:.1f})")
+    # 3) the bytecode still carries the uColor fire hue (red-dominant), not a grey wash.
+    br, bg, bb = bc[op][:, :3].astype(np.float64).mean(0)
+    assert br > bg > bb, f"Solar bytecode lost the warm fire hue (rgb {(br, bg, bb)})"
+
+
+def test_solar_bytecode_falls_back_without_baked_blob() -> None:
+    # The `_solar` bytecode helper falls back to `_solar_approx` when the baked blob is
+    # absent (no crash), same contract as every noise pass.
+    frame = _structured_frame()
+    shaders = dye_noise._shaders()
+    saved = shaders.pop("ArmorSolar", None)
+    dye_noise._parse_blob.cache_clear()
+    try:
+        fb = _solar(frame.copy(), [1.0, 0.0, 0.0], [1.0, 1.0, 0.0], **_GEOM)
+    finally:
+        if saved is not None:
+            shaders["ArmorSolar"] = saved
+        dye_noise._parse_blob.cache_clear()
+    expected = _solar_approx(frame.copy(), [1.0, 0.0, 0.0], [1.0, 1.0, 0.0])
+    assert np.array_equal(fb, expected), (
+        "Solar bytecode asset-missing fallback is not the handwritten approx")
 
 
 def _hair_appearance(hair_dye: int) -> dict:
@@ -1648,6 +2168,10 @@ def _run() -> int:
         test_invert_deterministic_and_changes_input,
         test_gradient_red_to_yellow_is_warm,
         test_unknown_pass_falls_back_undyed,
+        test_batch1_passes_dispatch_through_bytecode,
+        test_armor_colored_copper_is_bytecode_faithful,
+        test_batch1_no_preshader_passes_run_without_crash,
+        test_batch1_falls_back_to_handwritten_without_baked_blob,
         test_noise_dye_is_spatially_varying,
         test_noise_dye_falls_back_without_geometry,
         test_twilight_dye_changes_input,
@@ -1659,6 +2183,19 @@ def _run() -> int:
         test_midnight_rainbow_animates_with_utime,
         test_midnight_rainbow_falls_back_without_baked_blob,
         test_offset_tap_fix_leaves_center_only_noise_pass_unchanged,
+        test_batch2_passes_dispatch_through_bytecode,
+        test_batch2_faithful_differs_from_handwritten_approx,
+        test_batch2_flow_is_bit_identical_to_handwritten_at_utime0,
+        test_batch2_animates_with_utime,
+        test_batch2_acid_void_swept_representative_not_collapsed,
+        test_batch2_falls_back_to_handwritten_without_baked_blob,
+        test_batch3_passes_dispatch_through_bytecode,
+        test_high_contrast_glow_chroma_gated_bytecode,
+        test_high_contrast_glow_falls_back_without_baked_blob,
+        test_reflective_offline_is_no_highlight_not_crash,
+        test_reflective_falls_back_without_baked_blob,
+        test_solar_bytecode_runs_but_default_stays_handwritten,
+        test_solar_bytecode_falls_back_without_baked_blob,
         test_hairdye_twilight_differs_from_none,
         test_hairdye_legacy_changes_hair_color,
         test_back_hair_predicate_matches_game,

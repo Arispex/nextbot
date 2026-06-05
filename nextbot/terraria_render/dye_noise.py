@@ -169,6 +169,12 @@ _PRES_OPS = {0x100: "mov", 0x101: "neg", 0x103: "rcp", 0x104: "frc", 0x105: "exp
 
 
 def _decode_preshader(blob: bytes) -> tuple[list[float], list]:
+    # A pass with NO preshader (no FXLC block: BrightnessColored/Invert/ColorOnly/Martian/
+    # Polarized/Mushroom) has no derived consts to fill -> return empties. Without this the
+    # `clit`/`fxlc` lookups below find -1 and read garbage past the buffer end (struct error;
+    # research/dye_bytecode_audit.md gap #1). Its CTAB-set consts are still bound in run_noise_pass.
+    if blob.find(b"FXLC") < 0:
+        return [], []
     clit = blob.find(b"CLIT")
     nlit = _u32(blob, clit + 4)
     lits = [struct.unpack_from("<d", blob, clit + 8 + i * 8)[0] for i in range(nlit)]
@@ -209,14 +215,21 @@ def _run_preshader(blob: bytes, inputs: Mapping[int, np.ndarray]) -> dict[int, n
     out: dict[int, list[float]] = {}
     inp = {k: np.asarray(v, dtype=np.float64) for k, v in inputs.items()}
 
-    def get(table: int, off: int) -> float:
-        reg, comp = off >> 2, off & 3
+    def get(table: int, off: int, ci: int) -> float:
         # tables 0 (IMM) and 1 (CONST) both index the CLIT literal doubles by `off`
         # (Wine d3dx9 reg_table). Solar/Stardust/HallowBoss reference their literals
         # via table 1 (e.g. Stardust `mul OUTb[8] <- uTime.x, CONST[8]=0.2`); reading
         # only table 0 made those literals 0 -> the uTime brightness/phase terms froze.
+        # A LITERAL is a scalar: it BROADCASTS across the instruction's components (read
+        # `off` for every `ci`, never `off+ci`). Advancing the literal offset per-component
+        # read the next CLIT slot (a 0) instead -> e.g. ArmorColored's `c0 = 1 - uColor`
+        # collapsed to `-uColor` (gray, not copper). The register tables (input/temp/output)
+        # DO advance per-component, with a boundary clamp (D3DX broadcasts the last lane when
+        # a 1-wide source feeds a vector op) — matches the validated ps_interp reference.
         if table in (0, 1):
             return imm[off] if off < len(imm) else 0.0
+        o = off + (ci if (off & 3) + ci < 4 else 0)
+        reg, comp = o >> 2, o & 3
         if table == 2:
             return float(inp.get(reg, np.zeros(4))[comp])
         if table in (6, 7):
@@ -233,7 +246,7 @@ def _run_preshader(blob: bytes, inputs: Mapping[int, np.ndarray]) -> dict[int, n
 
     for op, comps, srcs, dst in insns:
         for ci in range(comps):
-            a = [get(t, off + ci) for (t, off) in srcs]
+            a = [get(t, off, ci) for (t, off) in srcs]
             if op == "mov":
                 r = a[0]
             elif op == "neg":

@@ -131,11 +131,12 @@ allowed-confusables = ["，", "。", "“", "”", "：", "；", "？", "！", "
 # - ARG001/ARG005：动画 / 噪声 pass 在静态近似里折叠了 uTime / uSecondary / uSat 等
 #   uniform，但保留完整签名以忠实记录真实着色器输入（见 spec §0 / §全局 uniforms）。
 # - RUF059：解包占位变量（h_ 等）。E501：保持与字节码逐行对照的着色器数学长行。
-# - C901 / PLR09xx：apply_dye 是按 pass 名分派的扁平派发表，分支多但无逻辑嵌套；
+# - C901 / PLR09xx：apply_dye 是按 pass 名分派的扁平派发表，分支多但无逻辑嵌套
+#   （27 个 dye pass 各一分支，第 1 批 recolor/gradient 改走真实字节码后语句数更多）；
 #   _recolor_premul 形参对应 preshader 常量，拆分反而失真。
 "nextbot/terraria_render/dye.py" = [
     "PLR2004", "N803", "N806", "ANN001", "ARG001", "ARG005",
-    "RUF059", "E501", "C901", "PLR0911", "PLR0912", "PLR0913",
+    "RUF059", "E501", "C901", "PLR0911", "PLR0912", "PLR0913", "PLR0915",
 ]
 # dye_noise.py 是 ps_2_0 字节码解释器 + D3DX preshader 解码器：直接执行反编译出的
 # 真实着色器指令流（噪声采样 dye）。PLR2004 是 D3D9 字节码里固定的位域/寄存器常量

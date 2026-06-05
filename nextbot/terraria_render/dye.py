@@ -5,8 +5,12 @@ dye_passes_spec.md + dye_shader_spec.md), in three tiers:
 
 * exact-static  — bit-for-bit recolors (ArmorColored family, Invert, ColorOnly,
   gradient family, Brightness*, Martian, Polarized, Mushroom, Wisp, rainbow…).
-* time-animated — sincos/triangle-wave passes evaluated at a representative
-  ``uTime = 0`` still (Living*, Flow, Acid, Solar, Void, Hades, Mirage, Loki…).
+* time-animated — sincos/triangle-wave + self-sampling passes that run the *real*
+  compiled bytecode (``dye_noise``) at a representative still: ``uTime = 0`` for the
+  passes that stay fully lit there (Flow, Living*, Mirage, Hades, Loki), and a swept
+  representative for the ones whose ``uTime = 0`` phase collapses (Acid → 2.5, Void →
+  1.0; see ``_BATCH2_TIME``). The handwritten ports stay as the offline fallback. Solar
+  remains a handwritten emissive approximation (batch 3).
 * self-sampling / noise-sampling — Gel/Phase/Nebula/Vortex/Stardust/Shifting*/Fog/
   HallowBoss, the ArmorTwilight hair dye, and ArmorMidnightRainbow (a 5-tap
   self-emboss, no noise texture) run the *real* compiled bytecode (``dye_noise``)
@@ -319,15 +323,63 @@ def _wisp(arr_u8: np.ndarray, uColor: ColorLike, uSecondary: ColorLike) -> np.nd
     return _run(arr_u8, f)
 
 
-def _high_contrast_glow(
+def _high_contrast_glow_approx(
     arr_u8: np.ndarray, uColor: ColorLike = (0.0, 1.0, 0.0), uSat: float = 1.0,
 ) -> np.ndarray:
-    """ArmorHighContrastGlow: ArmorColored recolor (v0-driven glow term dropped)."""
+    """ArmorHighContrastGlow OFFLINE FALLBACK: ArmorColored recolor with the v0-driven glow
+    term DROPPED. Used only when the baked blob / noise.png is absent; the faithful path is
+    `_high_contrast_glow` (the real bytecode, which restores the v0 glow + chroma gating)."""
     return _armor_colored(arr_u8, _col(uColor, [0.0, 1.0, 0.0]), uSat)
 
 
-# ── time-animated passes (representative still at uTime=0) ────────────
-def _flow(
+def _high_contrast_glow(
+    arr_u8: np.ndarray, uColor: ColorLike = (0.0, 1.0, 0.0), uSat: float = 1.0,
+    *, src_rect: SrcRect = _DEFAULT_RECT, sheet_size: SheetSize = _DEFAULT_SHEET,
+) -> np.ndarray:
+    """ArmorHighContrastGlow (item 2883): the real high-contrast glow bytecode.
+
+    A CORRECTION pass -- the handwritten `_high_contrast_glow_approx` dropped the v0-driven
+    glow term (`mul r1.w, v0.x, c5.w` / `mad r1.w, r0.y, ...`); the real shader keeps it, and
+    GATES the green glow on per-pixel CHROMA (`r0.y = (M-m)*uSat`): a zero-chroma / grey pixel
+    drives the glow weight negative -> crushes to black, while a chromatic pixel glows toward
+    uColor. v0 (vertex colour) = white = the inventory white draw colour, so the v0 glow term
+    is active (research/dye_bytecode_audit.md §HighContrastGlow). This visibly differs from the
+    old approx (which recoloured grey toward green); the faithful result is darker on
+    low-chroma armor. Falls back to `_high_contrast_glow_approx` if the blob / noise.png is
+    absent."""
+    uC = _col(uColor, [0.0, 1.0, 0.0])
+    return _noise_pass(arr_u8, "ArmorHighContrastGlow", uColor=uC, uSecondary=uC, uSat=uSat,
+                       src_rect=src_rect, sheet_size=sheet_size,
+                       fallback=lambda: _high_contrast_glow_approx(arr_u8, uColor, uSat))
+
+
+# ── time-animated / self-sampling passes (faithful bytecode via dye_noise) ────
+# Representative GlobalTimeWrappedHourly for the batch-2 animated passes (research/
+# dye_bytecode_audit.md §"third tier"). Most stay fully lit at uTime=0 (Flow/Living*/
+# Mirage/Hades/Loki — all 100% of opaque px lit on the high-shading head-276 surface) so
+# they pin 0, matching the existing time-pass convention. The TWO exceptions collapse at
+# uTime=0 and are swept (the same method as the emissive pillars `_PILLAR_TIME`):
+#   ArmorAcid: its swirl band leaves 62% of the sprite in the dark trough at uTime=0
+#     (only 38% lit); the band sweeps to cover the whole sprite, plateauing at 100% lit
+#     for uTime>=2.5 -> pin 2.5 (the first fully-lit phase; stable plateau to ~6.0).
+#   ArmorVoid: a horizontal blur+darken whose uTime=0 scroll phase lights only 73% of px;
+#     the lit plateau (~95%) begins at uTime=1.0 -> pin 1.0 (a representative lit frame of
+#     this intentionally-dark shimmer dye; the mean barely moves, ~0.37-0.41, so this is a
+#     phase pick, not a brightness boost).
+# Anything not listed pins UTIME (0.0). uRotation is 0 (non-rotated sprite) for Hades/Loki.
+_BATCH2_TIME: dict[str, float] = {"ArmorAcid": 2.5, "ArmorVoid": 1.0}
+
+
+def _batch2_time(name: str, u_time: float | None) -> float:
+    """Resolve the frozen uTime for a batch-2 animated pass: the swept representative for
+    the passes whose uTime=0 collapses (Acid/Void), else UTIME (0); an explicit override
+    (the dynamic-frame sweep) always wins. Production passes None -> the baked still."""
+    if u_time is not None:
+        return u_time
+    return _BATCH2_TIME.get(name, UTIME)
+
+
+def _flow_approx(
     arr_u8: np.ndarray, uColor: ColorLike, uSecondary: ColorLike, uTime: float = UTIME,
 ) -> np.ndarray:
     uC = _col(uColor, [1.0, 0.5, 1.0])
@@ -345,7 +397,27 @@ def _flow(
     return _run(arr_u8, f)
 
 
-def _living_rainbow(arr_u8: np.ndarray, uTime: float = UTIME) -> np.ndarray:
+def _flow(
+    arr_u8: np.ndarray, uColor: ColorLike, uSecondary: ColorLike,
+    *, src_rect: SrcRect = _DEFAULT_RECT, sheet_size: SheetSize = _DEFAULT_SHEET,
+    u_time: float | None = None,
+) -> np.ndarray:
+    """ArmorFlow (item 3025): the real luma-phase sincos band mixing uColor<->uSecondary.
+
+    uTime=0 is fully representative (100% of opaque px lit) and the faithful bytecode is
+    BIT-IDENTICAL to the handwritten `_flow_approx` there (the handwritten port already
+    transcribed this pass exactly; verified max-abs-diff 0) -- routing through the bytecode
+    keeps it consistent with the family and lets uTime actually animate it when swept.
+    Falls back to `_flow_approx` when the baked blob / noise.png is absent."""
+    uC = _col(uColor, [1.0, 0.5, 1.0])
+    uS = _col(uSecondary, [0.6, 0.1, 1.0])
+    return _noise_pass(arr_u8, "ArmorFlow", uColor=uC, uSecondary=uS, uSat=1.0,
+                       src_rect=src_rect, sheet_size=sheet_size,
+                       u_time=_batch2_time("ArmorFlow", u_time),
+                       fallback=lambda: _flow_approx(arr_u8, uColor, uSecondary, UTIME))
+
+
+def _living_rainbow_approx(arr_u8: np.ndarray, uTime: float = UTIME) -> np.ndarray:
     h_, w = arr_u8.shape[:2]
     p = ((np.arange(w) + 0.5) / FRAME_W)[None, :]
     s = (3 - 2 * p) * p * p
@@ -361,10 +433,24 @@ def _living_rainbow(arr_u8: np.ndarray, uTime: float = UTIME) -> np.ndarray:
     return _run(arr_u8, f)
 
 
-def _living_flame(
+def _living_rainbow(
+    arr_u8: np.ndarray, *, src_rect: SrcRect = _DEFAULT_RECT,
+    sheet_size: SheetSize = _DEFAULT_SHEET, u_time: float | None = None,
+) -> np.ndarray:
+    """ArmorLivingRainbow (item 2870): the real positional+luma+uTime rainbow band.
+
+    No colour uniforms (rainbow comes from `def` consts); uTime=0 is fully lit and
+    representative. Falls back to `_living_rainbow_approx` if the blob/noise.png is absent."""
+    return _noise_pass(arr_u8, "ArmorLivingRainbow", uColor=np.array([1.0, 1.0, 1.0]),
+                       uSecondary=np.array([1.0, 1.0, 1.0]), uSat=1.0,
+                       src_rect=src_rect, sheet_size=sheet_size,
+                       u_time=_batch2_time("ArmorLivingRainbow", u_time),
+                       fallback=lambda: _living_rainbow_approx(arr_u8, UTIME))
+
+
+def _living_flame_approx(
     arr_u8: np.ndarray, uColor: ColorLike, uSecondary: ColorLike, uTime: float = UTIME,
 ) -> np.ndarray:
-    """LivingFlame: positional+luma phase band mixing uColor<->uSecondary, uTime=0."""
     uC = _col(uColor, [1.0, 0.9, 0.0])
     uS = _col(uSecondary, [1.0, 0.2, 0.0])
     h_, w = arr_u8.shape[:2]
@@ -383,8 +469,22 @@ def _living_flame(
     return _run(arr_u8, f)
 
 
-def _living_ocean(arr_u8: np.ndarray, uTime: float = UTIME) -> np.ndarray:
-    """LivingOcean: fixed blue/cyan palette band (uColor unused), uTime=0."""
+def _living_flame(
+    arr_u8: np.ndarray, uColor: ColorLike, uSecondary: ColorLike,
+    *, src_rect: SrcRect = _DEFAULT_RECT, sheet_size: SheetSize = _DEFAULT_SHEET,
+    u_time: float | None = None,
+) -> np.ndarray:
+    """ArmorLivingFlame (item 2869): the real positional+luma flame band mixing
+    uColor(1,0.9,0)<->uSecondary(1,0.2,0). uTime=0 fully lit. Falls back to the approx."""
+    uC = _col(uColor, [1.0, 0.9, 0.0])
+    uS = _col(uSecondary, [1.0, 0.2, 0.0])
+    return _noise_pass(arr_u8, "ArmorLivingFlame", uColor=uC, uSecondary=uS, uSat=1.0,
+                       src_rect=src_rect, sheet_size=sheet_size,
+                       u_time=_batch2_time("ArmorLivingFlame", u_time),
+                       fallback=lambda: _living_flame_approx(arr_u8, uColor, uSecondary, UTIME))
+
+
+def _living_ocean_approx(arr_u8: np.ndarray, uTime: float = UTIME) -> np.ndarray:
     base = np.array([0.0, 0.4, 1.0])
     alt = np.array([0.0, 1.0, 1.0])
     h_, w = arr_u8.shape[:2]
@@ -403,8 +503,20 @@ def _living_ocean(arr_u8: np.ndarray, uTime: float = UTIME) -> np.ndarray:
     return _run(arr_u8, f)
 
 
-def _acid(arr_u8: np.ndarray, uColor: ColorLike, uTime: float = UTIME) -> np.ndarray:
-    """ArmorAcid: swirling polar-coordinate band toward uColor, uTime=0 still."""
+def _living_ocean(
+    arr_u8: np.ndarray, *, src_rect: SrcRect = _DEFAULT_RECT,
+    sheet_size: SheetSize = _DEFAULT_SHEET, u_time: float | None = None,
+) -> np.ndarray:
+    """ArmorLivingOcean (item 2873): the real blue/cyan palette band (colour hardcoded in
+    `def` consts, uColor unused). uTime=0 fully lit. Falls back to the approx."""
+    return _noise_pass(arr_u8, "ArmorLivingOcean", uColor=np.array([1.0, 1.0, 1.0]),
+                       uSecondary=np.array([1.0, 1.0, 1.0]), uSat=1.0,
+                       src_rect=src_rect, sheet_size=sheet_size,
+                       u_time=_batch2_time("ArmorLivingOcean", u_time),
+                       fallback=lambda: _living_ocean_approx(arr_u8, UTIME))
+
+
+def _acid_approx(arr_u8: np.ndarray, uColor: ColorLike, uTime: float = UTIME) -> np.ndarray:
     uC = _col(uColor, [0.5, 1.0, 0.3])
     h_, w = arr_u8.shape[:2]
     yy, xx = np.mgrid[0:h_, 0:w].astype(np.float64)
@@ -424,6 +536,26 @@ def _acid(arr_u8: np.ndarray, uColor: ColorLike, uTime: float = UTIME) -> np.nda
     return _run(arr_u8, f)
 
 
+def _acid(
+    arr_u8: np.ndarray, uColor: ColorLike,
+    *, src_rect: SrcRect = _DEFAULT_RECT, sheet_size: SheetSize = _DEFAULT_SHEET,
+    u_time: float | None = None,
+) -> np.ndarray:
+    """ArmorAcid (items 3028/3040/3560): the real swirling polar-coordinate band toward
+    uColor (the swirl reads frame-local position from uSourceRect + luma + uTime).
+
+    uTime=0 COLLAPSES (the swirl trough covers 62% of the sprite -> only 38% lit), so the
+    representative still is the swept `_BATCH2_TIME['ArmorAcid']=2.5` -- the first uTime
+    where the band fully lights the sprite (100% of opaque px, stable plateau to ~6.0),
+    chosen by sweeping like the emissive pillars. Falls back to `_acid_approx` (its own
+    uTime=0 polar approximation) when the blob / noise.png is absent."""
+    uC = _col(uColor, [0.5, 1.0, 0.3])
+    return _noise_pass(arr_u8, "ArmorAcid", uColor=uC, uSecondary=uC, uSat=1.0,
+                       src_rect=src_rect, sheet_size=sheet_size,
+                       u_time=_batch2_time("ArmorAcid", u_time),
+                       fallback=lambda: _acid_approx(arr_u8, uColor, UTIME))
+
+
 def _midnight_rainbow(arr_u8: np.ndarray, uTime: float = UTIME) -> np.ndarray:
     """MidnightRainbow OFFLINE FALLBACK: rainbow recolor over the source (self-emboss
     dropped). Used only when the baked blob / noise.png is absent; the faithful path is
@@ -431,20 +563,21 @@ def _midnight_rainbow(arr_u8: np.ndarray, uTime: float = UTIME) -> np.ndarray:
     return _colored_rainbow(arr_u8)
 
 
-def _solar(
+def _solar_approx(
     arr_u8: np.ndarray, uColor: ColorLike = (1.0, 0.0, 0.0),
     uSecondary: ColorLike = (1.0, 1.0, 0.0), uTime: float = UTIME,
 ) -> np.ndarray:
-    """ArmorSolar APPROX: emissive lava/fire heat ramp from source luminance.
+    """ArmorSolar handwritten emissive lava/fire heat ramp from source luminance.
 
-    The real ArmorSolar bytecode (5 self-taps + a `sincos(uTime)` rotation) builds its
-    fiery glow as an ADDITIVE emissive term carried on the vertex color `v0`; running it
-    with v0=white (offline) collapses the glow to a flat pale wash and loses the fire
-    hue entirely (verified). So this is a deliberate fire approximation, NOT the literal
-    shader: map source brightness to a Solar-pillar heat ramp uColor(ember red) ->
-    uSecondary(yellow) -> white-hot, scaled emissively (dark embers stay dim, hot cores
-    bloom to near-white). Reads as bright orange/yellow lava with hot highlights, not the
-    dark red the old `_brightness_clip(uColor)` produced."""
+    Maps source brightness to a Solar-pillar heat ramp uColor(ember red) -> uSecondary(yellow)
+    -> white-hot, scaled emissively (dark embers stay dim, hot cores bloom to near-white).
+    Reads as bright orange/yellow lava with hot highlights -- which is much closer to the
+    in-game bright Solar pillar glow than the faithful bytecode is OFFLINE (see `_solar`): the
+    real shader carries its glow as an ADDITIVE `*v0` emissive term that BLOOMS in-game, but
+    offline (v0=white, single LDR layer, no additive blend) that bloom cannot be reproduced, so
+    the bytecode collapses to a dark reddish ember (mean ~74 vs this ramp's ~175 on the same
+    cell; verified). Hence Solar stays on this handwritten approximation by default; the
+    bytecode path (`_solar`) is wired + tested but reads markedly dimmer offline."""
     uC = _col(uColor, [1.0, 0.0, 0.0])
     uS = _col(uSecondary, [1.0, 1.0, 0.0])
     white = np.array([1.0, 1.0, 1.0])
@@ -462,29 +595,108 @@ def _solar(
     return _run(arr_u8, f)
 
 
-def _void(arr_u8: np.ndarray, uTime: float = UTIME) -> np.ndarray:
-    """ArmorVoid APPROX: horizontal blur+darken collapsed -> dark tint."""
-    return _brightness_clip(arr_u8, (0.35, 0.35, 0.35))
+def _solar(
+    arr_u8: np.ndarray, uColor: ColorLike = (1.0, 0.0, 0.0),
+    uSecondary: ColorLike = (1.0, 1.0, 0.0),
+    *, src_rect: SrcRect = _DEFAULT_RECT, sheet_size: SheetSize = _DEFAULT_SHEET,
+    u_time: float | None = None,
+) -> np.ndarray:
+    """ArmorSolar (item 3526): the real 5-tap self-emboss + fire-band bytecode.
+
+    OFFLINE LIMITATION (class-C-like): the real shader builds its fiery glow as an ADDITIVE
+    emissive term carried on the vertex colour v0 (`max r1.xyz, v0, v0.w` / `mad r0, r4, v0,
+    r0`). In-game v0 + additive blend make it BLOOM bright; offline v0=white in a single LDR
+    layer cannot bloom, so the output collapses to a dark reddish ember (mean ~74 vs the
+    in-game bright fire; raw straight rgb max ~0.97, 0% over-unity -> the clip is not even
+    what dims it, the additive bloom is just gone). The uColor fire hue IS present (`mad
+    r1.xyz, r0.z, c3, uColor`), so it is a faithful-but-dark ember, NOT the washed-pale wash
+    the audit predicted. Because this reads markedly worse than the in-game bright Solar, the
+    production dispatch keeps the handwritten `_solar_approx` by default (see apply_dye);
+    this bytecode path is wired + tested for parity but is dimmer offline. uTime drives the
+    brightness pulse (`c2 = sin(uTime*0.477+0.5)*0.2+1`); the representative still uses the
+    swept `_PILLAR_TIME['ArmorSolar']`=5.0 (the pulse peak). Falls back to `_solar_approx`
+    when the blob / noise.png is absent."""
+    uC = _col(uColor, [1.0, 0.0, 0.0])
+    uS = _col(uSecondary, [1.0, 1.0, 0.0])
+    return _noise_pass(arr_u8, "ArmorSolar", uColor=uC, uSecondary=uS, uSat=1.0,
+                       src_rect=src_rect, sheet_size=sheet_size,
+                       u_time=_pillar_time("ArmorSolar", u_time),
+                       fallback=lambda: _solar_approx(arr_u8, uColor, uSecondary, UTIME))
+
+
+def _void(
+    arr_u8: np.ndarray, *, src_rect: SrcRect = _DEFAULT_RECT,
+    sheet_size: SheetSize = _DEFAULT_SHEET, u_time: float | None = None,
+) -> np.ndarray:
+    """ArmorVoid (item 3530): the real 3-tap horizontal self-blur + darken (a dark shimmer).
+
+    Self-samples uImage0 at +-1/uImageSize0 horizontal taps (the offset-tap fix honours
+    them), blurs and darkens (*0.35), scrolling by uTime. uTime=0 lights only 73% of px;
+    the lit plateau (~95%) begins at `_BATCH2_TIME['ArmorVoid']=1.0`, so the still pins 1.0
+    (a representative lit phase of this intentionally-dark dye -- the mean barely shifts).
+    Falls back to the old flat dark-tint approximation if the blob / noise.png is absent.
+    NOTE: the faithful result is a textured dark blur, NOT the old flat 0.35 wash."""
+    return _noise_pass(arr_u8, "ArmorVoid", uColor=np.array([1.0, 1.0, 1.0]),
+                       uSecondary=np.array([1.0, 1.0, 1.0]), uSat=1.0,
+                       src_rect=src_rect, sheet_size=sheet_size,
+                       u_time=_batch2_time("ArmorVoid", u_time),
+                       fallback=lambda: _brightness_clip(arr_u8, (0.35, 0.35, 0.35)))
 
 
 def _hades(
     arr_u8: np.ndarray, uColor: ColorLike, uSecondary: ColorLike = None,
-    uTime: float = UTIME,
+    *, src_rect: SrcRect = _DEFAULT_RECT, sheet_size: SheetSize = _DEFAULT_SHEET,
+    u_time: float | None = None,
 ) -> np.ndarray:
-    """ArmorHades APPROX: rotated self-taps collapsed -> uColor ember tint."""
-    return _brightness_clip(arr_u8, _col(uColor, [0.5, 0.7, 1.3]))
+    """ArmorHades (items 3038/3597/3598/3600): the real rotated self-sampling ember glow
+    mixing uColor<->uSecondary (3-tap, uRotation-rotated offsets + uTime scroll).
+
+    uRotation=0 (non-rotated sprite, ArmorShaderData.cs:97/105) -> run_noise_pass binds 0.
+    uTime=0 is fully lit (100% of opaque px) and representative. Falls back to the old flat
+    uColor ember tint if the blob / noise.png is absent. NOTE: the faithful result is the
+    rotated self-tap glow, NOT the old flat uColor wash (markedly brighter / textured)."""
+    uC = _col(uColor, [0.5, 0.7, 1.3])
+    uS = _col(uSecondary, [0.5, 0.7, 1.3])
+    return _noise_pass(arr_u8, "ArmorHades", uColor=uC, uSecondary=uS, uSat=1.0,
+                       src_rect=src_rect, sheet_size=sheet_size,
+                       u_time=_batch2_time("ArmorHades", u_time),
+                       fallback=lambda: _brightness_clip(arr_u8, uC))
 
 
-def _mirage(arr_u8: np.ndarray, uTime: float = UTIME) -> np.ndarray:
-    """ArmorMirage APPROX: self-tap wavy displacement collapses to passthrough."""
-    return arr_u8
+def _mirage(
+    arr_u8: np.ndarray, *, src_rect: SrcRect = _DEFAULT_RECT,
+    sheet_size: SheetSize = _DEFAULT_SHEET, u_time: float | None = None,
+) -> np.ndarray:
+    """ArmorMirage (item 3534): the real sin/sgn horizontal self-displacement (a wavy
+    shimmer, 3 self-taps + positional + uTime).
+
+    uTime=0 is fully lit (100% of opaque px) and representative. Falls back to a plain
+    passthrough if the blob / noise.png is absent. NOTE: the faithful result is the real
+    wavy displacement, NOT the old no-op passthrough."""
+    return _noise_pass(arr_u8, "ArmorMirage", uColor=np.array([1.0, 1.0, 1.0]),
+                       uSecondary=np.array([1.0, 1.0, 1.0]), uSat=1.0,
+                       src_rect=src_rect, sheet_size=sheet_size,
+                       u_time=_batch2_time("ArmorMirage", u_time),
+                       fallback=lambda: arr_u8)
 
 
 def _loki(
-    arr_u8: np.ndarray, uColor: ColorLike = (0.1, 0.1, 0.1), uTime: float = UTIME,
+    arr_u8: np.ndarray, uColor: ColorLike = (0.1, 0.1, 0.1),
+    *, src_rect: SrcRect = _DEFAULT_RECT, sheet_size: SheetSize = _DEFAULT_SHEET,
+    u_time: float | None = None,
 ) -> np.ndarray:
-    """ArmorLoki APPROX: self-tap dark camo collapsed -> dark uColor tint."""
-    return _brightness_clip(arr_u8, _col(uColor, [0.1, 0.1, 0.1]))
+    """ArmorLoki (item 3599): the real rotated self-sampling dark camo (same mechanism as
+    Hades, uColor=(0.1,0.1,0.1), 3-tap rotated + uTime scroll).
+
+    uRotation=0 -> bound 0. uTime=0 is fully lit (100% of opaque px) and representative.
+    Falls back to the old flat dark uColor tint if the blob / noise.png is absent. NOTE: the
+    faithful result is the rotated dark-camo self-tap, NOT the old near-black flat wash
+    (the old approx collapsed it to luma*0.1 ~ mean 12; the faithful is ~mean 118)."""
+    uC = _col(uColor, [0.1, 0.1, 0.1])
+    return _noise_pass(arr_u8, "ArmorLoki", uColor=uC, uSecondary=uC, uSat=1.0,
+                       src_rect=src_rect, sheet_size=sheet_size,
+                       u_time=_batch2_time("ArmorLoki", u_time),
+                       fallback=lambda: _brightness_clip(arr_u8, uC))
 
 
 # ── emissive HDR tone-map (for the pillar/boss glow passes) ───────────
@@ -575,15 +787,61 @@ def _noise_pass(
     return (res * 255.0 + 0.5).astype(np.uint8)
 
 
-# ── view APPROX passes (uLightSource=0; no live light offline) ────────
-def _reflective(arr_u8: np.ndarray) -> np.ndarray:
-    """ArmorReflective APPROX: uLightSource=0 -> no live specular -> passthrough."""
+# ── view-dependent passes (uLightSource=0; no live specular offline) ──
+# CLASS C: the two Reflective passes are lit by `uLightSource`, a live lighting-gradient
+# normal (ReflectiveArmorShaderData.Apply) that is 0 with no entity / offline. The faithful
+# bytecode runs fine, but its moving specular highlight (the dye's whole point in-game) is
+# physically absent offline -- `dp3 r0.x, r0, uLightSource` is identically 0. So the bytecode
+# yields the honest "no-highlight offline" version: a 5-tap edge emboss of the source through
+# `*0.5` (Reflective), plus a uColor tint (ReflectiveColor). uLightSource is NOT bound in
+# run_noise_pass, so the interpreter's zero default for its CTAB register (c2/c3) IS exactly
+# the offline-limit value. This is the offline physical ceiling, NOT a bug.
+def _reflective_approx(arr_u8: np.ndarray) -> np.ndarray:
+    """ArmorReflective OFFLINE FALLBACK: uLightSource=0 -> no live specular -> passthrough.
+    Used only when the baked blob / noise.png is absent (faithful path = `_reflective`)."""
     return arr_u8
 
 
-def _reflective_color(arr_u8: np.ndarray, uColor: ColorLike = (1.0, 1.0, 1.0)) -> np.ndarray:
-    """ArmorReflectiveColor APPROX: uLightSource=0 -> tint source by uColor only."""
+def _reflective_color_approx(
+    arr_u8: np.ndarray, uColor: ColorLike = (1.0, 1.0, 1.0),
+) -> np.ndarray:
+    """ArmorReflectiveColor OFFLINE FALLBACK: uLightSource=0 -> tint source by uColor only.
+    Used only when the baked blob / noise.png is absent (faithful path = `_reflective_color`)."""
     return _brightness_clip(arr_u8, _col(uColor, [1.0, 1.0, 1.0]))
+
+
+def _reflective(
+    arr_u8: np.ndarray, *, src_rect: SrcRect = _DEFAULT_RECT,
+    sheet_size: SheetSize = _DEFAULT_SHEET,
+) -> np.ndarray:
+    """ArmorReflective (item 3190): the real 5-tap emboss bytecode, offline (uLightSource=0).
+
+    CLASS C offline limit: the live specular highlight is 0 offline (no lighting gradient), so
+    the faithful result is the source through the emboss DC (~*0.5, slightly darkened metal),
+    NOT the old flat passthrough. The moving highlight cannot be reproduced offline -- this is
+    the physical ceiling, not a bug. Falls back to `_reflective_approx` (passthrough) when the
+    blob / noise.png is absent."""
+    return _noise_pass(arr_u8, "ArmorReflective", uColor=np.array([1.0, 1.0, 1.0]),
+                       uSecondary=np.array([1.0, 1.0, 1.0]), uSat=1.0,
+                       src_rect=src_rect, sheet_size=sheet_size,
+                       fallback=lambda: _reflective_approx(arr_u8))
+
+
+def _reflective_color(
+    arr_u8: np.ndarray, uColor: ColorLike = (1.0, 1.0, 1.0),
+    *, src_rect: SrcRect = _DEFAULT_RECT, sheet_size: SheetSize = _DEFAULT_SHEET,
+) -> np.ndarray:
+    """ArmorReflectiveColor (items 3026/3027/3553/3554/3555): the real emboss + uColor tint
+    bytecode, offline (uLightSource=0).
+
+    CLASS C offline limit: same as `_reflective` -- the live specular is 0 offline, so the
+    faithful result is the embossed source tinted by uColor (no moving highlight). Falls back
+    to `_reflective_color_approx` (uColor tint of the source) when the blob / noise.png is
+    absent."""
+    uC = _col(uColor, [1.0, 1.0, 1.0])
+    return _noise_pass(arr_u8, "ArmorReflectiveColor", uColor=uC, uSecondary=uC, uSat=1.0,
+                       src_rect=src_rect, sheet_size=sheet_size,
+                       fallback=lambda: _reflective_color_approx(arr_u8, uColor))
 
 
 def _pillar_time(name: str, u_time: float | None) -> float:
@@ -822,10 +1080,11 @@ def apply_dye(
     noise/self-sampling passes (a phase for sweeping a dye's animation cycle; see the
     dynamic-frame dev script). `None` (production default) keeps each pass's baked
     representative still — UTIME=0 for the time/scroll passes (incl. MidnightRainbow, whose
-    uTime only scrolls the rainbow hue), `_PILLAR_TIME[name]` for the emissive pillar
-    passes — so the production byte-output is unchanged. The remaining APPROX time passes
-    (Solar/Void/Hades/Mirage/Loki) ignore it (they have no real uTime formula offline —
-    see research/dynamic_effects_catalog.md §A.1).
+    uTime only scrolls the rainbow hue, and the batch-2 Flow/Living*/Mirage/Hades/Loki,
+    all fully lit at 0), the swept `_BATCH2_TIME[name]` for the two batch-2 passes whose
+    uTime=0 collapses (Acid=2.5 / Void=1.0), and `_PILLAR_TIME[name]` for the emissive
+    pillar passes — so the production byte-output is unchanged. Only `ArmorSolar` still
+    ignores `u_time` (it stays the handwritten emissive approximation; batch 3).
     """
     if not spec:
         return arr_u8
@@ -836,70 +1095,121 @@ def apply_dye(
     geom = {"src_rect": src_rect, "sheet_size": sheet_size}
     ngeom = {**geom, "u_time": u_time}  # noise passes additionally take a phase override
 
-    # exact-static
+    # exact-static (non-animated recolor / gradient / colour-driven): run the REAL compiled
+    # ps_2_0 bytecode (dye_noise) — uTime is irrelevant, so the frozen still is exact, not an
+    # approximation. The handwritten ports stay as the offline fallback (baked blob / noise.png
+    # absent), same contract as the noise dyes. v0 (vertex colour) = white = the inventory /
+    # standard white draw colour (research/dye_bytecode_audit.md §v0). The compositor threads
+    # src_rect/sheet_size so the gradient/rainbow family normalises pixel-x by 1/uSourceRect.z.
+    cC = _col(color, [1.0, 1.0, 1.0])
+    cS = _col(secondary, [1.0, 1.0, 0.0])
     if name == "ArmorColored":
-        return _armor_colored(arr_u8, _col(color, [1.0, 1.0, 1.0]), sat)
+        return _noise_pass(arr_u8, "ArmorColored", uColor=cC, uSecondary=cC, uSat=sat,
+                           fallback=lambda: _armor_colored(arr_u8, cC, sat), **geom)
     if name == "ArmorColoredAndBlack":
-        return _armor_colored_andblack(arr_u8, _col(color, [1.0, 1.0, 1.0]), sat)
+        return _noise_pass(arr_u8, "ArmorColoredAndBlack", uColor=cC, uSecondary=cC, uSat=sat,
+                           fallback=lambda: _armor_colored_andblack(arr_u8, cC, sat), **geom)
     if name == "ArmorColoredAndSilverTrim":
-        return _armor_colored_silvertrim(arr_u8, _col(color, [1.0, 1.0, 1.0]), sat)
+        return _noise_pass(
+            arr_u8, "ArmorColoredAndSilverTrim", uColor=cC, uSecondary=cC, uSat=sat,
+            fallback=lambda: _armor_colored_silvertrim(arr_u8, cC, sat), **geom)
     if name == "ArmorBrightnessColored":
-        return _brightness_colored(arr_u8, _col(color, [1.0, 1.0, 1.0]))
+        return _noise_pass(arr_u8, "ArmorBrightnessColored", uColor=cC, uSecondary=cC, uSat=sat,
+                           fallback=lambda: _brightness_colored(arr_u8, cC), **geom)
     if name == "ColorOnly":
-        return _color_only(arr_u8)
+        return _noise_pass(arr_u8, "ColorOnly", uColor=cC, uSecondary=cC, uSat=sat,
+                           fallback=lambda: _color_only(arr_u8), **geom)
     if name == "ArmorInvert":
-        return _invert(arr_u8)
+        return _noise_pass(arr_u8, "ArmorInvert", uColor=cC, uSecondary=cC, uSat=sat,
+                           fallback=lambda: _invert(arr_u8), **geom)
     if name == "ArmorColoredGradient":
-        return _colored_gradient(arr_u8, color, secondary, sat)
+        return _noise_pass(arr_u8, "ArmorColoredGradient", uColor=cC, uSecondary=cS, uSat=sat,
+                           fallback=lambda: _colored_gradient(arr_u8, color, secondary, sat),
+                           **geom)
     if name == "ArmorColoredAndBlackGradient":
-        return _colored_andblack_gradient(arr_u8, color, secondary, sat or 1.5)
+        return _noise_pass(
+            arr_u8, "ArmorColoredAndBlackGradient", uColor=cC, uSecondary=cS, uSat=sat or 1.5,
+            fallback=lambda: _colored_andblack_gradient(arr_u8, color, secondary, sat or 1.5),
+            **geom)
     if name == "ArmorColoredAndSilverTrimGradient":
-        return _colored_silvertrim_gradient(arr_u8, color, secondary, sat or 1.5)
+        return _noise_pass(
+            arr_u8, "ArmorColoredAndSilverTrimGradient", uColor=cC, uSecondary=cS,
+            uSat=sat or 1.5,
+            fallback=lambda: _colored_silvertrim_gradient(arr_u8, color, secondary, sat or 1.5),
+            **geom)
     if name == "ArmorBrightnessGradient":
-        return _brightness_gradient(arr_u8, color, secondary)
+        return _noise_pass(arr_u8, "ArmorBrightnessGradient", uColor=cC, uSecondary=cS, uSat=sat,
+                           fallback=lambda: _brightness_gradient(arr_u8, color, secondary),
+                           **geom)
     if name == "ArmorColoredRainbow":
-        return _colored_rainbow(arr_u8, sat)
+        return _noise_pass(arr_u8, "ArmorColoredRainbow", uColor=cC, uSecondary=cC, uSat=sat,
+                           fallback=lambda: _colored_rainbow(arr_u8, sat), **geom)
     if name == "ArmorBrightnessRainbow":
-        return _brightness_rainbow(arr_u8)
+        return _noise_pass(arr_u8, "ArmorBrightnessRainbow", uColor=cC, uSecondary=cC, uSat=sat,
+                           fallback=lambda: _brightness_rainbow(arr_u8), **geom)
     if name == "ArmorMartian":
-        return _martian(arr_u8)
+        return _noise_pass(arr_u8, "ArmorMartian", uColor=cC, uSecondary=cC, uSat=sat,
+                           fallback=lambda: _martian(arr_u8), **geom)
     if name == "ArmorPolarized":
-        return _polarized(arr_u8)
+        return _noise_pass(arr_u8, "ArmorPolarized", uColor=cC, uSecondary=cC, uSat=sat,
+                           fallback=lambda: _polarized(arr_u8), **geom)
     if name == "ArmorMushroom":
-        return _mushroom(arr_u8, _col(color, [0.05, 0.2, 1.0]))
+        cM = _col(color, [0.05, 0.2, 1.0])
+        return _noise_pass(arr_u8, "ArmorMushroom", uColor=cM, uSecondary=cM, uSat=sat,
+                           fallback=lambda: _mushroom(arr_u8, cM), **geom)
     if name == "ArmorWisp":
-        return _wisp(arr_u8, color, secondary)
+        cWC = _col(color, [0.7, 1.0, 0.9])
+        cWS = _col(secondary, [0.35, 0.85, 0.8])
+        return _noise_pass(arr_u8, "ArmorWisp", uColor=cWC, uSecondary=cWS, uSat=sat,
+                           fallback=lambda: _wisp(arr_u8, color, secondary), **geom)
     if name == "ArmorHighContrastGlow":
-        return _high_contrast_glow(arr_u8, _col(color, [0.0, 1.0, 0.0]), sat)
+        # batch 3 correction: the real bytecode restores the v0-driven glow + chroma gating
+        # (handwritten dropped both). `**geom` threads src_rect/sheet_size; uTime is irrelevant.
+        return _high_contrast_glow(arr_u8, _col(color, [0.0, 1.0, 0.0]), sat, **geom)
 
-    # time-animated (representative uTime=0; u_time sweeps the real-formula ones)
-    _ut = UTIME if u_time is None else u_time
+    # time-animated / self-sampling (batch 2): run the REAL compiled bytecode (dye_noise),
+    # frozen at a representative still -- UTIME=0 for the passes that stay lit there, the
+    # swept `_BATCH2_TIME` value for the ones whose uTime=0 collapses (Acid 2.5 / Void 1.0).
+    # The handwritten ports stay as the offline fallback (baked blob / noise.png absent).
+    # `**ngeom` threads src_rect/sheet_size (the swirl/emboss taps read uSourceRect/
+    # uImageSize0) + the u_time override (the dynamic-frame sweep).
     if name == "ArmorFlow":
-        return _flow(arr_u8, color, secondary, _ut)
+        return _flow(arr_u8, color, secondary, **ngeom)
     if name == "ArmorLivingRainbow":
-        return _living_rainbow(arr_u8, _ut)
+        return _living_rainbow(arr_u8, **ngeom)
     if name == "ArmorLivingFlame":
-        return _living_flame(arr_u8, color, secondary, _ut)
+        return _living_flame(arr_u8, color, secondary, **ngeom)
     if name == "ArmorLivingOcean":
-        return _living_ocean(arr_u8, _ut)
+        return _living_ocean(arr_u8, **ngeom)
     if name == "ArmorAcid":
-        return _acid(arr_u8, _col(color, [0.5, 1.0, 0.3]), _ut)
-    if name == "ArmorSolar":
-        return _solar(arr_u8, _col(color, [1.0, 0.0, 0.0]), _col(secondary, [1.0, 1.0, 0.0]))
+        return _acid(arr_u8, _col(color, [0.5, 1.0, 0.3]), **ngeom)
     if name == "ArmorVoid":
-        return _void(arr_u8)
+        return _void(arr_u8, **ngeom)
     if name == "ArmorHades":
-        return _hades(arr_u8, color, secondary)
+        return _hades(arr_u8, color, secondary, **ngeom)
     if name == "ArmorMirage":
-        return _mirage(arr_u8)
+        return _mirage(arr_u8, **ngeom)
     if name == "ArmorLoki":
-        return _loki(arr_u8, _col(color, [0.1, 0.1, 0.1]))
+        return _loki(arr_u8, _col(color, [0.1, 0.1, 0.1]), **ngeom)
 
-    # view APPROX (uLightSource=0 offline -> no live specular)
+    # ArmorSolar (batch 3): the real bytecode IS baked + wired (`_solar`), but offline it reads
+    # markedly DIMMER than the in-game bright Solar (its glow is an additive `*v0` emissive term
+    # that blooms in-game but cannot bloom in a single offline LDR layer -> a dark reddish ember,
+    # mean ~74 vs the handwritten fire ramp's ~175 on the same cell). So the production default
+    # stays the handwritten emissive approximation `_solar_approx`; flip this line to `_solar`
+    # (the faithful-but-dim bytecode) if the dim ember look is preferred. See `_solar` docstring.
+    if name == "ArmorSolar":
+        return _solar_approx(
+            arr_u8, _col(color, [1.0, 0.0, 0.0]), _col(secondary, [1.0, 1.0, 0.0]))
+
+    # ArmorReflective / ArmorReflectiveColor (batch 3, CLASS C): the real bytecode runs, but the
+    # live specular highlight is 0 offline (uLightSource=0) -> the honest "no-highlight" version
+    # (embossed source through *0.5, ReflectiveColor + uColor tint). `**geom` threads the tap
+    # geometry; the moving highlight is the offline physical ceiling, not a bug.
     if name == "ArmorReflective":
-        return _reflective(arr_u8)
+        return _reflective(arr_u8, **geom)
     if name == "ArmorReflectiveColor":
-        return _reflective_color(arr_u8, _col(color, [1.0, 1.0, 1.0]))
+        return _reflective_color(arr_u8, _col(color, [1.0, 1.0, 1.0]), **geom)
 
     # noise-sampling (real Misc/noise via dye_noise; APPROX fallback if asset missing)
     if name == "ArmorGel":
