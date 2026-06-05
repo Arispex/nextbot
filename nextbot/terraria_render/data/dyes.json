@@ -659,6 +659,42 @@
 "2873": {
 "pass": "ArmorLivingOcean"
 },
+"2874": {
+"color": [
+0.4,
+0.2,
+0.0
+],
+"pass": "ArmorColored",
+"sat": 1.0
+},
+"2875": {
+"color": [
+0.4,
+0.2,
+0.0
+],
+"pass": "ArmorColoredAndBlack",
+"sat": 1.0
+},
+"2876": {
+"color": [
+0.7,
+0.6,
+0.5
+],
+"pass": "ArmorColored",
+"sat": 1.0
+},
+"2877": {
+"color": [
+0.4,
+0.2,
+0.0
+],
+"pass": "ArmorColoredAndSilverTrim",
+"sat": 1.0
+},
 "2878": {
 "color": [
 0.7,
@@ -781,6 +817,14 @@
 0.7,
 1.3
 ]
+},
+"3039": {
+"color": [
+0.5,
+0.1,
+1.0
+],
+"pass": "ArmorTwilight"
 },
 "3040": {
 "color": [

@@ -470,6 +470,17 @@ def run_noise_pass(
         "uTime": np.array([u_time, 0.0, 0.0, 0.0]),
         "uDirection": np.array([1.0, 0.0, 0.0, 0.0]),
         "uRotation": np.array([0.0, 0.0, 0.0, 0.0]),
+        # Reflective/ReflectiveColor uLightSource is a unit surface NORMAL the game derives
+        # from the entity's live lighting gradient (ReflectiveArmorShaderData.cs:29-78); with
+        # no entity offline it is forced to Vector3.Zero -> N.L=0 -> the metallic highlight
+        # collapses (dark dull metal). We bind a STATIC representative front light (0,0,1) =
+        # the shader's own +Z surface normal / a head-on viewer, so the highlight statically
+        # lights up (luma 58->176, the bright-reflective look). This is a GROUNDED APPROXIMATION,
+        # NOT faithful: the game's specular MOVES with the lighting gradient, which is physically
+        # unavailable offline (no entity); a fixed normal is the representative stand-in. If the
+        # silver metals wash out too white, fall back to an overhead (0,0.7,0.714). ONLY the two
+        # Reflective passes read uLightSource (its CTAB register) -- every other pass ignores it.
+        "uLightSource": np.array([0.0, 0.0, 1.0, 0.0]),
     }
     # uImage1 is the noise texture, except HallowBoss which samples the colored palette.
     tex1 = noise

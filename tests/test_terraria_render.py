@@ -6,6 +6,7 @@ Dependency-light: no network, no pytest-only fixtures. Runs under pytest
 """
 from __future__ import annotations
 
+import json
 import struct
 import sys
 from pathlib import Path
@@ -168,6 +169,142 @@ def test_unknown_pass_falls_back_undyed() -> None:
     f = _gray_frame(200)
     assert np.array_equal(apply_dye(f.copy(), {"pass": "NotARealPass"}), f)
     assert np.array_equal(apply_dye(f.copy(), None), f)
+
+
+# ── Brown dyes (2874-2877) + TwilightDye (3039): the 5 armor dyes whose outlier netIds
+# were dropped by gen_tables.gen_dyes (the Brown set uses the 4-explicit-id
+# LoadBasicColorDye overload, DyeInitializer.cs:41; TwilightDye binds
+# TwilightDyeShaderData, :101 — neither matched the old regexes). These guard the data.
+_DYES_JSON = json.loads(
+    (Path(__file__).resolve().parent.parent
+     / "nextbot/terraria_render/data/dyes.json").read_text())
+# Expected pass + color baked from DyeInitializer.cs (LoadBasicColorDye(2874,2875,2876,
+# 2877, 0.4,0.2,0) at :41 -> base/+black/+bright(=c*0.5+0.5)/+silver; TwilightDye(3039)
+# ArmorTwilight (0.5,0.1,1) at :101). sat omitted == default 1.0.
+_BROWN_EXPECTED = {
+    "2874": {"pass": "ArmorColored", "color": [0.4, 0.2, 0.0], "sat": 1.0},
+    "2875": {"pass": "ArmorColoredAndBlack", "color": [0.4, 0.2, 0.0], "sat": 1.0},
+    "2876": {"pass": "ArmorColored", "color": [0.7, 0.6, 0.5], "sat": 1.0},
+    "2877": {"pass": "ArmorColoredAndSilverTrim", "color": [0.4, 0.2, 0.0], "sat": 1.0},
+}
+_TWILIGHT_EXPECTED = {"3039": {"pass": "ArmorTwilight", "color": [0.5, 0.1, 1.0]}}
+
+
+def _chromatic_pixel(rgb: tuple[int, int, int]) -> np.ndarray:
+    """A single opaque pixel with chroma, so the HSL recolor family has hue to act on
+    (a flat-gray pixel is chroma-0 and ArmorColored correctly leaves it neutral)."""
+    f = np.zeros((1, 1, 4), np.uint8)
+    f[0, 0, :3] = rgb
+    f[0, 0, 3] = 255
+    return f
+
+
+def test_dyes_json_has_brown_and_twilight() -> None:
+    # The 5 outlier armor dyes must be present in dyes.json with the EXACT pass + color
+    # baked from DyeInitializer.cs (regression guard for the gen_dyes fix).
+    for nid, want in {**_BROWN_EXPECTED, **_TWILIGHT_EXPECTED}.items():
+        got = _DYES_JSON.get(nid)
+        assert got is not None, f"dye {nid} missing from dyes.json"
+        assert got.get("pass") == want["pass"], (
+            f"dye {nid} pass {got.get('pass')} != {want['pass']}")
+        assert got.get("color") == want["color"], (
+            f"dye {nid} color {got.get('color')} != {want['color']}")
+    # Brown carries sat 1.0 (the basic-color default); Twilight (noise pass) has none.
+    assert all(_DYES_JSON[n].get("sat") == 1.0 for n in _BROWN_EXPECTED)
+    assert "sat" not in _DYES_JSON["3039"]
+
+
+def test_brown_dyes_recolor_to_brown_and_preserve_shading() -> None:
+    # Each Brown dye recolors a chromatic (blue) source toward BROWN (warm: R >= G >= B)
+    # and PRESERVES brightness ordering (保明暗): a dark source stays darker than a
+    # bright one (the recolor remaps hue, it does NOT flatten to a constant fill).
+    blue = _chromatic_pixel((80, 120, 200))
+    for nid in _BROWN_EXPECTED:
+        out = apply_dye(blue.copy(), dict(_DYES_JSON[nid]),
+                        src_rect=(0, 0, FW, FH), sheet_size=(FW, FH))
+        r, g, b = (int(out[0, 0, c]) for c in range(3))
+        assert r >= g >= b and r > b, f"dye {nid} not brown: {(r, g, b)}"
+        # brightness preserved: a darker chromatic source stays darker after dyeing.
+        spec = dict(_DYES_JSON[nid])
+        d = apply_dye(_chromatic_pixel((40, 60, 100)), spec)[0, 0, :3]
+        br = apply_dye(_chromatic_pixel((120, 160, 220)), spec)[0, 0, :3]
+        assert br.astype(int).mean() > d.astype(int).mean(), (
+            f"dye {nid} did not preserve shading (bright {br} <= dark {d})")
+
+
+def test_brown_and_twilight_dispatch_through_correct_pass() -> None:
+    # Each of the 5 dyes must dispatch through its declared bytecode pass (Brown ->
+    # ArmorColored / *AndBlack / *AndSilverTrim; Twilight -> ArmorTwilight), NOT
+    # silently fall back. Spy on run_noise_pass and assert the pass name fired (same
+    # method as the batch-1 dispatch test).
+    from nextbot.terraria_render import dye as dye_mod
+
+    f = _structured_frame()
+    calls: list[str] = []
+    orig = dye_mod.dye_noise.run_noise_pass
+
+    def spy(premul: np.ndarray, name: str, **k: object) -> "np.ndarray | None":
+        calls.append(name)
+        return orig(premul, name, **k)  # type: ignore[arg-type]
+
+    dye_mod.dye_noise.run_noise_pass = spy
+    try:
+        for nid, want in {**_BROWN_EXPECTED, **_TWILIGHT_EXPECTED}.items():
+            calls.clear()
+            out = apply_dye(f.copy(), dict(_DYES_JSON[nid]),
+                            src_rect=(0, 0, FW, FH), sheet_size=(FW, FH))
+            assert calls == [want["pass"]], (
+                f"dye {nid} dispatched {calls}, expected [{want['pass']}]")
+            assert out.shape == f.shape
+    finally:
+        dye_mod.dye_noise.run_noise_pass = orig
+
+
+def test_twilight_dye_3039_is_purple_noise_over_source() -> None:
+    # TwilightDye 3039 (ArmorTwilight noise pass) must alter the source AND be spatially
+    # varying (the Misc/noise-driven purple glow), not a flat tint. Renders on a real
+    # armor body cell when shipped (PumpkinShirt 1755 / body slot 82), else a ramp.
+    sheet = "ArmorBody_82"
+    if _frame(sheet, 0)[..., 3].sum() > 0:                 # real armor sheet shipped
+        frame = _frame(sheet, 0)
+        src_rect, sheet_size = (0, 0, FW, FH), (360, 224)
+    else:                                                  # offline-safe fallback frame
+        frame = _structured_frame()
+        src_rect, sheet_size = (0, 0, FW, FH), (FW, FH)
+    out = apply_dye(frame.copy(), dict(_DYES_JSON["3039"]),
+                    src_rect=src_rect, sheet_size=sheet_size)
+    assert not np.array_equal(out, frame)                  # the dye did something
+    op = frame[..., 3] > 0
+    distinct = np.unique(out[op][:, :3], axis=0)
+    assert distinct.shape[0] > 1                           # spatially varying, not flat
+
+
+def test_armor_dyes_complete_vs_decompiled_source() -> None:
+    # COMPLETENESS GUARD: dyes.json must contain EXACTLY the armor-shader bindings in
+    # DyeInitializer.cs (every GameShaders.Armor.BindShader id + the 4 ids each
+    # LoadBasicColorDye produces) — no missing dye, no stray non-armor id (hair dyes /
+    # golf balls / dye vat must NOT leak in). Skips when the decompiled tree is absent
+    # (not shipped with the package); the static _BROWN/_TWILIGHT guards always run.
+    import re
+
+    decomp = (Path(__file__).resolve().parent.parent
+              / "temp/decomp/full/Terraria.Initializers/DyeInitializer.cs")
+    if not decomp.is_file():
+        return
+    src = decomp.read_text()
+    armor_ids: set[int] = set()
+    for m in re.finditer(r"GameShaders\.Armor\.BindShader\((\d+),", src):
+        armor_ids.add(int(m.group(1)))
+    explicit4 = r"LoadBasicColorDye\((\d+),\s*(\d+),\s*(\d+),\s*(\d+),\s*-?[\d.]+f"
+    for m in re.finditer(explicit4, src):                      # 4-explicit-id overload
+        armor_ids.update(int(m.group(i)) for i in range(1, 5))
+    for m in re.finditer(r"LoadBasicColorDye\((\d+),\s*-?[\d.]+f", src):  # single-base
+        base = int(m.group(1))
+        armor_ids.update([base, base + 12, base + 31, base + 44])
+    have = {int(k) for k in _DYES_JSON}
+    assert have == armor_ids, (
+        f"dyes.json != armor bindings: missing {sorted(armor_ids - have)}, "
+        f"extra {sorted(have - armor_ids)}")
 
 
 # ── batch 1: non-animated recolor/gradient passes run the REAL compiled bytecode ──────
@@ -788,15 +925,19 @@ def test_batch2_falls_back_to_handwritten_without_baked_blob() -> None:
             f"{name} asset-missing fallback is not the documented handwritten approx")
 
 
-# ── batch 3 (final): the last 3 special passes run the REAL compiled bytecode ─────
-# research/dye_bytecode_audit.md §"batch 3/5": HighContrastGlow (correction: restores
-# the dropped v0 glow + chroma gating) + Reflective / ReflectiveColor (class C:
-# faithful no-highlight offline, uLightSource=0). ArmorSolar's bytecode is baked +
-# wired but stays OFF by default (dimmer offline -- see test_solar_bytecode_*).
+# ── batch 3 (final): the last special passes run the REAL compiled bytecode ─────
+# research/dye_bytecode_audit.md §"batch 3/5" + solar_reflective_revisit.md:
+# HighContrastGlow (correction: restores the dropped v0 glow + chroma gating) +
+# Reflective / ReflectiveColor (class C, grounded: static front light uLightSource=
+# (0,0,1) lights the metallic highlight) + ArmorSolar (faithful bytecode + source-alpha
+# per-channel HARD-CLIP, molten orange/red lava -- its fire light is hardcoded in the
+# shader, not uLightSource, so nothing is lost offline). All dispatch through the real
+# bytecode (run_noise_pass).
 _BATCH3_BYTECODE_SPECS = (
     {"pass": "ArmorHighContrastGlow", "color": [0.0, 1.0, 0.0], "sat": 1.0},
     {"pass": "ArmorReflective"},
     {"pass": "ArmorReflectiveColor", "color": [1.0, 0.85, 0.1]},
+    {"pass": "ArmorSolar", "color": [1.0, 0.0, 0.0], "secondary": [1.0, 1.0, 0.0]},
 )
 _HCG = {"pass": "ArmorHighContrastGlow", "color": [0.0, 1.0, 0.0], "sat": 1.0}
 _GEOM = {"src_rect": (0, 0, FW, FH), "sheet_size": (FW, FH)}
@@ -875,11 +1016,14 @@ def test_high_contrast_glow_falls_back_without_baked_blob() -> None:
         "HighContrastGlow asset-missing fallback is not the handwritten approx")
 
 
-def test_reflective_offline_is_no_highlight_not_crash() -> None:
-    # ArmorReflective / ArmorReflectiveColor (class C): the faithful bytecode runs
-    # offline (uLightSource=0) without crashing and produces the honest NO-HIGHLIGHT
-    # version -- Reflective ~= the source darkened by the emboss DC (*0.5),
-    # ReflectiveColor + a uColor tint. The moving specular is the offline limit (gone).
+def test_reflective_static_front_light_lights_highlight() -> None:
+    # ArmorReflective / ArmorReflectiveColor (class C, grounded approximation): the
+    # faithful bytecode runs with a STATIC front light bound in run_noise_pass
+    # (uLightSource=(0,0,1), the shader's +Z surface normal) so the metallic specular
+    # highlight statically lights up. The result is a BRIGHT reflective metal (luma well
+    # above the source), NOT the dull *0.5 no-highlight version at uLightSource=0. (The
+    # game's specular moves with the live lighting gradient -- physically unavailable
+    # offline; the fixed normal is a representative stand-in, solar_reflective_revisit.)
     frame = _frame("Armor_Head_276", 0)
     if frame[..., 3].sum() == 0:                             # asset absent -> approx
         return
@@ -888,17 +1032,23 @@ def test_reflective_offline_is_no_highlight_not_crash() -> None:
     assert np.isfinite(refl.astype(np.float64)).all() and refl.shape == frame.shape
     src_luma = frame[op][:, :3].astype(np.float64).mean()
     refl_luma = refl[op][:, :3].astype(np.float64).mean()
-    # no live specular -> the embossed source is DARKER than the source (the *0.5 DC),
-    # so this no-highlight version is darker than the old flat passthrough (= source).
-    assert refl_luma < src_luma, (
-        f"Reflective bytecode not the darkened no-highlight emboss "
-        f"(refl {refl_luma:.1f} >= source {src_luma:.1f})")
-    # ReflectiveColor with a gold uColor tints the result gold (R,G > B) on the emboss.
+    # the static front light re-lights the highlight lobe -> the reflective metal is
+    # markedly BRIGHTER than the source (luma ~176 vs ~117), proving the highlight is
+    # back (not the dull *0.5 metal at uLightSource=0, which is darker than the source).
+    assert refl_luma > src_luma + 20.0, (
+        f"Reflective static-light highlight not lit "
+        f"(refl {refl_luma:.1f} <= source {src_luma:.1f} + 20)")
+    # ReflectiveColor with a gold uColor stays gold (R,G > B) over the bright result.
     rc = _reflective_color(frame.copy(), [1.0, 0.85, 0.1], **_GEOM)
     assert np.isfinite(rc.astype(np.float64)).all() and rc.shape == frame.shape
     rr, rg, rb = rc[op][:, :3].astype(np.float64).mean(0)
     assert rr > rb and rg > rb, (
         f"ReflectiveColor gold tint not applied (mean rgb {(rr, rg, rb)})")
+    # ...and is itself bright (the highlight, not the dull uLightSource=0 metal).
+    rc_luma = rc[op][:, :3].astype(np.float64).mean()
+    assert rc_luma > src_luma, (
+        f"ReflectiveColor static-light highlight not lit "
+        f"(rc {rc_luma:.1f} <= source {src_luma:.1f})")
 
 
 def test_reflective_falls_back_without_baked_blob() -> None:
@@ -927,33 +1077,70 @@ def test_reflective_falls_back_without_baked_blob() -> None:
             f"{name} asset-missing fallback is not the documented approximation")
 
 
-def test_solar_bytecode_runs_but_default_stays_handwritten() -> None:
-    # ArmorSolar: the bytecode is baked + `_solar` runs it without crashing, BUT the
-    # production dispatch (apply_dye) keeps the handwritten `_solar_approx` by default,
-    # because offline (v0=white, no additive bloom) the bytecode reads markedly DIMMER
-    # than the in-game bright Solar. This pins that call (flip the dispatch to switch).
+def _solar_src_alpha_rgb(frame: np.ndarray, u_time: float) -> np.ndarray:
+    """Run the real Solar bytecode and un-premultiply by the SOURCE alpha (NOT oC0's
+    inflated alpha 2.0) -> (h,w,3) float: the over-unity additive bloom BEFORE the clip,
+    exactly what `_solar`/`_noise_pass(src_alpha=True)` feed the hard-clip. uSecondary=
+    (1,1,0) (Solar's DyeInitializer binding), so this matches production -- unlike the
+    generic `_raw_noise_rgb`, which uses (1,1,1) and divides by oC0-alpha."""
+    arr = frame.astype(np.float64) / 255.0
+    a = arr[..., 3]
+    pr = arr.copy()
+    pr[..., :3] = arr[..., :3] * a[..., None]
+    out = dye_noise.run_noise_pass(
+        pr, "ArmorSolar", u_color=np.array([1.0, 0.0, 0.0]),
+        u_secondary=np.array([1.0, 1.0, 0.0]), u_sat=1.0,
+        src_rect=_HEAD_GEOM[0], sheet_size=_HEAD_GEOM[1], u_time=u_time)
+    assert out is not None                                   # noise asset must ship
+    nz = a > 1e-6
+    return np.where(nz[..., None], out[..., :3] / np.where(nz, a, 1.0)[..., None], 0.0)
+
+
+def test_solar_default_is_bytecode_hard_clip_orange_red_lava() -> None:
+    # ArmorSolar PRODUCTION default = the faithful bytecode (`_solar`) un-premult by the
+    # SOURCE alpha then per-channel GPU HARD-CLIPPED (the Vortex/Stardust plan-A path).
+    # NOT the emissive tone-map (gain 1.5), which washed the fire pink-white, and NOT a
+    # handwritten ramp. Solar's fire light is hardcoded (`def c5`), not uLightSource, so
+    # nothing is lost offline; at the uTime=5.0 flame phase the straight rgb hits 1.9
+    # (38.6% over-unity), and the per-channel clip keeps the fire HUE (R clips first ->
+    # molten orange/red).
     frame = _frame("Armor_Head_276", 0)
     if frame[..., 3].sum() == 0:
         return
     op = frame[..., 3] > 0
     solar = {"pass": "ArmorSolar", "color": [1.0, 0.0, 0.0],
              "secondary": [1.0, 1.0, 0.0]}
-    # 1) production apply_dye(ArmorSolar) == the handwritten approx (default).
+    # 1) production apply_dye(ArmorSolar) == `_solar` (the bytecode hard-clip).
     prod = apply_dye(frame.copy(), dict(solar), **_GEOM)
-    hw = _solar_approx(frame.copy(), [1.0, 0.0, 0.0], [1.0, 1.0, 0.0])
-    assert np.array_equal(prod, hw), (
-        "ArmorSolar default dispatch is no longer the handwritten approx")
-    # 2) the bytecode path runs (faithful-but-dim) and is meaningfully DARKER than the
-    #    handwritten fire ramp -- the documented offline limitation (no additive bloom).
     bc = _solar(frame.copy(), [1.0, 0.0, 0.0], [1.0, 1.0, 0.0], **_GEOM)
+    assert np.array_equal(prod, bc), (
+        "ArmorSolar default dispatch is not the bytecode hard-clip")
+    hw = _solar_approx(frame.copy(), [1.0, 0.0, 0.0], [1.0, 1.0, 0.0])
+    assert not np.array_equal(prod, hw), (
+        "ArmorSolar default dispatch is still the handwritten approx")
     assert np.isfinite(bc.astype(np.float64)).all() and bc.shape == frame.shape
-    bc_mean, hw_mean = bc[op][:, :3].mean(), hw[op][:, :3].mean()
-    assert bc_mean < hw_mean, (
-        f"Solar bytecode not dimmer than the handwritten fire ramp offline "
-        f"(bc {bc_mean:.1f} >= hw {hw_mean:.1f})")
-    # 3) the bytecode still carries the uColor fire hue (red-dominant), not a grey wash.
+    # 2) `_solar` is the source-alpha un-premult + per-channel HARD-CLIP (gain 1.0),
+    #    bit-for-bit -- the GPU clip Vortex/Stardust use (NO tone-map, NO _PILLAR_GAIN).
+    raw = _solar_src_alpha_rgb(frame, _PILLAR_TIME["ArmorSolar"])
+    assert np.array_equal(bc, _compose_rgb(frame, raw)), (
+        "Solar no longer matches the faithful source-alpha hard-clip (tonemap back?)")
+    assert "ArmorSolar" not in _PILLAR_GAIN, "Solar emissive gain lift must be gone"
+    # 3) the lava keeps the warm fire hue (red > green > blue), not a grey/white wash.
     br, bg, bb = bc[op][:, :3].astype(np.float64).mean(0)
-    assert br > bg > bb, f"Solar bytecode lost the warm fire hue (rgb {(br, bg, bb)})"
+    assert br > bg > bb, f"Solar lava lost the warm fire hue (rgb {(br, bg, bb)})"
+    # 4) ...and is NOT the washed pink-white the emissive tone-map (gain 1.5) gave. The
+    #    hard-clip keeps the over-unity overflow PER CHANNEL (R clips, G/B stay low) --
+    #    it does NOT fold each channel's overflow into all, so it is much less white.
+    washed = _compose_rgb(frame, _emissive_tonemap(raw, 1.5))
+    hc_white, tm_white = _near_white_pct(bc, op), _near_white_pct(washed, op)
+    assert hc_white < tm_white - 10.0, (
+        f"Solar hard-clip not meaningfully less near-white than the old pink-white "
+        f"tone-map (hardclip {hc_white:.1f}% vs tonemap {tm_white:.1f}%)")
+    # the R-B saturation gap survives the clip (orange/red), unlike the desaturated tm.
+    wr = washed[op][:, 0].astype(float).mean()
+    wb = washed[op][:, 2].astype(float).mean()
+    assert (br - bb) > (wr - wb), (
+        "Solar hard-clip kept less orange/red saturation than the tone-map wash")
 
 
 def test_solar_bytecode_falls_back_without_baked_blob() -> None:
@@ -2168,6 +2355,11 @@ def _run() -> int:
         test_invert_deterministic_and_changes_input,
         test_gradient_red_to_yellow_is_warm,
         test_unknown_pass_falls_back_undyed,
+        test_dyes_json_has_brown_and_twilight,
+        test_brown_dyes_recolor_to_brown_and_preserve_shading,
+        test_brown_and_twilight_dispatch_through_correct_pass,
+        test_twilight_dye_3039_is_purple_noise_over_source,
+        test_armor_dyes_complete_vs_decompiled_source,
         test_batch1_passes_dispatch_through_bytecode,
         test_armor_colored_copper_is_bytecode_faithful,
         test_batch1_no_preshader_passes_run_without_crash,
@@ -2192,9 +2384,9 @@ def _run() -> int:
         test_batch3_passes_dispatch_through_bytecode,
         test_high_contrast_glow_chroma_gated_bytecode,
         test_high_contrast_glow_falls_back_without_baked_blob,
-        test_reflective_offline_is_no_highlight_not_crash,
+        test_reflective_static_front_light_lights_highlight,
         test_reflective_falls_back_without_baked_blob,
-        test_solar_bytecode_runs_but_default_stays_handwritten,
+        test_solar_default_is_bytecode_hard_clip_orange_red_lava,
         test_solar_bytecode_falls_back_without_baked_blob,
         test_hairdye_twilight_differs_from_none,
         test_hairdye_legacy_changes_hair_color,

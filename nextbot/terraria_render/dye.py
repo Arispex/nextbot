@@ -10,15 +10,20 @@ dye_passes_spec.md + dye_shader_spec.md), in three tiers:
   passes that stay fully lit there (Flow, Living*, Mirage, Hades, Loki), and a swept
   representative for the ones whose ``uTime = 0`` phase collapses (Acid → 2.5, Void →
   1.0; see ``_BATCH2_TIME``). The handwritten ports stay as the offline fallback. Solar
-  remains a handwritten emissive approximation (batch 3).
+  runs the real bytecode (its hardcoded fire light is offline-faithful) at the uTime=5.0
+  flame phase, un-premultiplied by the source alpha then faithfully per-channel HARD-CLIPPED
+  like the game GPU (the Vortex/Stardust treatment) so the over-unity additive bloom keeps its
+  molten orange/red fire hue instead of desaturating to pink-white (``_solar``).
 * self-sampling / noise-sampling — Gel/Phase/Nebula/Vortex/Stardust/Shifting*/Fog/
   HallowBoss, the ArmorTwilight hair dye, and ArmorMidnightRainbow (a 5-tap
   self-emboss, no noise texture) run the *real* compiled bytecode (``dye_noise``)
   against the shipped ``noise.png`` / ``Extra_156.png`` (and the source frame itself)
   at ``uTime = 0`` — accurate, spatially-varying. They fall back to a documented flat
   approximation only if the baked blob / noise asset is missing (offline-safe).
-* view APPROX — the two Reflective passes sample live lighting (`uLightSource`),
-  which is 0 offline; collapsed to the documented static tint (no asset can fix).
+* view approx — the two Reflective passes sample live lighting (`uLightSource`, a surface
+  normal), which is 0 offline (no entity); we bind a static representative front light
+  (0,0,1) so the metallic highlight lights up — a grounded stand-in, not the game's
+  moving specular (which is physically unavailable offline).
 
 Operates on STRAIGHT-alpha (h, w, 4) uint8 arrays. XNA textures are premultiplied,
 so we re-premultiply, run the shader (premultiplied-in / premultiplied-out), then
@@ -567,17 +572,15 @@ def _solar_approx(
     arr_u8: np.ndarray, uColor: ColorLike = (1.0, 0.0, 0.0),
     uSecondary: ColorLike = (1.0, 1.0, 0.0), uTime: float = UTIME,
 ) -> np.ndarray:
-    """ArmorSolar handwritten emissive lava/fire heat ramp from source luminance.
+    """ArmorSolar OFFLINE FALLBACK: handwritten emissive lava/fire heat ramp from source luma.
 
     Maps source brightness to a Solar-pillar heat ramp uColor(ember red) -> uSecondary(yellow)
-    -> white-hot, scaled emissively (dark embers stay dim, hot cores bloom to near-white).
-    Reads as bright orange/yellow lava with hot highlights -- which is much closer to the
-    in-game bright Solar pillar glow than the faithful bytecode is OFFLINE (see `_solar`): the
-    real shader carries its glow as an ADDITIVE `*v0` emissive term that BLOOMS in-game, but
-    offline (v0=white, single LDR layer, no additive blend) that bloom cannot be reproduced, so
-    the bytecode collapses to a dark reddish ember (mean ~74 vs this ramp's ~175 on the same
-    cell; verified). Hence Solar stays on this handwritten approximation by default; the
-    bytecode path (`_solar`) is wired + tested but reads markedly dimmer offline."""
+    -> white-hot, scaled emissively (dark embers stay dim, hot cores bloom to near-white). A
+    uniform golden heat-ramp with no fire STRUCTURE. Used ONLY when the baked blob / noise.png is
+    absent; the production path is the faithful bytecode `_solar` (emissive tone-mapped) -- which
+    reads as a structured orange/red lava with white-hot highlights, closer to the in-game Solar
+    Flare than this flat ramp. (The earlier note that the bytecode was 'dim offline, mean ~74'
+    pre-dated the preshader-literal fix -- with it fixed the bytecode is hot lava: see `_solar`.)"""
     uC = _col(uColor, [1.0, 0.0, 0.0])
     uS = _col(uSecondary, [1.0, 1.0, 0.0])
     white = np.array([1.0, 1.0, 1.0])
@@ -601,26 +604,34 @@ def _solar(
     *, src_rect: SrcRect = _DEFAULT_RECT, sheet_size: SheetSize = _DEFAULT_SHEET,
     u_time: float | None = None,
 ) -> np.ndarray:
-    """ArmorSolar (item 3526): the real 5-tap self-emboss + fire-band bytecode.
+    """ArmorSolar (item 3526): the real 5-tap self-emboss + fire-band bytecode, faithfully
+    HARD-CLIPPED -- the PRODUCTION default (see apply_dye).
 
-    OFFLINE LIMITATION (class-C-like): the real shader builds its fiery glow as an ADDITIVE
-    emissive term carried on the vertex colour v0 (`max r1.xyz, v0, v0.w` / `mad r0, r4, v0,
-    r0`). In-game v0 + additive blend make it BLOOM bright; offline v0=white in a single LDR
-    layer cannot bloom, so the output collapses to a dark reddish ember (mean ~74 vs the
-    in-game bright fire; raw straight rgb max ~0.97, 0% over-unity -> the clip is not even
-    what dims it, the additive bloom is just gone). The uColor fire hue IS present (`mad
-    r1.xyz, r0.z, c3, uColor`), so it is a faithful-but-dark ember, NOT the washed-pale wash
-    the audit predicted. Because this reads markedly worse than the in-game bright Solar, the
-    production dispatch keeps the handwritten `_solar_approx` by default (see apply_dye);
-    this bytecode path is wired + tested for parity but is dimmer offline. uTime drives the
-    brightness pulse (`c2 = sin(uTime*0.477+0.5)*0.2+1`); the representative still uses the
-    swept `_PILLAR_TIME['ArmorSolar']`=5.0 (the pulse peak). Falls back to `_solar_approx`
-    when the blob / noise.png is absent."""
+    The real shader carries its fiery glow as an ADDITIVE emissive term on the vertex colour v0
+    (`max r1.xyz, v0, v0.w` / `mad oC0, r4*v0, body`) which BLOOMS in-game. At the uTime=5.0
+    flame phase the bytecode's straight rgb hits max 1.94 with 38.6% of pixels over-unity (a
+    structured orange/red lava with yellow hot-spots). `_noise_pass(src_alpha=True)` un-
+    premultiplies by the SOURCE alpha (the `mad` inflates oC0's alpha to 2.0 for Solar; dividing
+    by it would crush the bloom to a dim ember) so the over-unity glow survives, then does the
+    SAME per-channel GPU HARD-CLIP the game does (the Vortex/Stardust plan-A treatment): the over-
+    unity additive bloom clips PER CHANNEL, which keeps the fire HUE -- R saturates to 255 while
+    G/B stay lower -> molten orange/red, and only the all-channels-high cores clip to yellow/white-
+    hot. This faithfully reads as hot orange/red lava (luma ~125, R>G>B), unlike the earlier
+    emissive tone-map (gain 1.5) which folded every channel's overflow into all channels and so
+    DESATURATED the fire toward pink-white (washing the orange/red out, ~50% near-white). Solar's
+    light direction is HARDCODED in the shader (`def c5=(-0.05,-0.56,0.5)`), NOT uLightSource, so
+    there is NO offline-lost-light problem. uTime drives only a brightness pulse
+    (`c2 = sin(uTime*0.477+0.5)*0.2+1`); the still uses the swept `_PILLAR_TIME['ArmorSolar']`=5.0
+    (the flame phase). gain=1.0 = the faithful GPU clip (no extra lift -- the over-unity bloom is
+    already bright; matches diag `_diag_solar_hardclip` col 3). ADJUSTABLE: bump gain (e.g. 1.2,
+    still src_alpha=True so it stays a hard clip, NOT a tone-map) if the lava reads too dark vs a
+    game screenshot. Falls back to the handwritten `_solar_approx` when the blob / noise.png is
+    absent (offline-safe)."""
     uC = _col(uColor, [1.0, 0.0, 0.0])
     uS = _col(uSecondary, [1.0, 1.0, 0.0])
     return _noise_pass(arr_u8, "ArmorSolar", uColor=uC, uSecondary=uS, uSat=1.0,
                        src_rect=src_rect, sheet_size=sheet_size,
-                       u_time=_pillar_time("ArmorSolar", u_time),
+                       u_time=_pillar_time("ArmorSolar", u_time), src_alpha=True,
                        fallback=lambda: _solar_approx(arr_u8, uColor, uSecondary, UTIME))
 
 
@@ -721,12 +732,16 @@ _PILLAR_TIME: dict[str, float] = {
 # Tuned by eye (temp/xnb_probe/out/tonemap_<pass>.png): high enough to glow, low enough
 # to keep the hue (>~2.0 washes everything to white). HallowBoss is already bright and
 # in-gamut -> 1.0 (no gain, stays accurate).
-# ArmorVortex AND ArmorStardust are intentionally ABSENT: their bright streaks/sparkles
-# already exist in the faithful bytecode (sparkle = noise*luma*N*uSecondary, over-unity on
-# bright source pixels) and the game just hard-clips them to white. An extra gain + overflow
-# tone-map double-exposed them (~1.5x more near-white than the game for Vortex; ~+0.14 mean
-# brightness / 2-13x near-white for Stardust), so both go through the plain np.clip hard-clip
-# = GPU behaviour (research/vortex_dye_bug.md plan A).
+# ArmorVortex, ArmorStardust AND ArmorSolar are intentionally ABSENT: their bright streaks/
+# sparkles/fire already exist in the faithful bytecode (over-unity on bright source pixels) and
+# the game just hard-clips them. An extra gain + overflow tone-map double-exposed them (~1.5x
+# more near-white than the game for Vortex; ~+0.14 mean / 2-13x near-white for Stardust; and for
+# SOLAR the tone-map folded each channel's overflow into ALL channels, DESATURATING the orange/
+# red fire toward pink-white ~50% near-white), so all three go through the plain np.clip per-
+# channel hard-clip = GPU behaviour, which keeps the fire HUE (Solar: R>G>B molten orange/red).
+# Solar un-premults by SOURCE alpha first (its `mad` inflates oC0-alpha to 2.0) via
+# `_noise_pass(src_alpha=True, gain=1.0)` -- no _PILLAR_GAIN entry needed (research/
+# vortex_dye_bug.md plan A; solar_reflective_revisit.md).
 _PILLAR_GAIN: dict[str, float] = {
     "ArmorNebula": 1.4,
     "ArmorHallowBoss": 1.0,
@@ -757,6 +772,7 @@ def _noise_pass(
     uSat: float, src_rect: SrcRect, sheet_size: SheetSize,
     fallback: Callable[[], np.ndarray],
     u_time: float = UTIME, emissive: bool = False, gain: float = 1.0,
+    src_alpha: bool = False,
 ) -> np.ndarray:
     """Run baked shader `name` per-pixel with real noise sampling (dye_noise).
 
@@ -765,8 +781,21 @@ def _noise_pass(
     when the baked blob / noise.png is absent (renderer never crashes offline).
 
     `u_time` freezes the still (emissive pillar passes bake a per-pass bright frame via
-    `_PILLAR_TIME`). `emissive=True` tone-maps the over-unity output with `gain`
-    (preserving the glow) instead of hard-clipping; non-pillar passes keep the hard clip.
+    `_PILLAR_TIME`). Three exit paths control how the (possibly over-unity) output lands:
+
+    * `emissive=True` un-premultiplies by SOURCE alpha then TONE-MAPS the glow with `gain`
+      (overflow desaturates toward white -> a bright bloom). Nebula/HallowBoss use it.
+    * `src_alpha=True` un-premultiplies by SOURCE alpha then HARD-CLIPS (`gain` applied
+      first). For Solar: the additive `mad oC0, glow*v0, body` inflates oC0's ALPHA to 2.0,
+      so dividing by oC0-alpha would crush the bloom into gamut (a dim ember); dividing by
+      the source alpha keeps the over-unity orange/red, and a per-channel `np.clip` then
+      keeps the fire HUE (R saturates to 255, G/B preserved -> molten orange/red; only the
+      all-channels-high cores clip to white-hot) instead of the tone-map's hue-flattening
+      desaturation-to-pink-white (research/solar_reflective_revisit.md). This is the SAME
+      GPU hard-clip the game does -- identical to the Vortex/Stardust plan-A fix, just with
+      the source-alpha un-premult that Solar's inflated oC0-alpha requires.
+    * default (both False) un-premultiplies by oC0 alpha then HARD-CLIPS -- the faithful GPU
+      clip for passes whose `mad` does NOT touch alpha (Vortex/Stardust/most noise passes).
     """
     arr = arr_u8.astype(np.float64) / 255.0
     a = arr[..., 3]
@@ -778,26 +807,39 @@ def _noise_pass(
         src_rect=src_rect, sheet_size=sheet_size, u_time=u_time)
     if out is None:
         return fallback()
-    oa = out[..., 3]
-    nz = oa > 1e-6
-    rgb = np.where(nz[..., None], out[..., :3] / np.where(nz, oa, 1.0)[..., None], 0.0)
     res = arr.copy()
-    res[..., :3] = _emissive_tonemap(rgb, gain) if emissive else np.clip(rgb, 0.0, 1.0)
+    if emissive or src_alpha:
+        # Un-premultiply by SOURCE alpha so an additive bloom (`mad oC0, glow*v0, body`,
+        # which for Solar inflates oC0's ALPHA to 2.0) survives as straight over-unity rgb
+        # instead of being crushed back into gamut by the inflated oC0-alpha. (For the
+        # non-Solar emissive passes Nebula/HallowBoss oC0.a == src.a, so this is byte-neutral.)
+        sa = arr[..., 3]
+        nz = sa > 1e-6
+        rgb = np.where(nz[..., None], out[..., :3] / np.where(nz, sa, 1.0)[..., None], 0.0)
+        # emissive -> tone-map (overflow->white bloom); src_alpha -> faithful per-channel
+        # GPU hard-clip (gain first), which keeps the fire hue (R>G>B) for Solar lava.
+        res[..., :3] = _emissive_tonemap(rgb, gain) if emissive else np.clip(rgb * gain, 0.0, 1.0)
+    else:
+        oa = out[..., 3]
+        nz = oa > 1e-6
+        rgb = np.where(nz[..., None], out[..., :3] / np.where(nz, oa, 1.0)[..., None], 0.0)
+        res[..., :3] = np.clip(rgb, 0.0, 1.0)
     res = np.clip(res, 0.0, 1.0)
     return (res * 255.0 + 0.5).astype(np.uint8)
 
 
-# ── view-dependent passes (uLightSource=0; no live specular offline) ──
-# CLASS C: the two Reflective passes are lit by `uLightSource`, a live lighting-gradient
-# normal (ReflectiveArmorShaderData.Apply) that is 0 with no entity / offline. The faithful
-# bytecode runs fine, but its moving specular highlight (the dye's whole point in-game) is
-# physically absent offline -- `dp3 r0.x, r0, uLightSource` is identically 0. So the bytecode
-# yields the honest "no-highlight offline" version: a 5-tap edge emboss of the source through
-# `*0.5` (Reflective), plus a uColor tint (ReflectiveColor). uLightSource is NOT bound in
-# run_noise_pass, so the interpreter's zero default for its CTAB register (c2/c3) IS exactly
-# the offline-limit value. This is the offline physical ceiling, NOT a bug.
+# ── view-dependent passes (uLightSource bound to a static front light offline) ──
+# CLASS C (grounded approximation): the two Reflective passes are lit by `uLightSource`, a unit
+# surface NORMAL the game derives from the entity's live lighting gradient
+# (ReflectiveArmorShaderData.Apply). With no entity offline the game forces it to Vector3.Zero ->
+# `dp3 r0.x, r0, uLightSource` is identically 0 -> the metallic highlight collapses to a dull
+# *0.5 metal. run_noise_pass instead binds a STATIC representative front light (0,0,1) = the
+# shader's +Z surface normal / a head-on viewer, so the specular highlight statically lights up
+# (luma 58->176 on Armor_Head_276) -- the bright-reflective look. This is a grounded stand-in for
+# the offline-unavailable live gradient, NOT faithful: the game's highlight MOVES with the
+# lighting; a fixed normal is a representative still (research/solar_reflective_revisit.md §2).
 def _reflective_approx(arr_u8: np.ndarray) -> np.ndarray:
-    """ArmorReflective OFFLINE FALLBACK: uLightSource=0 -> no live specular -> passthrough.
+    """ArmorReflective OFFLINE FALLBACK: no baked blob -> passthrough (the source unchanged).
     Used only when the baked blob / noise.png is absent (faithful path = `_reflective`)."""
     return arr_u8
 
@@ -805,7 +847,7 @@ def _reflective_approx(arr_u8: np.ndarray) -> np.ndarray:
 def _reflective_color_approx(
     arr_u8: np.ndarray, uColor: ColorLike = (1.0, 1.0, 1.0),
 ) -> np.ndarray:
-    """ArmorReflectiveColor OFFLINE FALLBACK: uLightSource=0 -> tint source by uColor only.
+    """ArmorReflectiveColor OFFLINE FALLBACK: no baked blob -> tint source by uColor only.
     Used only when the baked blob / noise.png is absent (faithful path = `_reflective_color`)."""
     return _brightness_clip(arr_u8, _col(uColor, [1.0, 1.0, 1.0]))
 
@@ -814,13 +856,15 @@ def _reflective(
     arr_u8: np.ndarray, *, src_rect: SrcRect = _DEFAULT_RECT,
     sheet_size: SheetSize = _DEFAULT_SHEET,
 ) -> np.ndarray:
-    """ArmorReflective (item 3190): the real 5-tap emboss bytecode, offline (uLightSource=0).
+    """ArmorReflective (item 3190): the real 5-tap emboss + specular bytecode, lit by a STATIC
+    front light offline.
 
-    CLASS C offline limit: the live specular highlight is 0 offline (no lighting gradient), so
-    the faithful result is the source through the emboss DC (~*0.5, slightly darkened metal),
-    NOT the old flat passthrough. The moving highlight cannot be reproduced offline -- this is
-    the physical ceiling, not a bug. Falls back to `_reflective_approx` (passthrough) when the
-    blob / noise.png is absent."""
+    CLASS C grounded approximation: run_noise_pass binds uLightSource=(0,0,1) (the shader's +Z
+    surface normal / a head-on viewer) so the specular highlight lobe (`dp3 N.L` + `cmp`) lights
+    up statically -- a bright reflective chrome (luma ~176 vs the dull ~58 at uLightSource=0),
+    instead of collapsing. This is a representative stand-in: the game's highlight moves with the
+    live lighting gradient, which is physically unavailable offline (no entity). Falls back to
+    `_reflective_approx` (passthrough) when the blob / noise.png is absent."""
     return _noise_pass(arr_u8, "ArmorReflective", uColor=np.array([1.0, 1.0, 1.0]),
                        uSecondary=np.array([1.0, 1.0, 1.0]), uSat=1.0,
                        src_rect=src_rect, sheet_size=sheet_size,
@@ -831,13 +875,14 @@ def _reflective_color(
     arr_u8: np.ndarray, uColor: ColorLike = (1.0, 1.0, 1.0),
     *, src_rect: SrcRect = _DEFAULT_RECT, sheet_size: SheetSize = _DEFAULT_SHEET,
 ) -> np.ndarray:
-    """ArmorReflectiveColor (items 3026/3027/3553/3554/3555): the real emboss + uColor tint
-    bytecode, offline (uLightSource=0).
+    """ArmorReflectiveColor (items 3026/3027/3553/3554/3555): the real emboss + specular +
+    uColor metallic-tint bytecode, lit by a STATIC front light offline.
 
-    CLASS C offline limit: same as `_reflective` -- the live specular is 0 offline, so the
-    faithful result is the embossed source tinted by uColor (no moving highlight). Falls back
-    to `_reflective_color_approx` (uColor tint of the source) when the blob / noise.png is
-    absent."""
+    CLASS C grounded approximation: same fixed uLightSource=(0,0,1) as `_reflective` so the
+    metallic highlight lights up (silver/gold/copper/obsidian/metal read as bright reflective
+    instead of dull), tinted by the per-item uColor (DyeInitializer.cs:86-91). A representative
+    stand-in for the offline-unavailable moving specular. Falls back to `_reflective_color_approx`
+    (uColor tint of the source) when the blob / noise.png is absent."""
     uC = _col(uColor, [1.0, 1.0, 1.0])
     return _noise_pass(arr_u8, "ArmorReflectiveColor", uColor=uC, uSecondary=uC, uSat=1.0,
                        src_rect=src_rect, sheet_size=sheet_size,
@@ -1073,8 +1118,9 @@ def apply_dye(
     real Misc/noise (or Extra_156) texture and MidnightRainbow self-samples the source
     (5-tap emboss); `src_rect` (the cell's x,y,w,h in its sheet) + `sheet_size` (W,H) place
     the sampling uv (the compositor threads them; non-noise passes ignore them). The two
-    Reflective passes stay APPROX (uLightSource=0 offline). Unknown passes fall back to
-    undyed (no crash).
+    Reflective passes run the real bytecode with a static front light (uLightSource=(0,0,1),
+    a grounded stand-in for the offline-unavailable live specular). Unknown passes fall back
+    to undyed (no crash).
 
     `u_time` overrides the frozen GlobalTimeWrappedHourly of the time-animated and
     noise/self-sampling passes (a phase for sweeping a dye's animation cycle; see the
@@ -1083,8 +1129,8 @@ def apply_dye(
     uTime only scrolls the rainbow hue, and the batch-2 Flow/Living*/Mirage/Hades/Loki,
     all fully lit at 0), the swept `_BATCH2_TIME[name]` for the two batch-2 passes whose
     uTime=0 collapses (Acid=2.5 / Void=1.0), and `_PILLAR_TIME[name]` for the emissive
-    pillar passes — so the production byte-output is unchanged. Only `ArmorSolar` still
-    ignores `u_time` (it stays the handwritten emissive approximation; batch 3).
+    pillar passes (incl. `ArmorSolar`=5.0, the flame phase) — so the production byte-output
+    is unchanged.
     """
     if not spec:
         return arr_u8
@@ -1192,20 +1238,26 @@ def apply_dye(
     if name == "ArmorLoki":
         return _loki(arr_u8, _col(color, [0.1, 0.1, 0.1]), **ngeom)
 
-    # ArmorSolar (batch 3): the real bytecode IS baked + wired (`_solar`), but offline it reads
-    # markedly DIMMER than the in-game bright Solar (its glow is an additive `*v0` emissive term
-    # that blooms in-game but cannot bloom in a single offline LDR layer -> a dark reddish ember,
-    # mean ~74 vs the handwritten fire ramp's ~175 on the same cell). So the production default
-    # stays the handwritten emissive approximation `_solar_approx`; flip this line to `_solar`
-    # (the faithful-but-dim bytecode) if the dim ember look is preferred. See `_solar` docstring.
+    # ArmorSolar: the real bytecode (`_solar`) + faithful per-channel GPU HARD-CLIP IS the
+    # production default. The faithful shader is hot lava offline (Solar's light is hardcoded `def
+    # c5`, not uLightSource, so nothing is lost offline): straight rgb max 1.94, 38.6% over-unity at
+    # the uTime=5.0 flame phase, un-premult by SOURCE alpha (its `mad` inflates oC0-alpha to 2.0)
+    # then hard-clipped per channel (the same GPU treatment as Vortex/Stardust), which keeps the
+    # fire HUE -- molten orange/red (R>G>B) with yellow/white-hot cores, closer to the in-game Solar
+    # Flare than the old handwritten uniform-yellow ramp (now only the offline fallback
+    # `_solar_approx`) AND than the earlier emissive tone-map (gain 1.5) which DESATURATED the fire
+    # to pink-white. `**ngeom` threads the emboss-tap geometry + a uTime sweep override.
     if name == "ArmorSolar":
-        return _solar_approx(
-            arr_u8, _col(color, [1.0, 0.0, 0.0]), _col(secondary, [1.0, 1.0, 0.0]))
+        return _solar(arr_u8, _col(color, [1.0, 0.0, 0.0]), _col(secondary, [1.0, 1.0, 0.0]),
+                      **ngeom)
 
-    # ArmorReflective / ArmorReflectiveColor (batch 3, CLASS C): the real bytecode runs, but the
-    # live specular highlight is 0 offline (uLightSource=0) -> the honest "no-highlight" version
-    # (embossed source through *0.5, ReflectiveColor + uColor tint). `**geom` threads the tap
-    # geometry; the moving highlight is the offline physical ceiling, not a bug.
+    # ArmorReflective / ArmorReflectiveColor (CLASS C, grounded approximation): the real bytecode
+    # runs with a STATIC representative front light bound in run_noise_pass (uLightSource=(0,0,1),
+    # the shader's +Z surface normal) so the metallic specular highlight statically lights up
+    # (luma 58->176, bright reflective metal) instead of collapsing to dull *0.5 metal at the
+    # offline uLightSource=0. This is a grounded stand-in, NOT faithful: the game's specular MOVES
+    # with the live lighting gradient, which no entity offline can supply (see _reflective + the
+    # uLightSource comment in dye_noise.run_noise_pass). `**geom` threads the emboss-tap geometry.
     if name == "ArmorReflective":
         return _reflective(arr_u8, **geom)
     if name == "ArmorReflectiveColor":

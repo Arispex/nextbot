@@ -395,6 +395,8 @@ _DYE_NAMES = {
     3533: "ShiftingSands", 3535: "ShiftingPearlSands", 4662: "Fogbound",
     3190: "Reflective", 3026: "ReflectiveSilver", 3027: "ReflectiveGold",
     3553: "ReflectiveCopper", 3554: "ReflectiveObsidian", 3555: "ReflectiveMetal",
+    3039: "Twilight",
+    2874: "Brown", 2875: "BrownAndBlack", 2876: "BrightBrown", 2877: "BrownAndSilver",
 }
 
 # table A.1 time-animated WITH a real uTime formula. Empty after batch 2: the Living*/Flow/
@@ -420,6 +422,12 @@ _SCAN_NOISE = [
     (3561, "ArmorGel", 0.0, 6.28, 24), (3562, "ArmorGel", 0.0, 6.28, 24),
     (4663, "ArmorGel", 0.0, 6.28, 24), (3533, "ArmorShiftingSands", 0.0, 1.0, 24),
     (3535, "ArmorShiftingPearlsands", 0.0, 1.0, 24), (4662, "ArmorFog", 0.0, 1.0, 24),
+    # TwilightDye (3039): ArmorTwilight is a two-tap noise purple glow over src (the same
+    # bytecode family the hair-dye path uses). It is not an emissive pillar / batch-2 pass, so
+    # the sweep drives dye.UTIME (the _utime_named CM) like the other scroll-only noise passes;
+    # the production still pins uTime=0. Swept [0,1) (one scroll period); _animates surfaces
+    # whether the noise term actually carries uTime offline.
+    (3039, "ArmorTwilight", 0.0, 1.0, 24),
     # ── batch 2: animated band passes (uTime=0 representative unless noted) ──
     (3025, "ArmorFlow", 0.0, 1.0, 24), (2869, "ArmorLivingFlame", 0.0, 1.0, 24),
     (2873, "ArmorLivingOcean", 0.0, 1.0, 24), (2870, "ArmorLivingRainbow", 0.0, 1.39, 32),
@@ -430,28 +438,44 @@ _SCAN_NOISE = [
     (3038, "ArmorHades", 0.0, 6.0, 24), (3597, "ArmorHades", 0.0, 6.0, 24),
     (3598, "ArmorHades", 0.0, 6.0, 24), (3600, "ArmorHades", 0.0, 6.0, 24),
     (3599, "ArmorLoki", 0.0, 6.0, 24),
+    # ── Solar (3526): the real 5-tap emboss + fire-band bytecode + faithful per-channel GPU
+    # HARD-CLIP (src-alpha un-premult, the Vortex/Stardust plan-A treatment) IS the production
+    # default now. Solar's fire light is hardcoded in the shader (def c5), NOT uLightSource, so
+    # nothing is lost offline -- it is hot lava: the over-unity additive bloom hard-clips PER
+    # CHANNEL, keeping the molten orange/red fire hue (R clips first, G/B stay lower) instead of
+    # the earlier emissive tone-map (gain 1.5) which desaturated it to pink-white. uTime drives a
+    # brightness pulse: swept like Nebula, the production still pins
+    # _PILLAR_TIME['ArmorSolar']=5.0 (the flame phase).
+    (3526, "ArmorSolar", 0.0, 6.28, 24),
 ]
-# A.1 APPROX time passes left after batch 3: only Solar (3526). Its real bytecode IS baked +
-# wired (dye._solar), but offline (v0=white, no additive bloom) it collapses to a dark reddish
-# ember -- markedly dimmer than the in-game bright Solar -- so the PRODUCTION dispatch keeps the
-# handwritten emissive fire approximation (dye._solar_approx) by default. The production path is
-# therefore offline-static (no uTime animation), so Solar stays a single-frame dye_static sheet.
-# A.3 Reflective stays here too (class C: faithful bytecode wired, but uLightSource=0 offline ->
-# the moving specular highlight is absent; a single no-highlight frame).
-_APPROX_TIME = [3526]
+# A.1 APPROX time passes left after this revisit: none -- Solar moved into _SCAN_NOISE (its real
+# bytecode is the production default; the preshader-literal fix made it hot lava offline, not the
+# old dim ember).
+_APPROX_TIME: list[int] = []
+# A.3 Reflective (class C, grounded approximation): the real bytecode is wired and the production
+# default binds a STATIC front light (uLightSource=(0,0,1)) so the metallic specular highlight
+# statically lights up -- a bright reflective metal, not the dull uLightSource=0 no-highlight. The
+# game's specular moves with the live lighting gradient (physically unavailable offline), so this
+# is a representative single frame (no uTime animation), kept as a dye_static sheet.
 _REFLECTIVE = [3190, 3026, 3027, 3553, 3554, 3555]
+
+# A.4 Brown recolor family (class A, exact-static): pure HSL/luma recolor passes with NO uTime
+# term (ArmorColored / ArmorColoredAndBlack / ArmorColoredAndSilverTrim, brown uColor=(0.4,0.2,0))
+# — the real ps_2_0 bytecode is wired and the frozen still is exact, not an approximation. One
+# `dye_static_<Name>_<netId>.png` sheet each (4 per-part bands, single frame per band).
+_STATIC_RECOLOR = [2874, 2875, 2876, 2877]
 
 # default frames (where the production still is pinned), for the highlight. Emissive pillars
 # pin _PILLAR_TIME; the batch-2 swept passes pin _BATCH2_TIME (Acid 2.5 / Void 1.0); every
 # other animatable noise pass pins uTime=0 (the default _PILLAR_CURRENT.get fallback).
 _PILLAR_CURRENT = {
     "ArmorNebula": 3.0, "ArmorVortex": 0.5, "ArmorStardust": 1.0, "ArmorHallowBoss": 0.0,
-    "ArmorAcid": 2.5, "ArmorVoid": 1.0,
+    "ArmorAcid": 2.5, "ArmorVoid": 1.0, "ArmorSolar": 5.0,
 }
 
 
 def render_scannable_dyes() -> None:
-    """Sweep the 20 scannable dyes (7 time + 13 noise/self-sampling) -> one 4-variant
+    """Sweep every scannable dye (the `_SCAN_TIME` + `_SCAN_NOISE` tables) -> one 4-variant
     banded sheet each.
 
     Each sheet stacks the HEAD / BODY / LEGS / ALL row-bands; every band sweeps the same
@@ -490,32 +514,41 @@ def _static_dye_bands(net_id: int) -> list[tuple[str, list[_Cell]]]:
 
 
 def render_static_dyes() -> None:
-    """One 4-variant banded sheet per APPROX-time + Reflective dye (no offline animation).
+    """One 4-variant banded sheet per static (Reflective) dye (no offline animation).
 
     These passes are offline-static, so each band is a single frame; the 4 bands let a
-    head-only dye be inspected next to body/legs/all even when nothing animates."""
-    for net_id in _APPROX_TIME:
+    head-only dye be inspected next to body/legs/all even when nothing animates. (Solar moved
+    to the swept _SCAN_NOISE group -- its bytecode is the production default now.)"""
+    for net_id in _APPROX_TIME:                                     # empty after the revisit
         spec = _DYES.get(str(net_id), {})
-        # Solar (3526): bytecode baked + wired (dye._solar) but the production default is the
-        # handwritten emissive approx (the bytecode is dim offline -- no additive bloom), so this
-        # sheet shows the handwritten fire ramp (offline-static).
-        title = f"{_name(net_id)} #{net_id} {spec.get('pass', '')} (handwritten default; bytecode dim offline)"
+        title = f"{_name(net_id)} #{net_id} {spec.get('pass', '')} (offline-static)"
         fn = _save(f"dye_static_{_name(net_id)}_{net_id}",
                    _dye_band_sheet(_static_dye_bands(net_id), title))
         _INDEX.append((
-            _name(net_id), str(net_id), spec.get("pass", ""),
-            "single (handwritten; bytecode dim offline)", fn, "no"))
+            _name(net_id), str(net_id), spec.get("pass", ""), "single", fn, "no"))
     for net_id in _REFLECTIVE:
         spec = _DYES.get(str(net_id), {})
-        # Reflective (class C): the real bytecode IS wired (dye._reflective[_color]); offline
-        # uLightSource=0 so the moving specular highlight is absent -> a faithful no-highlight
-        # frame (embossed source *0.5, ReflectiveColor + uColor tint). The physical offline limit.
-        title = f"{_name(net_id)} #{net_id} {spec.get('pass', '')} (offline no-highlight, uLightSource=0)"
+        # Reflective (class C, grounded): the real bytecode IS wired (dye._reflective[_color])
+        # and the production default binds a STATIC front light (uLightSource=(0,0,1)) so the
+        # metallic highlight statically lights up -- a bright reflective metal, not the dull
+        # uLightSource=0 no-highlight. A representative still (the game's specular moves with the
+        # live lighting gradient, physically unavailable offline).
+        title = (f"{_name(net_id)} #{net_id} {spec.get('pass', '')} "
+                 f"(static front light uLightSource=(0,0,1))")
         fn = _save(f"dye_static_{_name(net_id)}_{net_id}",
                    _dye_band_sheet(_static_dye_bands(net_id), title))
         _INDEX.append((
             _name(net_id), str(net_id), spec.get("pass", ""),
-            "single (offline no-highlight)", fn, "no"))
+            "single (static front light)", fn, "no"))
+    for net_id in _STATIC_RECOLOR:
+        spec = _DYES.get(str(net_id), {})
+        # Brown recolor family: exact-static HSL/luma recolor (no uTime), the real bytecode IS
+        # the production default. One single-frame 4-band sheet (HEAD/BODY/LEGS/ALL).
+        title = f"{_name(net_id)} #{net_id} {spec.get('pass', '')} (exact-static recolor)"
+        fn = _save(f"dye_static_{_name(net_id)}_{net_id}",
+                   _dye_band_sheet(_static_dye_bands(net_id), title))
+        _INDEX.append((
+            _name(net_id), str(net_id), spec.get("pass", ""), "single", fn, "no"))
 
 
 # ── dynamic glow rendering ────────────────────────────────────────────

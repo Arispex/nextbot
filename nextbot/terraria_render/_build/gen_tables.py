@@ -163,25 +163,52 @@ def gen_wing_meta(decomp: str) -> dict:
 def gen_dyes(decomp: str) -> dict:
     src = open(os.path.join(decomp, "Terraria.Initializers", "DyeInitializer.cs")).read()
     out: dict[str, dict] = {}
-    # basic color dyes: LoadBasicColorDye(base, r, g, b [, sat]) -> 4 variants
-    basic_rx = re.compile(
+
+    def emit_basic(base: int, black: int, bright: int, silver: int,
+                   r: float, g: float, b: float, sat: float) -> None:
+        """The 4 variants LoadBasicColorDye binds (DyeInitializer.cs:13-19): the base
+        ArmorColored, the +Black ArmorColoredAndBlack, the bright ArmorColored at
+        (c*0.5+0.5), and the +Silver ArmorColoredAndSilverTrim — all at the SAME r,g,b,sat."""
+        out[str(base)] = {"pass": "ArmorColored", "color": [r, g, b], "sat": sat}
+        out[str(black)] = {"pass": "ArmorColoredAndBlack", "color": [r, g, b], "sat": sat}
+        out[str(bright)] = {"pass": "ArmorColored",
+                            "color": [r * .5 + .5, g * .5 + .5, b * .5 + .5], "sat": sat}
+        out[str(silver)] = {"pass": "ArmorColoredAndSilverTrim", "color": [r, g, b], "sat": sat}
+
+    # basic color dyes — TWO overloads (DyeInitializer.cs:13 / :22):
+    #   * single-base  LoadBasicColorDye(base, r, g, b [, sat])
+    #         -> variants at base, base+12, base+31, base+44 (the +12/+31/+44 overload at :24).
+    #   * 4-explicit   LoadBasicColorDye(base, black, bright, silver, r, g, b [, sat])
+    #         -> variants at the 4 EXPLICIT item ids (Brown dyes, :41, whose ids 2874-2877 are
+    #            NOT a +12/+31/+44 run, so they must be read literally — don't assume contiguous).
+    # The trailing `oldShader` int arg (the 2nd of the two optional args) is ignored; only the
+    # OPTIONAL float `saturation` is captured. The single-base regex requires the 2nd token to
+    # be a float (`...f`) so it never mis-matches a 4-explicit call (whose 2nd token is an int).
+    basic1_rx = re.compile(
         r"LoadBasicColorDye\((\d+),\s*(-?[\d.]+)f,\s*(-?[\d.]+)f,\s*(-?[\d.]+)f"
         r"(?:,\s*([\d.]+)f)?")
-    for m in basic_rx.finditer(src):
+    basic4_rx = re.compile(
+        r"LoadBasicColorDye\((\d+),\s*(\d+),\s*(\d+),\s*(\d+),\s*"
+        r"(-?[\d.]+)f,\s*(-?[\d.]+)f,\s*(-?[\d.]+)f(?:,\s*([\d.]+)f)?")
+    for m in basic1_rx.finditer(src):
         base = int(m.group(1))
         r, g, b = float(m.group(2)), float(m.group(3)), float(m.group(4))
         sat = float(m.group(5)) if m.group(5) else 1.0
-        out[str(base)] = {"pass": "ArmorColored", "color": [r, g, b], "sat": sat}
-        out[str(base + 12)] = {"pass": "ArmorColoredAndBlack", "color": [r, g, b], "sat": sat}
-        out[str(base + 31)] = {"pass": "ArmorColored",
-                               "color": [r * .5 + .5, g * .5 + .5, b * .5 + .5], "sat": sat}
-        out[str(base + 44)] = {"pass": "ArmorColoredAndSilverTrim", "color": [r, g, b], "sat": sat}
-    # explicit BindShader(itemId, new <X>ArmorShaderData(ref, "Pass"))<chain>;
-    # statements span several lines (fluent .UseColor/.UseSecondaryColor/.UseSaturation,
-    # interleaved with .UseImage); parse each full statement to its ';' then pull the
-    # uniform calls out regardless of order/whitespace.
+        emit_basic(base, base + 12, base + 31, base + 44, r, g, b, sat)
+    for m in basic4_rx.finditer(src):
+        base, black, bright, silver = (int(m.group(i)) for i in range(1, 5))
+        r, g, b = float(m.group(5)), float(m.group(6)), float(m.group(7))
+        sat = float(m.group(8)) if m.group(8) else 1.0
+        emit_basic(base, black, bright, silver, r, g, b, sat)
+    # explicit BindShader(itemId, new <X>ShaderData(ref, "Pass"))<chain>;  — match ANY
+    # *ShaderData subclass, not just *ArmorShaderData: the armor dye table also binds
+    # TwilightDyeShaderData (3039, ArmorTwilight), ReflectiveArmorShaderData and
+    # TeamArmorShaderData. (GameShaders.Hair.BindShader is a separate hair-dye system and is
+    # NOT matched — the anchor requires GameShaders.Armor.) Statements span several lines
+    # (fluent .UseColor/.UseSecondaryColor/.UseSaturation, interleaved with .UseImage); parse
+    # each full statement to its ';' then pull the uniform calls out regardless of order.
     bind_rx = re.compile(
-        r"GameShaders\.Armor\.BindShader\((\d+),\s*new\s+\w*ArmorShaderData"
+        r"GameShaders\.Armor\.BindShader\((\d+),\s*new\s+\w*ShaderData"
         r"\([^,]+,\s*\"(\w+)\"\)(.*?);",
         re.DOTALL)
     vec3_rx = re.compile(r"\(\s*(-?[\d.]+)f,\s*(-?[\d.]+)f,\s*(-?[\d.]+)f\s*\)")
