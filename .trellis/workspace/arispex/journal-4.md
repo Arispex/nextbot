@@ -1894,3 +1894,46 @@ shop.py _buy_command 顶部的 SF-4.3 守卫强拒 require_online=False + target
 ### Next Steps
 
 - None - task complete
+
+
+## Session 212: 角色立绘渲染：配饰 + glowmask + 全量染料忠实字节码
+
+**Date**: 2026-06-05
+**Task**: 角色立绘渲染：配饰 + glowmask + 全量染料忠实字节码
+**Branch**: `main`
+
+### Summary
+
+实现 我的背包/用户背包 卡片的角色立绘渲染(GET appearance)，逆向 Terraria 1.4.5.6 客户端：功能/社交装备、装备/配饰染料、12 类配饰、glowmask 发光层(head/body/legs/arm+边角)；审计修复立绘层序/可见性/偏移 12 项；全量染料(120)改走真实编译 ps_2_0 字节码消灭手写近似(修 _sat/字面量广播/offset-tap 三个解释器 bug)，Vortex/Stardust/MidnightRainbow 忠实化、Solar/Reflective 离线最佳近似。纯 numpy+PNG 运行时、不依赖 NoneBot。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `03c7c11` | (see git log) |
+| `3bd6dcc` | (see git log) |
+| `3989f27` | (see git log) |
+| `0860bbc` | (see git log) |
+| `1d37dc5` | (see git log) |
+| `35f44e6` | (see git log) |
+| `19e13b3` | (see git log) |
+| `45a1d9c` | (see git log) |
+| `19b4d40` | (see git log) |
+| `0053c4b` | (see git log) |
+| `b9fb8e9` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

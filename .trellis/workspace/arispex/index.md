@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-4.md`
-- **Total Sessions**: 211
-- **Last Active**: 2026-06-03
+- **Total Sessions**: 212
+- **Last Active**: 2026-06-05
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-4.md` | ~1896 | Active |
+| `journal-4.md` | ~1939 | Active |
 | `journal-3.md` | ~1984 | Archived |
 | `journal-2.md` | ~1973 | Archived |
 | `journal-1.md` | ~1999 | Archived |
@@ -32,6 +32,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 212 | 2026-06-05 | 角色立绘渲染：配饰 + glowmask + 全量染料忠实字节码 | `03c7c11`, `3bd6dcc`, `3989f27`, `0860bbc`, `1d37dc5`, `35f44e6`, `19e13b3`, `45a1d9c`, `19b4d40`, `0053c4b`, `b9fb8e9` | `main` |
 | 211 | 2026-06-03 | Terraria 角色渲染：背包卡片立绘（装备/装饰/染料/发型） | `37b9f15`, `70e618b`, `6d7de9b`, `18b4fad`, `8398dd5` | `main` |
 | 210 | 2026-06-02 | 关键词自动回复 + WebUI 管理页 | `9a30f4e`, `fb4c357`, `23fe19b` | `main` |
 | 209 | 2026-05-22 | 商店指令商品 全部服务器+不要求在线 不再强制报错 | `0e1bb53` | `main` |
