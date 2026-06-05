@@ -49,6 +49,13 @@ PRES_INPUTS = {
                  4: "uSecondaryColor", 5: "uImageSize1"},
     "ArmorHallowBoss": {0: "uTime"},
     "ArmorTwilight": {0: "uColor", 1: "uSourceRect", 2: "uDirection", 3: "uImageSize0"},
+    # ArmorMidnightRainbow (item 3556) is a 5-tap self-emboss of uImage0 (NO noise texture)
+    # with a preshader: c0=2/uImageSize0.y, c1=2/uImageSize0.x (the ±2px tap offsets),
+    # c2=1/uSourceRect.z (normalize frame-local x), c3=uTime*0.4 (the rainbow hue scroll).
+    # in_c0=uTime, in_c1=uSourceRect, in_c2=uImageSize0 (verified PRES-CTAB, research/
+    # midnight_rainbow.md §1). The emboss magnitude gates the whole rainbow output, so the
+    # source offset taps MUST be honoured by dye_noise._run_ps (the offset-tap fix).
+    "ArmorMidnightRainbow": {0: "uTime", 1: "uSourceRect", 2: "uImageSize0"},
     # ArmorSolar (item 3526) is self-sampling (5 taps of uImage0, NO noise texture) but
     # has a preshader: c2 = sin(uTime*0.477+0.5)*0.2 + 1.0 (a brightness pulse), c3 =
     # uSecondaryColor.x - uColor.x, c0/c1 = 1/uImageSize0 (tap offsets). in_c2 = uTime.

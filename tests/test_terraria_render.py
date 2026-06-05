@@ -33,6 +33,8 @@ from nextbot.terraria_render.dye import (
     _PILLAR_GAIN,
     _PILLAR_TIME,
     _emissive_tonemap,
+    _midnight_rainbow,
+    _midnight_rainbow_real,
     _nebula,
     _stardust,
     _vortex,
@@ -353,6 +355,103 @@ def test_stardust_fix_leaves_other_noise_pillars_unchanged() -> None:
     # the emissive lift makes Nebula differ from a plain hard-clip (still emissive).
     assert not np.array_equal(got, _compose_rgb(frame, raw)), (
         "ArmorNebula collapsed to the faithful hard-clip -- emissive lift lost")
+
+
+def test_midnight_rainbow_faithful_emboss_differs_from_approx() -> None:
+    # research/midnight_rainbow.md: ArmorMidnightRainbow (3556) is now the real 5-tap
+    # self-emboss bytecode (the source offset-tap fix makes it run), NOT the old flat
+    # rainbow recolor (_midnight_rainbow APPROX). The faithful path traces a rainbow
+    # over the sprite contours on a DARK base -> it must (a) differ from the APPROX and
+    # (b) be darker overall (the embossed interior is dark, only edges glow).
+    frame = _frame("Armor_Head_276", 0)
+    if frame[..., 3].sum() == 0:        # asset absent -> APPROX fallback, skip
+        return
+    op = frame[..., 3] > 0
+    real = apply_dye(frame.copy(), {"pass": "ArmorMidnightRainbow"},
+                     src_rect=_HEAD_GEOM[0], sheet_size=_HEAD_GEOM[1])
+    approx = _midnight_rainbow(frame.copy())
+    assert not np.array_equal(real, approx), (
+        "MidnightRainbow still equals the old APPROX -- the self-emboss did not come "
+        "back (source offset-tap fix not applied / pass not baked?)")
+    # the faithful embossed result is meaningfully darker than the flat APPROX recolor
+    real_luma = real[op][:, :3].astype(np.float64).mean()
+    approx_luma = approx[op][:, :3].astype(np.float64).mean()
+    assert real_luma < approx_luma, (
+        f"faithful MidnightRainbow not darker than APPROX (real {real_luma:.1f} >= "
+        f"approx {approx_luma:.1f}) -- emboss interior should be dark")
+    # and it is not a black sprite (the emboss lights the contours)
+    lit = int((real[op][:, :3].sum(axis=1) > 5).sum())
+    assert lit > 0, "MidnightRainbow rendered black (emboss did not light the contours)"
+
+
+def test_midnight_rainbow_animates_with_utime() -> None:
+    # uTime adds a *0.4 scroll to the rainbow hue (research/midnight_rainbow.md §4): the
+    # faithful pass MOVES with uTime (the APPROX had no uTime term at all). Two phases
+    # part of a cycle apart must differ.
+    frame = _frame("Armor_Head_276", 0)
+    if frame[..., 3].sum() == 0:
+        return
+    a = apply_dye(frame.copy(), {"pass": "ArmorMidnightRainbow"}, u_time=0.0,
+                  src_rect=_HEAD_GEOM[0], sheet_size=_HEAD_GEOM[1])
+    b = apply_dye(frame.copy(), {"pass": "ArmorMidnightRainbow"}, u_time=1.25,
+                  src_rect=_HEAD_GEOM[0], sheet_size=_HEAD_GEOM[1])
+    assert not np.array_equal(a, b), (
+        "MidnightRainbow did not roll with uTime (the hue scroll was lost)")
+
+
+def test_midnight_rainbow_falls_back_without_baked_blob() -> None:
+    # Offline-safe: when the baked ArmorMidnightRainbow blob is absent, the faithful
+    # helper must fall back to the _midnight_rainbow APPROX (no crash) -- same contract
+    # as every other noise pass.
+    frame = _structured_frame()
+    shaders = dye_noise._shaders()
+    saved = shaders.pop("ArmorMidnightRainbow", None)
+    dye_noise._parse_blob.cache_clear()
+    try:
+        fb = _midnight_rainbow_real(
+            frame.copy(), src_rect=(0, 0, FW, FH), sheet_size=(FW, FH))
+    finally:
+        if saved is not None:
+            shaders["ArmorMidnightRainbow"] = saved
+        dye_noise._parse_blob.cache_clear()
+    assert np.array_equal(fb, _midnight_rainbow(frame.copy())), (
+        "MidnightRainbow asset-missing fallback is not the documented APPROX")
+
+
+def test_offset_tap_fix_leaves_center_only_noise_pass_unchanged() -> None:
+    # Regression for the source offset-tap fix's blast radius: a noise pass whose ONLY
+    # uImage0 tap is the plain center t0 (ArmorFog -- 1 source texld at t0) must be
+    # BIT-IDENTICAL to the old center-collapse, because a center uv lands exactly on the
+    # texel center (bilinear weights 0). Guards the single-center-tap passes (Vortex/
+    # Stardust/HallowBoss/Shifting*/Fog/Nebula) against drift. Compared against a
+    # hand-rolled center-collapse of the same baked bytecode.
+    frame = _frame("Armor_Head_276", 0)
+    if frame[..., 3].sum() == 0:
+        return
+    name = "ArmorFog"
+    arr = frame.astype(np.float64) / 255.0
+    pr = arr.copy()
+    pr[..., :3] = arr[..., :3] * arr[..., 3][..., None]
+
+    def run() -> np.ndarray | None:
+        return dye_noise.run_noise_pass(
+            pr, name, u_color=np.array([0.95, 0.95, 0.95]),
+            u_secondary=np.array([0.3, 0.3, 0.3]), u_sat=1.0,
+            src_rect=_HEAD_GEOM[0], sheet_size=_HEAD_GEOM[1], u_time=0.0)
+
+    fixed = run()
+    # swap _sample_src for the OLD center-collapse (return the center texel array as-is)
+    saved = dye_noise._sample_src
+    dye_noise._sample_src = lambda src_rgba, _uv, _sr, _sh: src_rgba
+    try:
+        old = run()
+    finally:
+        dye_noise._sample_src = saved
+    assert fixed is not None and old is not None
+    # quantize both to uint8 (production output) -> identical (center tap unchanged)
+    q = lambda x: (np.clip(x, 0.0, 1.0) * 255.0 + 0.5).astype(np.uint8)  # noqa: E731
+    assert np.array_equal(q(fixed), q(old)), (
+        "offset-tap fix changed a center-only noise pass (ArmorFog) -- regression")
 
 
 def _hair_appearance(hair_dye: int) -> dict:
@@ -1556,6 +1655,10 @@ def _run() -> int:
         test_vortex_dye_is_faithful_hard_clip_not_overexposed,
         test_stardust_dye_is_faithful_hard_clip_not_overexposed,
         test_stardust_fix_leaves_other_noise_pillars_unchanged,
+        test_midnight_rainbow_faithful_emboss_differs_from_approx,
+        test_midnight_rainbow_animates_with_utime,
+        test_midnight_rainbow_falls_back_without_baked_blob,
+        test_offset_tap_fix_leaves_center_only_noise_pass_unchanged,
         test_hairdye_twilight_differs_from_none,
         test_hairdye_legacy_changes_hair_color,
         test_back_hair_predicate_matches_game,

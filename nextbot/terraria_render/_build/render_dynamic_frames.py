@@ -360,17 +360,22 @@ _SCAN_TIME = [
     (2869, 0.0, 1.0, 24), (2873, 0.0, 1.0, 24), (2870, 0.0, 1.39, 32),
     (3025, 0.0, 1.0, 24), (3040, 0.0, 1.0, 24), (3028, 0.0, 1.0, 24), (3560, 0.0, 1.0, 24),
 ]
-# table A.2 noise pillar/scroll passes (all 12 scannable). (netId, pass, lo, hi, N).
+# table A.2 noise/self-sampling scroll passes (all scannable). (netId, pass, lo, hi, N).
+# MidnightRainbow (3556) is a self-emboss pass (no noise texture) whose uTime scrolls the
+# rainbow hue with period 1/0.4 = 2.5 (research/midnight_rainbow.md §4) -> sweep [0,2.5) N=24
+# for one full color cycle. It is NOT an emissive pillar (uTime does not change brightness),
+# so it sweeps via dye.UTIME like the other scroll passes (not _PILLAR_TIME).
 _SCAN_NOISE = [
     (3527, "ArmorNebula", 0.0, 6.0, 24), (3528, "ArmorVortex", 0.0, 6.0, 24),
     (3529, "ArmorStardust", 0.0, 4.0, 24), (4778, "ArmorHallowBoss", 0.0, 8.0, 8),
+    (3556, "ArmorMidnightRainbow", 0.0, 2.5, 24),
     (3042, "ArmorPhase", 0.0, 1.0, 24), (3024, "ArmorGel", 0.0, 6.28, 24),
     (3561, "ArmorGel", 0.0, 6.28, 24), (3562, "ArmorGel", 0.0, 6.28, 24),
     (4663, "ArmorGel", 0.0, 6.28, 24), (3533, "ArmorShiftingSands", 0.0, 1.0, 24),
     (3535, "ArmorShiftingPearlsands", 0.0, 1.0, 24), (4662, "ArmorFog", 0.0, 1.0, 24),
 ]
 # A.1 APPROX time passes (no real uTime offline -> single frame) + A.3 Reflective.
-_APPROX_TIME = [3556, 3526, 3530, 3038, 3597, 3598, 3600, 3534, 3599]
+_APPROX_TIME = [3526, 3530, 3038, 3597, 3598, 3600, 3534, 3599]
 _REFLECTIVE = [3190, 3026, 3027, 3553, 3554, 3555]
 
 # pillar default frames (where the production still is pinned), for the highlight.
@@ -380,7 +385,8 @@ _PILLAR_CURRENT = {
 
 
 def render_scannable_dyes() -> None:
-    """Sweep the 19 scannable dyes (7 time + 12 noise) -> one 4-variant banded sheet each.
+    """Sweep the 20 scannable dyes (7 time + 13 noise/self-sampling) -> one 4-variant
+    banded sheet each.
 
     Each sheet stacks the HEAD / BODY / LEGS / ALL row-bands; every band sweeps the same
     uTime range so the part-specific dye (e.g. head-only) is visible on its own band."""

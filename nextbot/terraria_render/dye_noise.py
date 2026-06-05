@@ -94,6 +94,40 @@ def _sample_tex(tex: np.ndarray, uv: np.ndarray) -> np.ndarray:
     return top * (1 - fy) + bot * fy
 
 
+def _sample_src(
+    src_rgba: np.ndarray, uv: np.ndarray, src_rect: tuple[int, int, int, int],
+    sheet_size: tuple[int, int],
+) -> np.ndarray:
+    """Sample the cropped source frame `src_rgba` at sheet-space `uv` (..,2) -> (..,4).
+
+    The self-sampling passes (MidnightRainbow/Gel/Phase/Solar emboss + blur) `texld`
+    uImage0 at uv OFFSET by ±k/sheet (their tap stencil). `src_rgba` is the already
+    cropped (H,W) cell, while the shader's uv is in the *full sheet*'s units
+    (``(sx+col+0.5)/sheet_w``); invert it back to a frame-local pixel
+    ``px = uv.x*sheet_w - sx`` and bilinear-sample with **CLAMP** addressing (D3D
+    SamplerState on uImage0 — wrap would bleed the neighbouring cell across the frame
+    seam). A center (unoffset) ``t0`` uv lands exactly on the texel center, so this is
+    bit-identical to the old center-collapse for the single-tap noise passes (their
+    only source tap is the plain ``t0``); it only differs for the offset stencil taps.
+    """
+    h, w = src_rgba.shape[:2]
+    sx, sy, _sw, _sh = src_rect
+    sheet_w, sheet_h = sheet_size
+    fxp = uv[..., 0] * sheet_w - sx - 0.5  # frame-local pixel x (texel-center origin)
+    fyp = uv[..., 1] * sheet_h - sy - 0.5
+    x0 = np.clip(np.floor(fxp).astype(np.int64), 0, w - 1)
+    y0 = np.clip(np.floor(fyp).astype(np.int64), 0, h - 1)
+    x1 = np.clip(x0 + 1, 0, w - 1)
+    y1 = np.clip(y0 + 1, 0, h - 1)
+    tx = np.clip(fxp - x0, 0.0, 1.0)[..., None]
+    ty = np.clip(fyp - y0, 0.0, 1.0)[..., None]
+    c00, c10 = src_rgba[y0, x0], src_rgba[y0, x1]
+    c01, c11 = src_rgba[y1, x0], src_rgba[y1, x1]
+    top = c00 * (1 - tx) + c10 * tx
+    bot = c01 * (1 - tx) + c11 * tx
+    return top * (1 - ty) + bot * ty
+
+
 # ── blob parsing: CTAB (uniform->creg), def literals, PRES (preshader) ──
 def _u32(b: bytes, o: int) -> int:
     return struct.unpack_from("<I", b, o)[0]
@@ -274,8 +308,15 @@ def _run_ps(  # faithful 1:1 bytecode dispatch (opcode table mirrors d3d9types.h
     consts: dict[int, np.ndarray],
     uv: np.ndarray,
     samplers: dict[int, np.ndarray],
+    src_rect: tuple[int, int, int, int],
+    sheet_size: tuple[int, int],
 ) -> np.ndarray:
-    """src_rgba (H,W,4) premult. consts {creg:vec4}. uv (H,W,2). Returns oC0 (H,W,4)."""
+    """src_rgba (H,W,4) premult. consts {creg:vec4}. uv (H,W,2). Returns oC0 (H,W,4).
+
+    `src_rect`/`sheet_size` locate the cropped `src_rgba` in its sheet so a uImage0
+    `texld` at an OFFSET uv (the self-emboss/blur taps) resolves to the right frame
+    pixel (clamped bilinear); the noise samplers (uImage1) are unchanged.
+    """
     h, w = src_rgba.shape[:2]
 
     class _Z(dict):
@@ -320,7 +361,11 @@ def _run_ps(  # faithful 1:1 bytecode dispatch (opcode table mirrors d3d9types.h
         dtok = toks[0]
         if op == 0x42:  # texld dst, uv, sampler
             samp = samplers.get(toks[2] & 0x7FF)
-            res = src_rgba if samp is None else _sample_tex(samp, _src(regs, toks[1])[..., :2])
+            uvt = _src(regs, toks[1])[..., :2]
+            # uImage1 (noise) -> wrap-sample; uImage0 (source) -> clamp-sample the cell at
+            # the (possibly offset) uv so the self-emboss/blur taps are honoured.
+            res = _sample_src(src_rgba, uvt, src_rect, sheet_size) if samp is None \
+                else _sample_tex(samp, uvt)
             _dst(regs, dtok, res)
             continue
         s = [_src(regs, t) for t in toks[1:]]
@@ -433,4 +478,4 @@ def run_noise_pass(
             consts[reg] = params[nm]
 
     samplers = {reg: tex1 for reg, nm in smap.items() if nm == "uImage1"}
-    return _run_ps(blob, premul, consts, uv, samplers)
+    return _run_ps(blob, premul, consts, uv, samplers, src_rect, sheet_size)

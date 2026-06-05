@@ -6,13 +6,13 @@ dye_passes_spec.md + dye_shader_spec.md), in three tiers:
 * exact-static  — bit-for-bit recolors (ArmorColored family, Invert, ColorOnly,
   gradient family, Brightness*, Martian, Polarized, Mushroom, Wisp, rainbow…).
 * time-animated — sincos/triangle-wave passes evaluated at a representative
-  ``uTime = 0`` still (Living*, Flow, Acid, Solar, Void, Hades, Mirage, Loki,
-  MidnightRainbow…).
-* noise-sampling — Gel/Phase/Nebula/Vortex/Stardust/Shifting*/Fog/HallowBoss and
-  the ArmorTwilight hair dye run the *real* compiled bytecode (``dye_noise``)
-  against the shipped ``noise.png`` / ``Extra_156.png`` at ``uTime = 0`` — accurate,
-  spatially-varying. They fall back to a documented flat approximation only if the
-  noise asset is missing (offline-safe).
+  ``uTime = 0`` still (Living*, Flow, Acid, Solar, Void, Hades, Mirage, Loki…).
+* self-sampling / noise-sampling — Gel/Phase/Nebula/Vortex/Stardust/Shifting*/Fog/
+  HallowBoss, the ArmorTwilight hair dye, and ArmorMidnightRainbow (a 5-tap
+  self-emboss, no noise texture) run the *real* compiled bytecode (``dye_noise``)
+  against the shipped ``noise.png`` / ``Extra_156.png`` (and the source frame itself)
+  at ``uTime = 0`` — accurate, spatially-varying. They fall back to a documented flat
+  approximation only if the baked blob / noise asset is missing (offline-safe).
 * view APPROX — the two Reflective passes sample live lighting (`uLightSource`),
   which is 0 offline; collapsed to the documented static tint (no asset can fix).
 
@@ -425,7 +425,9 @@ def _acid(arr_u8: np.ndarray, uColor: ColorLike, uTime: float = UTIME) -> np.nda
 
 
 def _midnight_rainbow(arr_u8: np.ndarray, uTime: float = UTIME) -> np.ndarray:
-    """MidnightRainbow APPROX: rainbow recolor over the source (self-emboss dropped)."""
+    """MidnightRainbow OFFLINE FALLBACK: rainbow recolor over the source (self-emboss
+    dropped). Used only when the baked blob / noise.png is absent; the faithful path is
+    `_midnight_rainbow_real` (the real 5-tap self-emboss bytecode via dye_noise)."""
     return _colored_rainbow(arr_u8)
 
 
@@ -771,6 +773,33 @@ def _twilight(
                        fallback=lambda: _brightness_clip(arr_u8, uC))
 
 
+def _midnight_rainbow_real(
+    arr_u8: np.ndarray, *, src_rect: SrcRect = _DEFAULT_RECT,
+    sheet_size: SheetSize = _DEFAULT_SHEET, u_time: float | None = None,
+) -> np.ndarray:
+    """ArmorMidnightRainbow (item 3556): the faithful 5-tap self-emboss bytecode.
+
+    Runs the real compiled shader (dye_noise) — a cross/Laplacian emboss of the source
+    (center ± 2 texels) whose magnitude gates a phase-shifted rainbow (hue = luma*0.0667 +
+    smoothstep(frameX)*0.4 + uTime*0.4), so the rainbow traces the sprite's contours over a
+    dark interior (research/midnight_rainbow.md). Needs the source offset-tap fix in
+    dye_noise._run_ps to render at all (without it the emboss is 0 -> a black sprite).
+
+    `uTime` only ADDS a `*0.4` horizontal scroll to the hue (it does not change the emboss
+    brightness), so the representative still uses UTIME=0 like the other scroll-only passes —
+    NOT a `_PILLAR_TIME` bright frame (it is not an emissive pillar). The shader reads no
+    color uniforms (the CTAB has only uImage0/uImageSize0/uSourceRect), so the [1,1,1]
+    defaults are inert. `emissive=False` -> plain hard clip (the GPU clips; no extra bloom).
+    Falls back to the `_midnight_rainbow` APPROX when the baked blob / noise.png is absent.
+    """
+    return _noise_pass(arr_u8, "ArmorMidnightRainbow",
+                       uColor=np.array([1.0, 1.0, 1.0]),
+                       uSecondary=np.array([1.0, 1.0, 1.0]), uSat=1.0,
+                       src_rect=src_rect, sheet_size=sheet_size,
+                       u_time=UTIME if u_time is None else u_time, emissive=False,
+                       fallback=lambda: _midnight_rainbow(arr_u8))
+
+
 # ── dispatch ─────────────────────────────────────────────────────────
 def apply_dye(
     arr_u8: np.ndarray, spec: dict[str, Any] | None,
@@ -781,19 +810,22 @@ def apply_dye(
 
     `spec` carries `pass` and (where applicable) `color`/`secondary`/`sat`, baked
     from DyeInitializer.cs. Animated passes are evaluated at a representative still
-    (uTime=0). Noise-sampling passes (Gel/Phase/Nebula/Vortex/Stardust/Shifting*/Fog/
-    HallowBoss/Twilight) sample the real Misc/noise (or Extra_156) texture; `src_rect`
-    (the cell's x,y,w,h in its sheet) + `sheet_size` (W,H) place the noise uv (the
-    compositor threads them; non-noise passes ignore them). The two Reflective passes
-    stay APPROX (uLightSource=0 offline). Unknown passes fall back to undyed (no crash).
+    (uTime=0). Noise/self-sampling passes (Gel/Phase/Nebula/Vortex/Stardust/Shifting*/Fog/
+    HallowBoss/Twilight/MidnightRainbow) run the real bytecode; the noise ones sample the
+    real Misc/noise (or Extra_156) texture and MidnightRainbow self-samples the source
+    (5-tap emboss); `src_rect` (the cell's x,y,w,h in its sheet) + `sheet_size` (W,H) place
+    the sampling uv (the compositor threads them; non-noise passes ignore them). The two
+    Reflective passes stay APPROX (uLightSource=0 offline). Unknown passes fall back to
+    undyed (no crash).
 
     `u_time` overrides the frozen GlobalTimeWrappedHourly of the time-animated and
-    noise-sampling passes (a phase for sweeping a dye's animation cycle; see the
+    noise/self-sampling passes (a phase for sweeping a dye's animation cycle; see the
     dynamic-frame dev script). `None` (production default) keeps each pass's baked
-    representative still — UTIME=0 for the time/scroll passes, `_PILLAR_TIME[name]` for
-    the emissive pillar passes — so the production byte-output is unchanged. The APPROX
-    time passes (MidnightRainbow/Solar/Void/Hades/Mirage/Loki) ignore it (they have no
-    real uTime formula offline — see research/dynamic_effects_catalog.md §A.1).
+    representative still — UTIME=0 for the time/scroll passes (incl. MidnightRainbow, whose
+    uTime only scrolls the rainbow hue), `_PILLAR_TIME[name]` for the emissive pillar
+    passes — so the production byte-output is unchanged. The remaining APPROX time passes
+    (Solar/Void/Hades/Mirage/Loki) ignore it (they have no real uTime formula offline —
+    see research/dynamic_effects_catalog.md §A.1).
     """
     if not spec:
         return arr_u8
@@ -852,8 +884,6 @@ def apply_dye(
         return _living_ocean(arr_u8, _ut)
     if name == "ArmorAcid":
         return _acid(arr_u8, _col(color, [0.5, 1.0, 0.3]), _ut)
-    if name == "ArmorMidnightRainbow":
-        return _midnight_rainbow(arr_u8)
     if name == "ArmorSolar":
         return _solar(arr_u8, _col(color, [1.0, 0.0, 0.0]), _col(secondary, [1.0, 1.0, 0.0]))
     if name == "ArmorVoid":
@@ -892,6 +922,8 @@ def apply_dye(
         return _hallow_boss(arr_u8, **ngeom)
     if name == "ArmorTwilight":
         return _twilight(arr_u8, _col(color, [0.5, 0.1, 1.0]), **ngeom)
+    if name == "ArmorMidnightRainbow":
+        return _midnight_rainbow_real(arr_u8, **ngeom)
 
     # unknown / unlisted pass -> undyed
     return arr_u8
