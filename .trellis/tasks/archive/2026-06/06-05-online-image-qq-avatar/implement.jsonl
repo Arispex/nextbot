@@ -1,0 +1,8 @@
+{"file": ".trellis/tasks/06-05-online-image-qq-avatar/prd.md", "reason": "需求 + 决策：卡片名行 [QQ头像] 昵称（QQ），DB 无映射只留昵称；qq 三层贯穿；批量反查 User.name"}
+{"file": ".trellis/tasks/06-05-online-image-qq-avatar/research/qq-avatar-mapping.md", "reason": "精确落点：User.name→user_id 批量反查、inventory.html 的 qlogo 头像复用模式、卡片名行改造、三层数据流、注入安全"}
+{"file": ".trellis/tasks/archive/2026-06/06-05-online-image-mode/research/implementation-blueprint.md", "reason": "在线图片模式整体四层结构（handler/page/模板/路由）与渲染管线背景"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "复用 inventory.html 的 QQ 头像 qlogo 模式 + 既有 User 查询模式，勿重复造轮子"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "qq 需跨层贯穿：handler DB 映射 → online_players_page payload → 模板渲染，字段对齐"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "User.name.in_(names) 批量反查、session 生命周期（查完即关）、索引利用"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "QQ 映射批查可补一条 info（names=N matched=M），复用 logger，key=value"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "ruff/pyright/测试全绿；无 QQ 映射时卡片不回归"}

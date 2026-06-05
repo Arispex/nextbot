@@ -1,0 +1,5 @@
+{"file": ".trellis/tasks/06-05-online-image-qq-avatar/prd.md", "reason": "核对：命中→头像+昵称+（QQ）；未命中→只昵称不回归；qq 贯穿兜底；批量反查；文字模式/分区头/立绘不动"}
+{"file": ".trellis/tasks/06-05-online-image-qq-avatar/research/qq-avatar-mapping.md", "reason": "核对头像 URL 与 inventory 一致、User.name 反查正确、注入安全（encodeURIComponent + textContent + </转义）"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "核对 User.name.in_() 批查、session 关闭、无 N+1 每卡一查"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "核对 qq 三层字段一致、缺失兜底无崩"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "核对 ruff/pyright/测试全绿、未命中不回归、注入安全"}
