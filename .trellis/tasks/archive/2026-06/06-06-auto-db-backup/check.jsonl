@@ -1,0 +1,5 @@
+{"file": ".trellis/tasks/06-06-auto-db-backup/prd.md", "reason": "核对验收：设置落 env/回填/默认、启动先备一次+按间隔、快照可开、保留生效、enabled=False 不备、best-effort、int 范围、测试"}
+{"file": ".trellis/tasks/06-06-auto-db-backup/research/blueprint.md", "reason": "核对实现忠实复用现状（settings/db/调度），无偏离"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "核对 .backup() WAL 安全、未破坏现有 DB 访问、连接正确关闭"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "核对备份/清理失败 best-effort 不崩、设置范围校验语义"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "核对 ruff/pyright/测试全绿、不回归设置与 DB"}

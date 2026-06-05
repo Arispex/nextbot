@@ -1,0 +1,9 @@
+{"file": ".trellis/tasks/06-06-auto-db-backup/prd.md", "reason": "需求 + 决策：3 设置（开关/间隔 24h/保留 30）、sqlite .backup 安全快照、on_startup tick-loop、启动先备一次、best-effort"}
+{"file": ".trellis/tasks/06-06-auto-db-backup/research/blueprint.md", "reason": "逐文件落点：settings_service、db_backup 模块、调度接线、Web UI、测试；DB/WAL/调度/设置现状"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "复用 settings 系统、db.py(DB_PATH/get_engine)、data_dir、time_utils、Web UI 设置页结构，勿造轮子"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "跨层：settings_service ↔ Web UI(html+js) ↔ db_backup 模块 ↔ on_startup 调度，db_backup_* 字段对齐"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "SQLite WAL 安全备份（.backup() 在线 API）、engine/连接生命周期、不破坏现有 DB 访问"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "备份/清理 best-effort：失败记日志不崩 bot；设置 int 范围校验语义"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "备份成功/失败/清理/调度启停 日志，统一 logger，machine-search-first key=value"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "ruff/pyright/测试全绿；不回归现有设置与 DB 行为"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "新增 nextbot/db_backup.py、backups/ 运行时目录、调度接线位置符合约定"}
