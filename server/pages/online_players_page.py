@@ -25,10 +25,13 @@ def _load_template() -> str:
 
 
 def _normalize_player(player: dict[str, Any]) -> dict[str, str]:
-    """单个玩家卡片字段规整：账号名、本次在线时长文本、立绘 data URI。
+    """单个玩家卡片字段规整：账号名、本次在线时长文本、立绘 data URI、绑定 QQ。
 
     立绘 data URI 由 handler 侧 ``render_character`` 已合成完毕，本函数只做
     字符串化兜底（防 None / 非 str），不重新渲染。
+
+    ``qq`` 由 handler 侧批量反查后直接写入 card dict（本函数不查 DB），命中 →
+    模板渲染 QQ 头像 + ``（QQ）``，缺失 / 空 → 兜底空串（模板只显示昵称）。
     """
     sprite_uri = player.get("character_sprite_data_uri")
     return {
@@ -37,6 +40,7 @@ def _normalize_player(player: dict[str, Any]) -> dict[str, str]:
         "character_sprite_data_uri": (
             str(sprite_uri) if isinstance(sprite_uri, str) else ""
         ),
+        "qq": str(player.get("qq", "")).strip(),
     }
 
 

@@ -144,15 +144,46 @@
       display: block;
     }
 
+    /* 名块：竖直堆叠、居中 —— [QQ 头像] / 昵称 / （QQ）。
+     * 竖排让头像、昵称、QQ 三者各占一行互不挤压（长 QQ 不再压缩昵称）；
+     * 无映射时仅昵称行（与现状一致，不渲头像/QQ 行）。 */
+    .player-name-row {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: var(--space-xxs);
+      max-width: 100%;
+      min-width: 0;
+    }
+
+    .player-qq-avatar {
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      object-fit: cover;
+      flex: 0 0 auto;
+      background-color: var(--color-canvas);
+    }
+
+    /* 昵称整行完整显示：不再因 QQ 长度被截断（竖排后独占一行），
+     * 过长则自然换行而非省略号。 */
     .player-name {
       color: var(--color-ink);
       font-weight: 500;
       font-size: 14px;
       max-width: 100%;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
       text-align: center;
+      overflow-wrap: anywhere;
+      min-width: 0;
+    }
+
+    .player-qq {
+      color: var(--color-muted);
+      font-size: 12px;
+      font-feature-settings: "tnum";
+      flex: 0 0 auto;
+      text-align: center;
+      overflow-wrap: anywhere;
     }
 
     .player-online {
@@ -252,10 +283,32 @@
           }
           card.appendChild(portrait);
 
-          const pname = document.createElement("div");
+          // 名块（竖排，居中）：QQ 映射命中 → [QQ 头像] / 昵称 / （QQ）；
+          // 未命中 → 仅昵称行。append 顺序即竖直堆叠顺序（头像→昵称→QQ）。
+          // 头像取法复用 inventory.html 的 qlogo 客户端模式；qq 用 encodeURIComponent
+          // 拼 URL、textContent 渲染括号（XSS 安全）。
+          const nameRow = document.createElement("div");
+          nameRow.className = "player-name-row";
+          const qq = String((player && player.qq) || "").trim();
+          if (qq) {
+            const avatar = document.createElement("img");
+            avatar.className = "player-qq-avatar";
+            avatar.src =
+              `https://q1.qlogo.cn/g?b=qq&nk=${encodeURIComponent(qq)}&s=100`;
+            avatar.alt = "qq";
+            nameRow.appendChild(avatar);
+          }
+          const pname = document.createElement("span");
           pname.className = "player-name";
           pname.textContent = String((player && player.name) || "未知玩家");
-          card.appendChild(pname);
+          nameRow.appendChild(pname);
+          if (qq) {
+            const qqBadge = document.createElement("span");
+            qqBadge.className = "player-qq";
+            qqBadge.textContent = `（${qq}）`;
+            nameRow.appendChild(qqBadge);
+          }
+          card.appendChild(nameRow);
 
           const online = document.createElement("div");
           online.className = "player-online";

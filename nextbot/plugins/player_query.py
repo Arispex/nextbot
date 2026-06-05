@@ -440,13 +440,17 @@ async def _query_online_players_one(server: Server) -> _OnlinePlayersResult:
 
 
 async def _render_online_player_card(
-    player: dict[str, object], *, server_id: int
+    player: dict[str, object], *, server_id: int, qq: str = ""
 ) -> dict[str, str] | None:
-    """单个在线玩家 → 卡片数据（立绘 data URI + 账号名 + 在线时长）。
+    """单个在线玩家 → 卡片数据（立绘 data URI + 账号名 + 在线时长 + 绑定 QQ）。
 
     仅渲染 ``appearance`` 为 dict（已登录且有 SSC 存档）的玩家；``appearance``
     为 null（罕见，刚连入无 SSC）→ 跳过返回 None。立绘合成失败（脏数据）亦跳过。
     字段名与 API 原样对应（``vanityAccessories`` / ``accessoryDyes``）。
+
+    ``qq``：该玩家 Terraria 账号名在本地 ``User`` 表绑定的 QQ 号（由调用方批量
+    反查后传入）；命中 → 卡片名行渲染 QQ 头像 + ``（QQ）``，未命中（空串）→
+    只显示昵称（与无映射现状一致）。
     """
     name = str(player.get("name", "")).strip()
     sprite_uri = await _render_appearance_to_uri(
@@ -473,7 +477,31 @@ async def _render_online_player_card(
         "name": name,
         "online_time_text": online_time_text,
         "character_sprite_data_uri": sprite_uri,
+        "qq": str(qq) if qq else "",
     }
+
+
+def _build_name_to_qq(names: list[str]) -> dict[str, str]:
+    """批量反查：Terraria 账号名列表 → ``{name: 绑定 QQ}`` 映射。
+
+    一次 ``User.name.in_(names)`` 查询（无 N+1），独立 session 查完即关。空 / 重复
+    名字归一后入 IN；未注册 / 未绑定的名字不在返回 dict 中（调用方 ``.get`` 兜底为
+    空串 → 卡片只显示昵称）。``User.name`` 即注册时写入的账号名，与 online-players
+    API 的 ``players[].name`` 同源（均为 ``Account.Name``）。
+    """
+    unique_names = {stripped for n in names if (stripped := n.strip())}
+    if not unique_names:
+        return {}
+    session = get_session()
+    try:
+        rows = (
+            session.query(User.name, User.user_id)
+            .filter(User.name.in_(unique_names))
+            .all()
+        )
+    finally:
+        session.close()
+    return {str(name): str(user_id) for name, user_id in rows}
 
 
 async def _handle_online_image(
@@ -519,6 +547,19 @@ async def _handle_online_image(
         await _handle_online_text(bot, event, servers)
         return
 
+    # 批量反查在线玩家账号名 → 绑定 QQ：收集所有 ok 服务器的玩家名，一次 IN 查询，
+    # 命中者卡片渲染 QQ 头像 + （QQ），未命中只显示昵称（无 N+1，独立 session）。
+    online_names = [
+        str(p.get("name", "")).strip()
+        for r in results
+        if r.ok
+        for p in r.players
+    ]
+    name_to_qq = _build_name_to_qq(online_names)
+    logger.info(
+        f"在线图片 QQ 映射：names={len(online_names)} matched={len(name_to_qq)}"
+    )
+
     # 渲染各服务器分区；只保留至少有一个可渲染玩家的服务器。
     page_servers: list[dict[str, object]] = []
     total_renderable = 0
@@ -531,8 +572,11 @@ async def _handle_online_image(
             continue
         cards: list[dict[str, str]] = []
         for player in result.players:
+            player_name = str(player.get("name", "")).strip()
             card = await _render_online_player_card(
-                player, server_id=result.server.id
+                player,
+                server_id=result.server.id,
+                qq=name_to_qq.get(player_name, ""),
             )
             if card is not None:
                 cards.append(card)

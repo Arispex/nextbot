@@ -189,6 +189,28 @@ def test_build_payload_player_missing_fields_default_empty() -> None:
     assert player["name"] == "Bob"
     assert player["online_time_text"] == ""
     assert player["character_sprite_data_uri"] == ""
+    # qq 缺失 → 兜底空串（模板只显示昵称，与无映射现状一致）
+    assert player["qq"] == ""
+
+
+def test_build_payload_player_qq_passes_through() -> None:
+    # qq 直接从 card dict 读（handler 已批量反查写入），本页只字符串化兜底。
+    payload = online_players_page.build_payload(
+        servers=[
+            {
+                "server_name": "S",
+                "players": [
+                    {"name": "Alice", "qq": "10001"},
+                    {"name": "Bob", "qq": "  12345  "},  # strip 兜底
+                    {"name": "Ghost"},  # 无 qq → ""
+                ],
+            }
+        ]
+    )
+    players = payload["servers"][0]["players"]
+    assert players[0]["qq"] == "10001"
+    assert players[1]["qq"] == "12345"
+    assert players[2]["qq"] == ""
 
 
 def test_build_payload_server_id_fallback() -> None:
@@ -280,6 +302,37 @@ def test_render_outputs_player_data_in_html() -> None:
     assert data["servers"][0]["players"][0]["online_time_text"] == "5 分钟"
 
 
+def test_render_template_renders_qq_avatar_and_badge() -> None:
+    # 模板需含 qlogo 头像取法 + 全角括号 QQ 徽标渲染逻辑（命中态）；
+    # qq 经注入贯穿到 JSON 数据块。
+    payload = online_players_page.build_payload(
+        servers=[
+            {
+                "server_name": "MyServer",
+                "players": [
+                    {
+                        "name": "Alice",
+                        "online_time_text": "5 分钟",
+                        "character_sprite_data_uri": "data:image/png;base64,AAA",
+                        "qq": "10001",
+                    }
+                ],
+            }
+        ]
+    )
+    html = online_players_page.render(payload).decode("utf-8")
+    # 头像取法复用 inventory 的 qlogo 客户端模式（encodeURIComponent + s=100）
+    assert "q1.qlogo.cn/g?b=qq&nk=" in html
+    assert "encodeURIComponent(qq)" in html
+    # 全角括号 QQ 徽标 + textContent 渲染（XSS 安全）
+    assert "player-qq" in html
+    assert "（${qq}）" in html
+    # qq 注入到 JSON 数据块
+    json_blob = html.split('type="application/json">', 1)[1].split("</script>", 1)[0]
+    data = json.loads(json_blob.replace("<\\/", "</"))
+    assert data["servers"][0]["players"][0]["qq"] == "10001"
+
+
 # ── _render_online_player_card：逐玩家渲染 + 跳过规则 ───────────
 
 
@@ -333,6 +386,101 @@ def test_render_card_session_seconds_null_placeholder() -> None:
         assert card is not None
         # sessionOnlineSeconds 为 null → 文本为空，模板渲染为「在线 —」占位
         assert card["online_time_text"] == ""
+    finally:
+        patches.restore()
+
+
+def test_render_card_includes_qq_when_provided() -> None:
+    patches = _Patches()
+    try:
+        patches.set("render_character", lambda *_a, **_k: b"PNGBYTES")
+        card = _run_coro(
+            pq._render_online_player_card(
+                _player("Alice", appearance=_SAMPLE_APPEARANCE),
+                server_id=1,
+                qq="10001",
+            )
+        )
+        assert card is not None
+        assert card["qq"] == "10001"
+    finally:
+        patches.restore()
+
+
+def test_render_card_qq_empty_when_not_provided() -> None:
+    patches = _Patches()
+    try:
+        patches.set("render_character", lambda *_a, **_k: b"PNGBYTES")
+        # 未传 qq（默认空串）→ 卡片 qq 为 ""（模板只显示昵称，不回归）
+        card = _run_coro(
+            pq._render_online_player_card(
+                _player("Alice", appearance=_SAMPLE_APPEARANCE), server_id=1
+            )
+        )
+        assert card is not None
+        assert card["qq"] == ""
+    finally:
+        patches.restore()
+
+
+# ── _build_name_to_qq：账号名 → QQ 批量反查 ────────────────────
+
+
+class _FakeQuery:
+    """最小 SQLAlchemy query 替身：记录 in_() 入参，返回预置 (name, qq) 行。
+
+    只支持 ``.query(...).filter(...).all()`` 链，足够覆盖 _build_name_to_qq。
+    """
+
+    def __init__(self, rows: list[tuple[str, str]], captured: dict[str, Any]) -> None:
+        self._rows = rows
+        self._captured = captured
+
+    def filter(self, *_criteria: Any) -> "_FakeQuery":
+        return self
+
+    def all(self) -> list[tuple[str, str]]:
+        return self._rows
+
+
+class _FakeSession:
+    def __init__(self, rows: list[tuple[str, str]], captured: dict[str, Any]) -> None:
+        self._rows = rows
+        self._captured = captured
+
+    def query(self, *_cols: Any) -> _FakeQuery:
+        return _FakeQuery(self._rows, self._captured)
+
+    def close(self) -> None:
+        self._captured["closed"] = True
+
+
+def test_build_name_to_qq_maps_and_closes_session() -> None:
+    patches = _Patches()
+    try:
+        captured: dict[str, Any] = {"closed": False}
+        rows = [("Alice", "10001"), ("Bob", "12345")]
+        patches.set("get_session", lambda: _FakeSession(rows, captured))
+
+        mapping = pq._build_name_to_qq(["Alice", "Bob", "Ghost"])
+        assert mapping == {"Alice": "10001", "Bob": "12345"}
+        # 独立 session 查完即关
+        assert captured["closed"] is True
+    finally:
+        patches.restore()
+
+
+def test_build_name_to_qq_empty_names_skips_query() -> None:
+    patches = _Patches()
+    try:
+        # 空 / None 名字归一后无有效名 → 不开 session、不查询，直接返回空 dict。
+        def _boom() -> Any:
+            msg = "无有效名字时不应开 session"
+            raise AssertionError(msg)
+
+        patches.set("get_session", _boom)
+        assert pq._build_name_to_qq([]) == {}
+        assert pq._build_name_to_qq(["", "  "]) == {}
     finally:
         patches.restore()
 
@@ -405,6 +553,50 @@ def test_image_mode_data_flow_filters_and_renders() -> None:
         # 图片榜单不 @ 任何人（不传 at_user_id）
         assert "at_user_id" not in captured["screenshot_kwargs"]
         assert captured["screenshot_kwargs"].get("semaphore") is None
+    finally:
+        patches.restore()
+
+
+def test_image_mode_qq_mapping_hit_and_miss() -> None:
+    """命中：账号名在 User 表 → 卡片 qq 填充；未命中：不在表 → qq 为 ""。"""
+    patches = _Patches()
+    try:
+        captured = _install_image_mode_capture(patches)
+
+        s1 = _server(1, "Server A")
+
+        async def _fake_request(_server: Any, path: str, *_a: Any, **_k: Any):
+            assert path == "/nextbot/online-players", path
+            return _ok_response(
+                [
+                    _player("Alice", appearance=_SAMPLE_APPEARANCE),  # 命中
+                    _player("Ghost", appearance=_SAMPLE_APPEARANCE),  # 未命中
+                ]
+            )
+
+        patches.set("request_server_api", _fake_request)
+        # 替身映射：只有 Alice 绑定 QQ；Ghost 不在 User 表（未注册/未绑定）。
+        captured_names: dict[str, Any] = {}
+
+        def _fake_name_to_qq(names: list[str]) -> dict[str, str]:
+            captured_names["names"] = list(names)
+            return {"Alice": "10001"}
+
+        patches.set("_build_name_to_qq", _fake_name_to_qq)
+
+        bot = _bot()
+        _run_coro(pq._handle_online_image(bot, _event(), [s1]))
+
+        assert captured["screenshot_called"] is True
+        page_servers = captured["page_servers"]
+        assert page_servers is not None
+        players = page_servers[0]["players"]
+        by_name = {p["name"]: p for p in players}
+        # 命中 → qq 填充；未命中 → 空串（名行只昵称，不回归）
+        assert by_name["Alice"]["qq"] == "10001"
+        assert by_name["Ghost"]["qq"] == ""
+        # 批量反查只收集在线玩家名（无 N+1：一次传入全部名字）
+        assert set(captured_names["names"]) == {"Alice", "Ghost"}
     finally:
         patches.restore()
 
@@ -543,14 +735,19 @@ def _run() -> int:
     tests = [
         test_build_payload_normalizes_servers_and_players,
         test_build_payload_player_missing_fields_default_empty,
+        test_build_payload_player_qq_passes_through,
         test_build_payload_server_id_fallback,
         test_render_outputs_server_id_in_html,
         test_render_escapes_closing_script_tag,
         test_render_outputs_player_data_in_html,
+        test_render_template_renders_qq_avatar_and_badge,
         test_render_card_skips_when_appearance_null,
         test_render_card_builds_uri_and_online_text,
         test_render_card_session_seconds_null_placeholder,
+        test_render_card_includes_qq_when_provided,
+        test_render_card_qq_empty_when_not_provided,
         test_image_mode_data_flow_filters_and_renders,
+        test_image_mode_qq_mapping_hit_and_miss,
         test_image_mode_degrades_to_text_when_all_fail,
         test_image_mode_degrades_to_text_when_no_renderable_players,
         test_text_mode_output_matches_status_path,
