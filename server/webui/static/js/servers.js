@@ -157,6 +157,7 @@
         { path: "playerEvents.online", label: "推送上线事件", type: "bool" },
         { path: "playerEvents.offline", label: "推送下线事件", type: "bool" },
         { path: "playerEvents.message", label: "同步聊天消息", type: "bool" },
+        { path: "playerEvents.bossSummon", label: "推送 Boss 召唤事件", type: "bool" },
       ],
     },
   ];
