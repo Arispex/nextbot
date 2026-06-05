@@ -7,8 +7,8 @@
 ## Current Status
 
 <!-- @@@auto:current-status -->
-- **Active File**: `journal-4.md`
-- **Total Sessions**: 213
+- **Active File**: `journal-5.md`
+- **Total Sessions**: 214
 - **Last Active**: 2026-06-05
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,8 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-4.md` | ~1973 | Active |
+| `journal-5.md` | ~40 | Active |
+| `journal-4.md` | ~1973 | Archived |
 | `journal-3.md` | ~1984 | Archived |
 | `journal-2.md` | ~1973 | Archived |
 | `journal-1.md` | ~1999 | Archived |
@@ -32,6 +33,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 214 | 2026-06-05 | 在线图片模式显示服务器 ID | `8e1b036` | `main` |
 | 213 | 2026-06-05 | 在线命令图片模式 | `ec0005b`, `cd754ae` | `main` |
 | 212 | 2026-06-05 | 角色立绘渲染：配饰 + glowmask + 全量染料忠实字节码 | `03c7c11`, `3bd6dcc`, `3989f27`, `0860bbc`, `1d37dc5`, `35f44e6`, `19e13b3`, `45a1d9c`, `19b4d40`, `0053c4b`, `b9fb8e9` | `main` |
 | 211 | 2026-06-03 | Terraria 角色渲染：背包卡片立绘（装备/装饰/染料/发型） | `37b9f15`, `70e618b`, `6d7de9b`, `18b4fad`, `8398dd5` | `main` |
