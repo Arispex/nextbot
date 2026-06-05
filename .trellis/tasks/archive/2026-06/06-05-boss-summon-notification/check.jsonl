@@ -1,0 +1,5 @@
+{"file": ".trellis/tasks/06-05-boss-summon-notification/prd.md", "reason": "核对验收：boss_summon 事件下发、boss 设置/默认模板、错误码、{boss} 渲染与注入防护、鉴权一致、既有事件不回归、API 文档"}
+{"file": ".trellis/tasks/06-05-boss-summon-notification/research/existing-player-events-blueprint.md", "reason": "核对平行实现是否忠实复用现有结构（端点/鉴权/群解析/模板/QQ 绑定/前端），无偏离"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "核对 422/503/500 语义与 error.message 仅原因、不泄漏栈"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "核对 boss_notify_* 在 API/settings_service/前端 html+js 三层字段一致"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "核对 ruff/pyright/测试全绿、注入防护、既有 online/offline/message 不回归"}

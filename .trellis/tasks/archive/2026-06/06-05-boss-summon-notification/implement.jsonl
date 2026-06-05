@@ -1,0 +1,9 @@
+{"file": ".trellis/tasks/06-05-boss-summon-notification/prd.md", "reason": "需求 + 决策：复用 player-events 端点加 boss_summon 事件 + boss 参数；boss_notify_* 设置；默认模板；API 文档"}
+{"file": ".trellis/tasks/06-05-boss-summon-notification/research/existing-player-events-blueprint.md", "reason": "现有上下线通知端到端架构 + Boss 平行实现逐文件落点（API/设置后端/Web UI 前端/测试/文档）"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "本任务核心是平行复用上下线通知：API 端点、鉴权中间件、群解析、模板渲染、QQ 绑定、前端结构全部仿写"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "跨层：对外 API ↔ settings_service ↔ Web UI 前端（html+js），boss_notify_* 字段三处对齐"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "API 错误语义：422（boss 缺失/超长/非法）、503（无群/bot 未连）、500（异常不泄漏栈）；error.message 仅原因"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "推送入口/逐群成功失败/异常 日志，复用现有 player-events 日志风格 key=value"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "QQ 绑定 _resolve_user_id_by_name（func.lower(User.name)）的 session 生命周期复用"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "ruff/pyright/测试全绿；后端 success/error response 文案解耦；既有事件不回归"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "改动落在 server/routes、server/settings_service、server/webui 既有目录，符合约定"}
