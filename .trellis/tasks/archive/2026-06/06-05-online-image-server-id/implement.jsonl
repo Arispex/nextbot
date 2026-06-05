@@ -1,0 +1,4 @@
+{"file": ".trellis/tasks/06-05-online-image-server-id/prd.md", "reason": "需求 + 决策：分区头显示 server_id，格式 {id}. {name}，数据流 handler→payload→模板，仅图片模式分区头"}
+{"file": ".trellis/tasks/archive/2026-06/06-05-online-image-mode/research/implementation-blueprint.md", "reason": "上个任务的实现蓝图：在线图片模式的 handler/page/模板/路由四层结构与渲染管线，本改动在此基础上加 server_id 字段"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "server_id 需跨层贯穿：handler page_servers → online_players_page payload → 模板分区头，三层字段对齐"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "ruff/pyright/测试全绿；不回归文字模式与玩家卡片"}

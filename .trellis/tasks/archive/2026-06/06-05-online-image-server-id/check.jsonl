@@ -1,0 +1,3 @@
+{"file": ".trellis/tasks/06-05-online-image-server-id/prd.md", "reason": "核对：分区头含 ID（{id}. {name}）、server_id 全链贯穿且兜底、文字模式/玩家卡片/降级不回归、测试覆盖"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "核对 server_id 三层字段一致（handler→payload→模板），无遗漏或类型不一致"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "核对 ruff/pyright/测试全绿、HTML 注入安全沿用、无回归"}
