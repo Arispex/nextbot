@@ -1,0 +1,2 @@
+{"file": ".trellis/tasks/06-05-menu-query-category-order/prd.md", "reason": "核对：查询系统在用户系统之后、经济系统之前；显示序号 2；其它分类相对顺序与菜单其它功能不回归"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "核对 ruff/pyright/测试全绿、无回归"}

@@ -1,0 +1,2 @@
+{"file": ".trellis/tasks/06-05-menu-query-category-order/prd.md", "reason": "需求：CATEGORY_ORDER 中「查询系统」插到「用户系统」后（序号 2）；改动点、out-of-scope、兜底说明"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "ruff/pyright/测试全绿；菜单其它行为不回归"}
