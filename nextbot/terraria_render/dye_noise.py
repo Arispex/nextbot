@@ -45,6 +45,28 @@ _EXTRA_SIZE = (512, 512)
 # Representative still: GlobalTimeWrappedHourly frozen at 0 for animated terms.
 _UTIME = 0.0
 
+# ── Reflective specular light (ADJUSTABLE — controls the highlight brightness) ──
+# The two Reflective passes (ArmorReflective 3190 + ArmorReflectiveColor 3026/3027/3553/3554/
+# 3555) light a 5-tap emboss with `uLightSource`, a unit surface NORMAL the game derives from
+# the entity's live lighting gradient (ReflectiveArmorShaderData.cs:29-78). Offline there is no
+# entity, so the game forces it to Vector3.Zero -> `dp3 N.L == 0` -> the metallic highlight
+# collapses to a dull dark metal. We instead bind a STATIC representative FRONT light (the
+# shader's +Z surface normal / a head-on viewer) so the highlight statically lights up.
+#
+# This is a GROUNDED APPROXIMATION (the game's specular MOVES with the lighting gradient, which
+# is physically unavailable offline). Its z component IS the highlight strength: the shader's
+# `dp3 N.L` scales linearly with |L|, so a SMALLER z makes a WEAKER/DARKER highlight. The old
+# value (0,0,1) ran the specular at full intensity and read OVER-BRIGHT (luma ~176 on
+# Armor_Head_276 vs a ~117 source -- a washed-out near-white chrome, not the game's metallic
+# reflection). 0.7 is the "bright reflection, not over-exposed" tier the user picked off the
+# `_diag_reflective_dim.png` scan -- a believable metal sheen still clearly brighter than the
+# no-highlight source, without the washed-out near-white of full 1.0. ADJUSTABLE: sweep
+# `temp/dynamic_frames/_diag_reflective_dim.png`
+# (light-z ∈ {1.0 over-bright, 0.7, 0.5, 0.35, 0.0 no-highlight}) to pick the final value; this
+# is the landed default. ONLY the two Reflective passes read uLightSource (its CTAB register) --
+# every other dye pass ignores it, so changing this affects NOTHING else.
+_REFLECTIVE_LIGHT = np.array([0.0, 0.0, 0.7, 0.0])
+
 
 # ── baked shader blobs + lazy textures ───────────────────────────────
 @functools.cache
@@ -470,17 +492,12 @@ def run_noise_pass(
         "uTime": np.array([u_time, 0.0, 0.0, 0.0]),
         "uDirection": np.array([1.0, 0.0, 0.0, 0.0]),
         "uRotation": np.array([0.0, 0.0, 0.0, 0.0]),
-        # Reflective/ReflectiveColor uLightSource is a unit surface NORMAL the game derives
-        # from the entity's live lighting gradient (ReflectiveArmorShaderData.cs:29-78); with
-        # no entity offline it is forced to Vector3.Zero -> N.L=0 -> the metallic highlight
-        # collapses (dark dull metal). We bind a STATIC representative front light (0,0,1) =
-        # the shader's own +Z surface normal / a head-on viewer, so the highlight statically
-        # lights up (luma 58->176, the bright-reflective look). This is a GROUNDED APPROXIMATION,
-        # NOT faithful: the game's specular MOVES with the lighting gradient, which is physically
-        # unavailable offline (no entity); a fixed normal is the representative stand-in. If the
-        # silver metals wash out too white, fall back to an overhead (0,0.7,0.714). ONLY the two
-        # Reflective passes read uLightSource (its CTAB register) -- every other pass ignores it.
-        "uLightSource": np.array([0.0, 0.0, 1.0, 0.0]),
+        # Reflective/ReflectiveColor specular light: a STATIC front-normal stand-in for the
+        # game's live lighting gradient (forced to zero offline). Its z is the highlight
+        # strength -- see `_REFLECTIVE_LIGHT` above (default 0.7, dimmed from the over-bright
+        # full-intensity 1.0; sweep `_diag_reflective_dim.png` to retune). ONLY the two
+        # Reflective passes read uLightSource; every other pass ignores it.
+        "uLightSource": _REFLECTIVE_LIGHT,
     }
     # uImage1 is the noise texture, except HallowBoss which samples the colored palette.
     tex1 = noise

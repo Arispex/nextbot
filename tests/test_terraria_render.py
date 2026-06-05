@@ -6,12 +6,17 @@ Dependency-light: no network, no pytest-only fixtures. Runs under pytest
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import struct
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 # allow `python tests/test_terraria_render.py` from anywhere
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -1016,39 +1021,60 @@ def test_high_contrast_glow_falls_back_without_baked_blob() -> None:
         "HighContrastGlow asset-missing fallback is not the handwritten approx")
 
 
-def test_reflective_static_front_light_lights_highlight() -> None:
-    # ArmorReflective / ArmorReflectiveColor (class C, grounded approximation): the
-    # faithful bytecode runs with a STATIC front light bound in run_noise_pass
-    # (uLightSource=(0,0,1), the shader's +Z surface normal) so the metallic specular
-    # highlight statically lights up. The result is a BRIGHT reflective metal (luma well
-    # above the source), NOT the dull *0.5 no-highlight version at uLightSource=0. (The
-    # game's specular moves with the live lighting gradient -- physically unavailable
-    # offline; the fixed normal is a representative stand-in, solar_reflective_revisit.)
+@contextlib.contextmanager
+def _reflective_light(z: float) -> "Iterator[None]":
+    """Temporarily bind the Reflective specular light z (the highlight strength) so a
+    test can bound the dimmed default between no-highlight (z=0) and bright (z=1)."""
+    saved = dye_noise._REFLECTIVE_LIGHT
+    dye_noise._REFLECTIVE_LIGHT = np.array([0.0, 0.0, z, 0.0])
+    try:
+        yield
+    finally:
+        dye_noise._REFLECTIVE_LIGHT = saved
+
+
+def test_reflective_static_front_light_dimmed_highlight() -> None:
+    # ArmorReflective / ArmorReflectiveColor (class C, grounded approx): the faithful
+    # bytecode runs with a STATIC front light (`_REFLECTIVE_LIGHT`, a +Z surface normal)
+    # bound in run_noise_pass so the metallic specular highlight lights up. The default
+    # z was DIMMED from the over-bright full-intensity 1.0 (a near-white luma ~176 on
+    # Armor_Head_276, brighter than the source) to a believable metal sheen. This pins
+    # the contract: the dimmed default is brighter than the no-highlight floor (z=0 dull
+    # metal) yet dimmer than the over-bright full light (z=1.0). The game's specular
+    # moves with the live lighting gradient; the fixed normal is a stand-in offline.
     frame = _frame("Armor_Head_276", 0)
     if frame[..., 3].sum() == 0:                             # asset absent -> approx
         return
     op = frame[..., 3] > 0
-    refl = _reflective(frame.copy(), **_GEOM)
-    assert np.isfinite(refl.astype(np.float64)).all() and refl.shape == frame.shape
-    src_luma = frame[op][:, :3].astype(np.float64).mean()
-    refl_luma = refl[op][:, :3].astype(np.float64).mean()
-    # the static front light re-lights the highlight lobe -> the reflective metal is
-    # markedly BRIGHTER than the source (luma ~176 vs ~117), proving the highlight is
-    # back (not the dull *0.5 metal at uLightSource=0, which is darker than the source).
-    assert refl_luma > src_luma + 20.0, (
-        f"Reflective static-light highlight not lit "
-        f"(refl {refl_luma:.1f} <= source {src_luma:.1f} + 20)")
-    # ReflectiveColor with a gold uColor stays gold (R,G > B) over the bright result.
+
+    def luma(img: np.ndarray) -> float:
+        return float(img[op][:, :3].astype(np.float64).mean())
+
+    # the production default (whatever `_REFLECTIVE_LIGHT` currently holds).
+    refl_luma = luma(_reflective(frame.copy(), **_GEOM))
+    assert np.isfinite(refl_luma)
+    # bound it: the no-highlight floor (lobe gate off) and the over-bright full light.
+    with _reflective_light(0.0):
+        floor_luma = luma(_reflective(frame.copy(), **_GEOM))
+    with _reflective_light(1.0):
+        full_luma = luma(_reflective(frame.copy(), **_GEOM))
+    # 1) the default highlight is still ON -> brighter than the dull no-highlight floor.
+    assert refl_luma > floor_luma, (
+        f"Reflective default highlight not lit (refl {refl_luma:.1f} <= "
+        f"no-highlight floor {floor_luma:.1f})")
+    # 2) and it is DIMMER than the old over-bright full-intensity light.
+    assert refl_luma < full_luma, (
+        f"Reflective default not dimmed below full light (refl {refl_luma:.1f} >= "
+        f"full {full_luma:.1f})")
+    assert full_luma > floor_luma + 20.0, (
+        f"sanity: full light should be markedly brighter than the floor "
+        f"({full_luma:.1f} vs {floor_luma:.1f})")
+    # ReflectiveColor with a gold uColor stays gold (R,G > B) and is itself lit.
     rc = _reflective_color(frame.copy(), [1.0, 0.85, 0.1], **_GEOM)
     assert np.isfinite(rc.astype(np.float64)).all() and rc.shape == frame.shape
     rr, rg, rb = rc[op][:, :3].astype(np.float64).mean(0)
     assert rr > rb and rg > rb, (
         f"ReflectiveColor gold tint not applied (mean rgb {(rr, rg, rb)})")
-    # ...and is itself bright (the highlight, not the dull uLightSource=0 metal).
-    rc_luma = rc[op][:, :3].astype(np.float64).mean()
-    assert rc_luma > src_luma, (
-        f"ReflectiveColor static-light highlight not lit "
-        f"(rc {rc_luma:.1f} <= source {src_luma:.1f})")
 
 
 def test_reflective_falls_back_without_baked_blob() -> None:
@@ -1756,7 +1782,6 @@ def test_over_glow_empty_texture_is_noop() -> None:
 
 def _without_glow(table: dict, key: str):
     """Context-managed temporary removal of a glow-table entry (restore on exit)."""
-    import contextlib
 
     @contextlib.contextmanager
     def cm():
@@ -2384,7 +2409,7 @@ def _run() -> int:
         test_batch3_passes_dispatch_through_bytecode,
         test_high_contrast_glow_chroma_gated_bytecode,
         test_high_contrast_glow_falls_back_without_baked_blob,
-        test_reflective_static_front_light_lights_highlight,
+        test_reflective_static_front_light_dimmed_highlight,
         test_reflective_falls_back_without_baked_blob,
         test_solar_default_is_bytecode_hard_clip_orange_red_lava,
         test_solar_bytecode_falls_back_without_baked_blob,
