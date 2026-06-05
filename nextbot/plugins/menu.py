@@ -54,6 +54,7 @@ _menu_semaphore = asyncio.Semaphore(2)
 
 CATEGORY_ORDER = [
     "用户系统",
+    "查询系统",
     "经济系统",
     "小游戏系统",
     "红包系统",
