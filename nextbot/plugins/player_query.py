@@ -13,6 +13,7 @@ from server.screenshot import ScreenshotOptions
 from server.server_config import get_server_settings
 from server.web_server import (
     create_inventory_page,
+    create_online_players_page,
     create_progress_page,
 )
 from nextbot.command_config import (
@@ -63,6 +64,13 @@ INVENTORY_SCREENSHOT_OPTIONS = ScreenshotOptions(
 PROGRESS_SCREENSHOT_OPTIONS = ScreenshotOptions(
     viewport_width=1200,
     viewport_height=700,
+    full_page=True,
+    fit_content_height=True,
+)
+# 在线玩家榜单：多服务器多列卡片，宽 viewport 容纳 auto-fill 网格；高度按内容自适应。
+ONLINE_PLAYERS_SCREENSHOT_OPTIONS = ScreenshotOptions(
+    viewport_width=1600,
+    viewport_height=900,
     full_page=True,
     fit_content_height=True,
 )
@@ -184,60 +192,39 @@ def _to_public_render_url(url: str) -> str:
 _safe_at_segment = safe_at_segment
 
 
-async def _build_character_sprite_uri(
-    appearance_result: TShockResponse | BaseException,
+async def _render_appearance_to_uri(  # noqa: PLR0913 - 7 个角色数据块（appearance + equipment/vanity/dye + 三组配饰）与 appearance API / render_character 签名一一对应，折叠成 dict 会丢失字段名映射
+    appearance: object,
+    equipment: object,
+    vanity: object,
+    dye: object,
+    accessories: object,
+    vanity_accessories: object,
+    accessory_dyes: object,
     *,
-    server_id: int,
-    target_user_id: str,
     log_label: str,
+    log_context: str,
 ) -> str | None:
-    """背包卡片角色立绘：best-effort 解析 appearance 响应 → 本地合成 → data URI。
+    """角色立绘纯渲染核：appearance dict + 各装备/配饰块 → 本地合成 → data URI。
 
-    入参为背包 handler 三路并行 ``gather`` 里的 appearance 那一路结果（已
-    ``return_exceptions=True``）。角色立绘是背包卡片的「锦上添花」增强项，任何
-    失败都只记日志并返回 ``None``，由调用方以无立绘的方式渲染背包，绝不因角色
-    数据失败而阻断 / 报错背包本身：
+    入参为「内联角色数据块」（appearance / equipment / vanity / dye + 三组配饰），
+    字段名与 appearance API 数据块一一对应（``vanityAccessories`` → 形参
+    ``vanity_accessories``，``accessoryDyes`` → ``accessory_dyes``）。各块可能为
+    null，统一用 ``isinstance`` 守卫后传入 ``render_character``，原始字段值（含
+    packed-int 颜色）直传不改写。
 
-    - 连接级异常 / 非成功响应（如账号不存在 400）→ None
-    - ``appearance`` 为 null（无 SSC 存档）→ None
+    立绘是「锦上添花」增强项，任何失败只记日志并返回 ``None``：
+    - ``appearance`` 非 dict（无 SSC 存档）→ None
     - ``render_character`` 抛错（脏 appearance）→ None
 
     成功时返回 ``data:image/png;base64,...``（透明底 PNG，scale=1，由模板 CSS 放大）。
+
+    ``log_context`` 由调用方拼好（如 ``server_id=1 target_user_id=123`` 或
+    ``server_id=1 name=Foo``），用于 best-effort 日志的 key=value 上下文。
     """
-    if isinstance(appearance_result, BaseException):
-        # TShockRequestError（连接级）或其它未预期异常都按 best-effort 跳过。
-        logger.info(
-            f"{log_label}立绘跳过：server_id={server_id} "
-            f"target_user_id={target_user_id} reason=fetch_failed"
-        )
-        return None
-
-    if not is_success(appearance_result):
-        # 账号不存在(400) 等：原样透传 API error.message 到日志，背包不受影响。
-        logger.info(
-            f"{log_label}立绘跳过：server_id={server_id} "
-            f"target_user_id={target_user_id} status={appearance_result.api_status} "
-            f"reason={get_error_reason(appearance_result)}"
-        )
-        return None
-
-    appearance = appearance_result.payload.get("appearance")
     if not isinstance(appearance, dict):
         # 账号存在但无 SSC 存档 → appearance 为 null。
-        logger.info(
-            f"{log_label}立绘跳过：server_id={server_id} "
-            f"target_user_id={target_user_id} reason=no_appearance"
-        )
+        logger.info(f"{log_label}立绘跳过：{log_context} reason=no_appearance")
         return None
-
-    # 装备 / 装饰 / 染料各块可能为 null；保留 API 原始字段直传渲染模块。
-    equipment = appearance_result.payload.get("equipment")
-    vanity = appearance_result.payload.get("vanity")
-    dye = appearance_result.payload.get("dye")
-    # 配饰：功能 / 社交 / 配饰染料各定长 7 的列表（空槽零值），可能为 null。
-    accessories = appearance_result.payload.get("accessories")
-    vanity_accessories = appearance_result.payload.get("vanityAccessories")
-    accessory_dyes = appearance_result.payload.get("accessoryDyes")
 
     try:
         # 本地 numpy 合成是 CPU-bound，推到线程池避免阻塞事件循环。
@@ -253,98 +240,129 @@ async def _build_character_sprite_uri(
                 vanity_accessories if isinstance(vanity_accessories, list) else None),
             accessory_dyes=accessory_dyes if isinstance(accessory_dyes, list) else None,
         )
-    except Exception:  # noqa: BLE001 - 渲染层对脏 appearance 兜底，立绘失败不影响背包
+    except Exception:  # noqa: BLE001 - 渲染层对脏 appearance 兜底，立绘失败不影响调用方
         logger.exception(
-            f"{log_label}立绘合成失败：server_id={server_id} "
-            f"target_user_id={target_user_id}（已跳过立绘，继续渲染背包）"
+            f"{log_label}立绘合成失败：{log_context}（已跳过立绘）"
         )
         return None
 
     logger.info(
-        f"{log_label}立绘合成成功：server_id={server_id} "
-        f"target_user_id={target_user_id} png_bytes={len(png)}"
+        f"{log_label}立绘合成成功：{log_context} png_bytes={len(png)}"
     )
     return "data:image/png;base64," + base64.b64encode(png).decode("ascii")
 
 
-@online_matcher.handle()
-@command_control(
-    command_key="player_query.online",
-    display_name="在线",
-    permission="player_query.online",
-    description="查询服务器在线状态与在线玩家列表",
-    usage="在线",
-    category="查询系统",
-)
-@require_permission("player_query.online")
-async def handle_online(
-    bot: Bot, event: Event, arg: Message = CommandArg()
-):
-    args = parse_command_args_with_fallback(event, arg, "在线")
-    if args:
-        raise_command_usage()
+async def _build_character_sprite_uri(
+    appearance_result: TShockResponse | BaseException,
+    *,
+    server_id: int,
+    target_user_id: str,
+    log_label: str,
+) -> str | None:
+    """背包卡片角色立绘：best-effort 解析 appearance 响应 → 委托纯渲染核。
 
-    at = safe_at_segment_or_empty(event.get_user_id())
+    入参为背包 handler 三路并行 ``gather`` 里的 appearance 那一路结果（已
+    ``return_exceptions=True``）。角色立绘是背包卡片的「锦上添花」增强项，任何
+    失败都只记日志并返回 ``None``，由调用方以无立绘的方式渲染背包，绝不因角色
+    数据失败而阻断 / 报错背包本身：
 
-    session = get_session()
+    - 连接级异常 / 非成功响应（如账号不存在 400）→ None
+    - ``appearance`` 为 null（无 SSC 存档）→ None（由纯渲染核处理）
+    - ``render_character`` 抛错（脏 appearance）→ None（由纯渲染核处理）
+
+    成功时返回 ``data:image/png;base64,...``（透明底 PNG，scale=1，由模板 CSS 放大）。
+    """
+    log_context = f"server_id={server_id} target_user_id={target_user_id}"
+    if isinstance(appearance_result, BaseException):
+        # TShockRequestError（连接级）或其它未预期异常都按 best-effort 跳过。
+        logger.info(f"{log_label}立绘跳过：{log_context} reason=fetch_failed")
+        return None
+
+    if not is_success(appearance_result):
+        # 账号不存在(400) 等：原样透传 API error.message 到日志，背包不受影响。
+        logger.info(
+            f"{log_label}立绘跳过：{log_context} status={appearance_result.api_status} "
+            f"reason={get_error_reason(appearance_result)}"
+        )
+        return None
+
+    # 装备 / 装饰 / 染料 / 三组配饰各块可能为 null；保留 API 原始字段直传渲染核。
+    payload = appearance_result.payload
+    return await _render_appearance_to_uri(
+        payload.get("appearance"),
+        payload.get("equipment"),
+        payload.get("vanity"),
+        payload.get("dye"),
+        payload.get("accessories"),
+        payload.get("vanityAccessories"),
+        payload.get("accessoryDyes"),
+        log_label=log_label,
+        log_context=log_context,
+    )
+
+
+async def _query_online_status_one(server: Server) -> list[str]:
+    """文字模式：单台服务器 ``/v2/server/status`` 查询 → 文本行列表。
+
+    PQA-1.1 fan-out 模板：连接级 / 非成功 / 格式错误均就地拼成失败行，
+    不抛异常（部分失败不影响整体回复）。
+    """
+    out: list[str] = [f"{server.id}.{server.name}"]
     try:
-        servers = session.query(Server).order_by(Server.id.asc()).all()
-    finally:
-        session.close()
-
-    if not servers:
-        await bot.send(event, at + " " + reply_failure("查询", "暂无服务器"))
-        return
-
-    # PQA-1.1：并行 fan-out，避免 N 台服务器串行 connect+read 各 5s 累积 N×10s
-    async def _query_one(server: Server) -> list[str]:
-        out: list[str] = [f"{server.id}.{server.name}"]
-        try:
-            response = await request_server_api(
-                server,
-                "/v2/server/status",
-                params={"players": "true"},
-            )
-        except TShockRequestError:
-            out.append("❌ 查询失败，无法连接服务器")
-            return out
-
-        if not is_success(response):
-            out.append(f"❌ 查询失败，{get_error_reason(response)}")
-            return out
-
-        players = response.payload.get("players")
-        if not isinstance(players, list):
-            out.append("❌ 查询失败，返回数据格式错误")
-            return out
-
-        playercount = response.payload.get("playercount")
-        maxplayers = response.payload.get("maxplayers")
-        if not isinstance(playercount, int) or not isinstance(maxplayers, int):
-            out.append("❌ 查询失败，返回数据格式错误")
-            return out
-
-        if not players:
-            out.append("ℹ️ 无玩家在线")
-            return out
-
-        out.append(f"在线玩家（{playercount}/{maxplayers}）")
-        nicknames: list[str] = []
-        for player in players:
-            if isinstance(player, dict):
-                nickname = str(player.get("nickname", "")).strip()
-                if nickname:
-                    nicknames.append(nickname)
-                    continue
-            nicknames.append(str(player))
-        out.append(",".join(nicknames))
+        response = await request_server_api(
+            server,
+            "/v2/server/status",
+            params={"players": "true"},
+        )
+    except TShockRequestError:
+        out.append("❌ 查询失败，无法连接服务器")
         return out
 
+    if not is_success(response):
+        out.append(f"❌ 查询失败，{get_error_reason(response)}")
+        return out
+
+    players = response.payload.get("players")
+    if not isinstance(players, list):
+        out.append("❌ 查询失败，返回数据格式错误")
+        return out
+
+    playercount = response.payload.get("playercount")
+    maxplayers = response.payload.get("maxplayers")
+    if not isinstance(playercount, int) or not isinstance(maxplayers, int):
+        out.append("❌ 查询失败，返回数据格式错误")
+        return out
+
+    if not players:
+        out.append("ℹ️ 无玩家在线")
+        return out
+
+    out.append(f"在线玩家（{playercount}/{maxplayers}）")
+    nicknames: list[str] = []
+    for player in players:
+        if isinstance(player, dict):
+            nickname = str(player.get("nickname", "")).strip()
+            if nickname:
+                nicknames.append(nickname)
+                continue
+        nicknames.append(str(player))
+    out.append(",".join(nicknames))
+    return out
+
+
+async def _handle_online_text(
+    bot: Bot, event: Event, servers: list[Server]
+) -> None:
+    """文字模式（image_mode=False / 图片模式降级）：所有服务器在线状态文本。
+
+    输出与历史行为保持一致：每台服务器 ``count/max`` + 昵称列表，
+    部分失败显示失败行。``servers`` 由调用方保证非空。
+    """
     # R5-B.1：return_exceptions=True 防止任一 task 抛非 TShockRequestError 异常
     # （如 CancelledError、内部 bug）时整个 gather cancel 其他任务，与 R4 M3
     # user_manager / leaderboard / lottery 的 fan-out 模板对齐。
     raw_results = await asyncio.gather(
-        *(_query_one(s) for s in servers), return_exceptions=True
+        *(_query_online_status_one(s) for s in servers), return_exceptions=True
     )
 
     results: list[list[str]] = []
@@ -365,6 +383,240 @@ async def handle_online(
 
     logger.info(f"在线查询完成：server_count={len(servers)}")
     await bot.send(event, "🖥️ 服务器在线状态\n" + "\n".join(lines))
+
+
+class _OnlinePlayersResult:
+    """图片模式：单台服务器 ``/nextbot/online-players`` 查询结果。
+
+    ``ok``：查询是否成功（连接级 / 非成功响应 / 格式错误均为 False）。
+    ``players``：成功时的原始玩家对象列表（每项含 appearance / equipment /
+    vanity / dye / accessories / vanityAccessories / accessoryDyes /
+    sessionOnlineSeconds，字段名原样）；失败时为空。
+    ``reason``：失败原因（原样透传 API error.message / 连接错误文案），成功时 ""。
+    """
+
+    __slots__ = ("ok", "players", "reason", "server")
+
+    def __init__(
+        self,
+        server: Server,
+        *,
+        ok: bool,
+        players: list[dict[str, object]],
+        reason: str,
+    ) -> None:
+        self.server = server
+        self.ok = ok
+        self.players = players
+        self.reason = reason
+
+
+async def _query_online_players_one(server: Server) -> _OnlinePlayersResult:
+    """图片模式：单台服务器 ``/nextbot/online-players`` 查询 → 结构化结果。
+
+    连接级异常 / 非成功响应 / 返回格式错误均返回 ``ok=False`` + 原始原因，
+    不抛异常（部分服务器失败时调用方仍渲染成功的部分）。
+    """
+    try:
+        response = await request_server_api(server, "/nextbot/online-players")
+    except TShockRequestError:
+        return _OnlinePlayersResult(
+            server, ok=False, players=[], reason="无法连接服务器"
+        )
+
+    if not is_success(response):
+        return _OnlinePlayersResult(
+            server, ok=False, players=[], reason=get_error_reason(response)
+        )
+
+    players = response.payload.get("players")
+    if not isinstance(players, list):
+        return _OnlinePlayersResult(
+            server, ok=False, players=[], reason="返回数据格式错误"
+        )
+
+    valid_players = [p for p in players if isinstance(p, dict)]
+    return _OnlinePlayersResult(server, ok=True, players=valid_players, reason="")
+
+
+async def _render_online_player_card(
+    player: dict[str, object], *, server_id: int
+) -> dict[str, str] | None:
+    """单个在线玩家 → 卡片数据（立绘 data URI + 账号名 + 在线时长）。
+
+    仅渲染 ``appearance`` 为 dict（已登录且有 SSC 存档）的玩家；``appearance``
+    为 null（罕见，刚连入无 SSC）→ 跳过返回 None。立绘合成失败（脏数据）亦跳过。
+    字段名与 API 原样对应（``vanityAccessories`` / ``accessoryDyes``）。
+    """
+    name = str(player.get("name", "")).strip()
+    sprite_uri = await _render_appearance_to_uri(
+        player.get("appearance"),
+        player.get("equipment"),
+        player.get("vanity"),
+        player.get("dye"),
+        player.get("accessories"),
+        player.get("vanityAccessories"),
+        player.get("accessoryDyes"),
+        log_label="在线",
+        log_context=f"server_id={server_id} name={name}",
+    )
+    if sprite_uri is None:
+        return None
+
+    raw_seconds = player.get("sessionOnlineSeconds")
+    online_time_text = (
+        format_online_seconds(raw_seconds)
+        if isinstance(raw_seconds, int) and not isinstance(raw_seconds, bool)
+        else ""
+    )
+    return {
+        "name": name,
+        "online_time_text": online_time_text,
+        "character_sprite_data_uri": sprite_uri,
+    }
+
+
+async def _handle_online_image(
+    bot: Bot, event: Event, servers: list[Server]
+) -> None:
+    """图片模式（image_mode=True）：所有服务器在线已登录可渲染玩家榜单图。
+
+    边界降级（CLAUDE.md 文案：动作+结果，原因；原因原样透传）：
+    - 全部服务器查询失败 → 文字降级（透传首个失败原因）。
+    - 无任何可渲染玩家（有成功响应但都无 appearance / 无人在线）→ 文字降级
+      （文字模式自带「无玩家在线」语义）。
+    - 部分服务器失败 → 渲染成功部分，跳过失败（不放弃整图）。
+    ``servers`` 由调用方保证非空。
+    """
+    logger.info(
+        f"在线图片渲染请求：server_count={len(servers)} image_mode=True"
+    )
+
+    # R5-B.1：return_exceptions=True，单台 task 异常不 cancel 其它服务器查询。
+    raw_results = await asyncio.gather(
+        *(_query_online_players_one(s) for s in servers), return_exceptions=True
+    )
+
+    results: list[_OnlinePlayersResult] = []
+    for server, raw in zip(servers, raw_results, strict=True):
+        if isinstance(raw, BaseException):
+            logger.warning(
+                f"在线图片查询异常：server_id={server.id} reason={raw!r}"
+            )
+            results.append(
+                _OnlinePlayersResult(
+                    server, ok=False, players=[], reason="查询异常"
+                )
+            )
+        else:
+            results.append(raw)
+
+    any_ok = any(r.ok for r in results)
+    if not any_ok:
+        # 全部服务器查询失败 → 文字降级，透传首个失败原因。
+        first_reason = next((r.reason for r in results if r.reason), "查询失败")
+        logger.info(f"在线图片降级文字：reason=all_failed first_reason={first_reason}")
+        await _handle_online_text(bot, event, servers)
+        return
+
+    # 渲染各服务器分区；只保留至少有一个可渲染玩家的服务器。
+    page_servers: list[dict[str, object]] = []
+    total_renderable = 0
+    for result in results:
+        if not result.ok:
+            logger.info(
+                f"在线图片跳过服务器：server_id={result.server.id} "
+                f"reason={result.reason}"
+            )
+            continue
+        cards: list[dict[str, str]] = []
+        for player in result.players:
+            card = await _render_online_player_card(
+                player, server_id=result.server.id
+            )
+            if card is not None:
+                cards.append(card)
+        logger.info(
+            f"在线图片服务器结果：server_id={result.server.id} "
+            f"players={len(result.players)} renderable={len(cards)}"
+        )
+        if cards:
+            total_renderable += len(cards)
+            page_servers.append(
+                {"server_name": result.server.name, "players": cards}
+            )
+
+    if total_renderable == 0:
+        # 有成功响应但无任何可渲染玩家（无人在线 / 都无 appearance）→ 文字降级。
+        logger.info("在线图片降级文字：reason=no_renderable_players")
+        await _handle_online_text(bot, event, servers)
+        return
+
+    page_url = create_online_players_page(servers=page_servers)
+    logger.info(
+        f"在线图片渲染：server_count={len(page_servers)} "
+        f"renderable_players={total_renderable}"
+    )
+    # 在线是低频聚合命令（所有服务器一张图，非 per-server-per-user），
+    # 不加 per-server 锁；helper 内置 base64 size cap + V11 / 非 V11 fallback。
+    # 图片榜单不 @ 任何人（与文字模式成功列表不 @ 的行为一致）。
+    await render_and_send_screenshot(
+        bot,
+        event,
+        page_url=page_url,
+        options=ONLINE_PLAYERS_SCREENSHOT_OPTIONS,
+        file_prefix="online-players",
+        semaphore=None,
+        failure_action="查询",
+    )
+
+
+@online_matcher.handle()
+@command_control(
+    command_key="player_query.online",
+    display_name="在线",
+    permission="player_query.online",
+    description="查询服务器在线状态与在线玩家列表",
+    usage="在线",
+    params={
+        "image_mode": {
+            "type": "bool",
+            "label": "图片模式",
+            "description": "开启后以图片形式渲染在线玩家角色；关闭则维持文字列表",
+            "required": False,
+            "default": True,
+        },
+    },
+    category="查询系统",
+)
+@require_permission("player_query.online")
+async def handle_online(
+    bot: Bot, event: Event, arg: Message = CommandArg()
+):
+    args = parse_command_args_with_fallback(event, arg, "在线")
+    if args:
+        raise_command_usage()
+
+    user_id = event.get_user_id()
+    at = safe_at_segment_or_empty(user_id)
+
+    session = get_session()
+    try:
+        servers = session.query(Server).order_by(Server.id.asc()).all()
+    finally:
+        session.close()
+
+    if not servers:
+        await bot.send(event, at + " " + reply_failure("查询", "暂无服务器"))
+        return
+
+    # 后台管理开关（Web UI 可配，非用户命令参数）：默认图片模式，严格二选一。
+    image_mode = bool(get_current_param("image_mode", True))
+    if image_mode:
+        await _handle_online_image(bot, event, servers)
+        return
+
+    await _handle_online_text(bot, event, servers)
 
 
 @self_kick_matcher.handle()

@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NextBot 在线玩家</title>
+  <link rel="stylesheet" href="/assets/css/render-fonts.css" />
+  <link rel="stylesheet" href="/assets/css/render-tokens.css" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    [hidden] { display: none !important; }
+
+    body {
+      background-color: var(--color-canvas);
+      color: var(--color-ink);
+      font-family: var(--font-body);
+      font-size: var(--type-body-md-size);
+      line-height: 1.55;
+      padding: var(--space-xxl) var(--space-xxl);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    .page {
+      max-width: 1900px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-xl);
+    }
+
+    /* ── Header ─────────────────────────────────────────────── */
+    .header-rule {
+      width: 64px;
+      height: 4px;
+      background-color: var(--color-primary);
+      border-radius: var(--radius-pill);
+      margin-bottom: var(--space-md);
+    }
+
+    .header-title {
+      color: var(--color-ink);
+      margin: 0 0 var(--space-md) 0;
+    }
+
+    .header-bar {
+      display: flex;
+      align-items: baseline;
+      gap: var(--space-md);
+      color: var(--color-muted-soft);
+      flex-wrap: wrap;
+    }
+
+    .header-summary {
+      color: var(--color-muted);
+      font-feature-settings: "tnum";
+    }
+
+    .meta-divider {
+      color: var(--color-hairline);
+    }
+
+    /* ── Per-server section ─────────────────────────────────── */
+    .servers {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-xl);
+    }
+
+    .server-section {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-md);
+    }
+
+    .server-head {
+      display: flex;
+      align-items: baseline;
+      gap: var(--space-md);
+    }
+
+    .server-name {
+      color: var(--color-ink);
+      font-weight: 600;
+    }
+
+    .server-count {
+      color: var(--color-muted);
+      font-size: 12px;
+      font-weight: 500;
+      font-feature-settings: "tnum";
+    }
+
+    /* ── Player card grid ───────────────────────────────────── */
+    .player-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: var(--space-md);
+    }
+
+    .player-card {
+      background-color: var(--color-surface-card);
+      border: 1px solid var(--color-hairline);
+      border-radius: var(--radius-md);
+      padding: var(--space-md);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: var(--space-sm);
+      min-width: 0;
+    }
+
+    /* Portrait stage — mirrors inventory.html `.portrait img` pixel-art upscale.
+     * Source PNG is content-cropped at scale=1 (tiny native size), so drive the
+     * on-screen size by a DEFINITE height; width:auto preserves aspect; max-width
+     * caps very-wide winged sprites. */
+    .player-portrait {
+      width: 100%;
+      height: 200px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background-color: var(--color-canvas);
+      border: 1px solid var(--color-hairline);
+      border-radius: var(--radius-sm);
+    }
+
+    .player-portrait img {
+      height: 180px;
+      width: auto;
+      max-width: 100%;
+      object-fit: contain;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+      display: block;
+    }
+
+    .player-name {
+      color: var(--color-ink);
+      font-weight: 500;
+      font-size: 14px;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      text-align: center;
+    }
+
+    .player-online {
+      color: var(--color-muted);
+      font-size: 12px;
+      font-feature-settings: "tnum";
+      text-align: center;
+    }
+
+    .footer {
+      text-align: right;
+      color: var(--color-muted-soft);
+      margin-top: var(--space-md);
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header>
+      <div class="header-rule"></div>
+      <h1 class="header-title type-display-lg">在线玩家</h1>
+      <div class="header-bar type-body-sm">
+        <span class="header-summary" id="header-summary"></span>
+        <span class="meta-divider">·</span>
+        <span id="meta-time"></span>
+      </div>
+    </header>
+
+    <section id="servers" class="servers"></section>
+
+    <footer class="footer type-caption">Powered by NextBot</footer>
+  </main>
+
+  <script id="online-players-data" type="application/json">__ONLINE_PLAYERS_DATA_JSON__</script>
+  <script>
+    (function () {
+      const data = (() => {
+        try { return JSON.parse(document.getElementById("online-players-data").textContent); }
+        catch (err) { console.warn("[render] page data unavailable", err); return {}; }
+      })();
+
+      document.getElementById("meta-time").textContent = data.generated_at || "";
+
+      const servers = Array.isArray(data.servers) ? data.servers : [];
+      let totalPlayers = 0;
+      servers.forEach((s) => {
+        const players = Array.isArray(s && s.players) ? s.players : [];
+        totalPlayers += players.length;
+      });
+      document.getElementById("header-summary").textContent =
+        `${servers.length} 台服务器 · ${totalPlayers} 名在线玩家`;
+
+      const serversEl = document.getElementById("servers");
+
+      servers.forEach((server) => {
+        const players = Array.isArray(server && server.players) ? server.players : [];
+
+        const section = document.createElement("section");
+        section.className = "server-section";
+
+        const head = document.createElement("div");
+        head.className = "server-head";
+        const name = document.createElement("h2");
+        name.className = "server-name type-title-md";
+        name.textContent = String((server && server.server_name) || "未知服务器");
+        const count = document.createElement("span");
+        count.className = "server-count";
+        count.textContent = `${players.length} 名玩家`;
+        head.appendChild(name);
+        head.appendChild(count);
+        section.appendChild(head);
+
+        const grid = document.createElement("div");
+        grid.className = "player-grid";
+        players.forEach((player) => {
+          const card = document.createElement("article");
+          card.className = "player-card";
+
+          const portrait = document.createElement("div");
+          portrait.className = "player-portrait";
+          const spriteUri = String((player && player.character_sprite_data_uri) || "").trim();
+          if (spriteUri) {
+            const img = document.createElement("img");
+            img.src = spriteUri;
+            img.alt = "character";
+            portrait.appendChild(img);
+          }
+          card.appendChild(portrait);
+
+          const pname = document.createElement("div");
+          pname.className = "player-name";
+          pname.textContent = String((player && player.name) || "未知玩家");
+          card.appendChild(pname);
+
+          const online = document.createElement("div");
+          online.className = "player-online";
+          const onlineText = String((player && player.online_time_text) || "").trim();
+          online.textContent = onlineText ? `在线 ${onlineText}` : "在线 —";
+          card.appendChild(online);
+
+          grid.appendChild(card);
+        });
+        section.appendChild(grid);
+
+        serversEl.appendChild(section);
+      });
+    })();
+  </script>
+</body>
+</html>

@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from nonebot.log import logger
 
 from server.page_store import create_page
-from server.pages import about_page, admin_list_page, ban_list_page, dice_page, guess_number_page, inventory_page, leaderboard_page, lottery_list_page, lottery_result_page, lottery_view_page, menu_page, progress_page, red_packet_all_page, red_packet_own_page, rob_page, shop_list_page, shop_view_page, signin_page, tutorial_page, user_info_page, warehouse_page
+from server.pages import about_page, admin_list_page, ban_list_page, dice_page, guess_number_page, inventory_page, leaderboard_page, lottery_list_page, lottery_result_page, lottery_view_page, menu_page, online_players_page, progress_page, red_packet_all_page, red_packet_own_page, rob_page, shop_list_page, shop_view_page, signin_page, tutorial_page, user_info_page, warehouse_page
 from server.routes.render import router as render_router
 from server.routes.webui_autoreply import router as webui_autoreply_router
 from server.routes.webui_commands import router as webui_commands_router
@@ -111,6 +111,14 @@ def create_inventory_page(
         character_sprite_data_uri=character_sprite_data_uri,
     )
     return _make_page_url("inventory", payload)
+
+
+def create_online_players_page(
+    *,
+    servers: list[dict[str, Any]] = [],
+) -> str:
+    payload = online_players_page.build_payload(servers=servers)
+    return _make_page_url("online_players", payload)
 
 
 def create_progress_page(

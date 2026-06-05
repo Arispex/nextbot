@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, Response
 
 from server.page_store import get_page
-from server.pages import about_page, admin_list_page, ban_list_page, dice_page, guess_number_page, inventory_page, leaderboard_page, lottery_list_page, lottery_result_page, lottery_view_page, menu_page, progress_page, red_packet_all_page, red_packet_own_page, rob_page, shop_list_page, shop_view_page, signin_page, tutorial_page, user_info_page, warehouse_page
+from server.pages import about_page, admin_list_page, ban_list_page, dice_page, guess_number_page, inventory_page, leaderboard_page, lottery_list_page, lottery_result_page, lottery_view_page, menu_page, online_players_page, progress_page, red_packet_all_page, red_packet_own_page, rob_page, shop_list_page, shop_view_page, signin_page, tutorial_page, user_info_page, warehouse_page
 
 router = APIRouter()
 
@@ -77,6 +77,11 @@ async def render_inventory(request: Request, token: str) -> Response:
 @router.get("/render/progress/{token}")
 async def render_progress(request: Request, token: str) -> Response:
     return await _render_page(request, token, page_type="progress", renderer=progress_page.render)
+
+
+@router.get("/render/online_players/{token}")
+async def render_online_players(request: Request, token: str) -> Response:
+    return await _render_page(request, token, page_type="online_players", renderer=online_players_page.render)
 
 
 @router.get("/render/menu/{token}")
