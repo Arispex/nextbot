@@ -66,6 +66,9 @@ _FIELD_SPECS: tuple[FieldSpec, ...] = (
     FieldSpec("chat_sync_mode", "CHAT_SYNC_MODE"),
     FieldSpec("chat_sync_group_id", "CHAT_SYNC_GROUP_ID"),
     FieldSpec("chat_sync_template", "CHAT_SYNC_TEMPLATE"),
+    FieldSpec("boss_notify_mode", "BOSS_NOTIFY_MODE"),
+    FieldSpec("boss_notify_group_id", "BOSS_NOTIFY_GROUP_ID"),
+    FieldSpec("boss_notify_template", "BOSS_NOTIFY_TEMPLATE"),
     FieldSpec("group_welcome_enabled", "GROUP_WELCOME_ENABLED"),
     FieldSpec("group_welcome_template", "GROUP_WELCOME_TEMPLATE"),
     FieldSpec("group_farewell_enabled", "GROUP_FAREWELL_ENABLED"),
@@ -89,6 +92,9 @@ _SINGLE_LINE_STRING_FIELDS = {
     "chat_sync_mode",
     "chat_sync_group_id",
     "chat_sync_template",
+    "boss_notify_mode",
+    "boss_notify_group_id",
+    "boss_notify_template",
 }
 
 
@@ -330,6 +336,15 @@ def _normalize_field(field: str, value: Any) -> Any:
         return _coerce_string(value, field=field, allow_empty=True)
     if field == "chat_sync_template":
         return _coerce_string(value, field=field, allow_empty=True)
+    if field == "boss_notify_mode":
+        mode = _coerce_string(value, field=field, allow_empty=True).lower()
+        if mode not in {"all", "single"}:
+            return "all"
+        return mode
+    if field == "boss_notify_group_id":
+        return _coerce_string(value, field=field, allow_empty=True)
+    if field == "boss_notify_template":
+        return _coerce_string(value, field=field, allow_empty=True)
     if field in {"group_welcome_enabled", "group_farewell_enabled"}:
         return _coerce_bool(value, field=field)
     if field in {"group_welcome_template", "group_farewell_template"}:
@@ -415,6 +430,12 @@ def _load_value_from_config(field: str, config: Any) -> Any:
         raw_value = ""
     if field == "chat_sync_template" and raw_value is None:
         raw_value = "[{server}]{player}：{message}"
+    if field == "boss_notify_mode" and raw_value is None:
+        raw_value = "all"
+    if field == "boss_notify_group_id" and raw_value is None:
+        raw_value = ""
+    if field == "boss_notify_template" and raw_value is None:
+        raw_value = "[{server}]{player} 召唤了 {boss}"
     if field in {"group_welcome_enabled", "group_farewell_enabled"}:
         return _coerce_bool(raw_value if raw_value is not None else False, field=field)
     if field == "group_welcome_template":

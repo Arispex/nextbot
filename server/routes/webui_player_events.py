@@ -20,12 +20,13 @@ from server.routes import (
 
 router = APIRouter()
 
-_ALLOWED_EVENTS = {"online", "offline", "message"}
+_ALLOWED_EVENTS = {"online", "offline", "message", "boss_summon"}
 
 # M-3：输入长度上限，防止资源消耗 / OneBot 上游异常 / 风控。
 _PLAYER_NAME_MAX_LENGTH = 64
 _SERVER_NAME_MAX_LENGTH = 64
 _MESSAGE_MAX_LENGTH = 500
+_BOSS_NAME_MAX_LENGTH = 64
 # H-2：拒绝控制字符（保留 \n \t），防止日志注入与"公告样式"伪造。
 _FORBIDDEN_CONTROL_CHARS = "".join(
     chr(i) for i in range(32) if i not in (9, 10)
@@ -95,6 +96,13 @@ def _resolve_chat_target_groups() -> list[int]:
     return _resolve_target_groups_by_mode(mode, single_gid)
 
 
+def _resolve_boss_target_groups() -> list[int]:
+    config = nonebot.get_driver().config
+    mode = str(getattr(config, "boss_notify_mode", "all") or "")
+    single_gid = str(getattr(config, "boss_notify_group_id", "") or "").strip()
+    return _resolve_target_groups_by_mode(mode, single_gid)
+
+
 def _contains_forbidden_chars(text: str) -> bool:
     """H-2：检测控制字符（保留 \\t \\n），防止日志注入 / 终端转义。"""
     return any(ch in _FORBIDDEN_CONTROL_CHARS for ch in text)
@@ -122,10 +130,11 @@ def _render_template(
     display_name: str,
     server_name: str,
     message_text: str,
+    boss: str = "",
 ) -> str:
-    """M-4：模板字段一次性替换，防止 message_text / player_name 含 {server} /
-    {message} 被二次 substitution 绕过契约。预先将用户输入中的 { } 转成全角
-    ｛｝ 再做替换，等价"占位符仅来自模板"。
+    """M-4：模板字段一次性替换，防止 message_text / player_name / boss 含
+    {server} / {message} / {boss} 被二次 substitution 绕过契约。预先将用户输入中
+    的 { } 转成全角 ｛｝ 再做替换，等价"占位符仅来自模板"。
     """
 
     def _strip_braces(value: str) -> str:
@@ -134,11 +143,13 @@ def _render_template(
     safe_player = _strip_braces(display_name)
     safe_server = _strip_braces(server_name)
     safe_message = _strip_braces(message_text)
+    safe_boss = _strip_braces(boss)
 
     return (
         template.replace("{player}", safe_player)
         .replace("{server}", safe_server)
         .replace("{message}", safe_message)
+        .replace("{boss}", safe_boss)
     )
 
 
@@ -198,17 +209,34 @@ async def webui_player_events_create(request: Request) -> JSONResponse:
 
         event = str(data.get("event") or "").strip().lower()
         if event not in _ALLOWED_EVENTS:
+            msg = "事件类型仅支持 online、offline、message 或 boss_summon"
             return api_error(
                 status_code=422,
                 code="validation_error",
-                message="事件类型仅支持 online、offline 或 message",
-                details=[
-                    {
-                        "field": "event",
-                        "message": "事件类型仅支持 online、offline 或 message",
-                    }
-                ],
+                message=msg,
+                details=[{"field": "event", "message": msg}],
             )
+
+        boss = ""
+        if event == "boss_summon":
+            boss = str(data.get("boss") or "").strip()
+            if not boss:
+                return api_error(
+                    status_code=422,
+                    code="validation_error",
+                    message="Boss 名称不能为空",
+                    details=[{"field": "boss", "message": "Boss 名称不能为空"}],
+                )
+            if len(boss) > _BOSS_NAME_MAX_LENGTH:
+                return _length_validation_error("boss", _BOSS_NAME_MAX_LENGTH)
+            if _contains_forbidden_chars(boss):
+                msg = "Boss 名称包含非法字符"
+                return api_error(
+                    status_code=422,
+                    code="validation_error",
+                    message=msg,
+                    details=[{"field": "boss", "message": msg}],
+                )
 
         message_text = ""
         if event == "message":
@@ -255,6 +283,8 @@ async def webui_player_events_create(request: Request) -> JSONResponse:
 
         if event == "message":
             target_groups = _resolve_chat_target_groups()
+        elif event == "boss_summon":
+            target_groups = _resolve_boss_target_groups()
         else:
             target_groups = _resolve_target_groups()
         if not target_groups:
@@ -287,6 +317,11 @@ async def webui_player_events_create(request: Request) -> JSONResponse:
                 str(getattr(config, "player_notify_offline_template", "") or "").strip()
                 or "[{server}]{player} 下线了"
             )
+        elif event == "boss_summon":
+            template = (
+                str(getattr(config, "boss_notify_template", "") or "").strip()
+                or "[{server}]{player} 召唤了 {boss}"
+            )
         else:
             template = (
                 str(getattr(config, "chat_sync_template", "") or "").strip()
@@ -298,6 +333,7 @@ async def webui_player_events_create(request: Request) -> JSONResponse:
             display_name=display_name,
             server_name=server_name,
             message_text=message_text,
+            boss=boss,
         )
 
         # M-5：每个 group 的失败原因独立返回，结构对齐 login-requests results。

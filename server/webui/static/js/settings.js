@@ -24,6 +24,9 @@
   const chatSyncModeInput = document.getElementById("field-chat-sync-mode");
   const chatSyncGroupIdInput = document.getElementById("field-chat-sync-group-id");
   const chatSyncTemplateInput = document.getElementById("field-chat-sync-template");
+  const bossNotifyModeInput = document.getElementById("field-boss-notify-mode");
+  const bossNotifyGroupIdInput = document.getElementById("field-boss-notify-group-id");
+  const bossNotifyTemplateInput = document.getElementById("field-boss-notify-template");
   const groupWelcomeEnabledInput = document.getElementById("field-group-welcome-enabled");
   const groupWelcomeTemplateInput = document.getElementById("field-group-welcome-template");
   const groupFarewellEnabledInput = document.getElementById("field-group-farewell-enabled");
@@ -57,6 +60,9 @@
     chatSyncModeInput &&
     chatSyncGroupIdInput &&
     chatSyncTemplateInput &&
+    bossNotifyModeInput &&
+    bossNotifyGroupIdInput &&
+    bossNotifyTemplateInput &&
     groupWelcomeEnabledInput &&
     groupWelcomeTemplateInput &&
     groupFarewellEnabledInput &&
@@ -102,6 +108,9 @@
     chat_sync_mode: "消息同步范围",
     chat_sync_group_id: "消息同步群号",
     chat_sync_template: "消息同步模板",
+    boss_notify_mode: "Boss 召唤通知范围",
+    boss_notify_group_id: "Boss 召唤通知群号",
+    boss_notify_template: "Boss 召唤消息模板",
     group_welcome_enabled: "入群欢迎启用",
     group_welcome_template: "入群欢迎模板",
     group_farewell_enabled: "退群送别启用",
@@ -356,6 +365,9 @@
       chat_sync_mode: chatSyncModeInput.value,
       chat_sync_group_id: chatSyncGroupIdInput.value.trim(),
       chat_sync_template: chatSyncTemplateInput.value,
+      boss_notify_mode: bossNotifyModeInput.value,
+      boss_notify_group_id: bossNotifyGroupIdInput.value.trim(),
+      boss_notify_template: bossNotifyTemplateInput.value,
       group_welcome_enabled: groupWelcomeEnabledInput.value === "true",
       group_welcome_template: groupWelcomeTemplateInput.value,
       group_farewell_enabled: groupFarewellEnabledInput.value === "true",
@@ -396,6 +408,11 @@
     chatSyncGroupIdInput.value = String(data.chat_sync_group_id ?? "");
     chatSyncTemplateInput.value = String(
       data.chat_sync_template ?? "[{server}]{player}：{message}",
+    );
+    bossNotifyModeInput.value = String(data.boss_notify_mode ?? "all");
+    bossNotifyGroupIdInput.value = String(data.boss_notify_group_id ?? "");
+    bossNotifyTemplateInput.value = String(
+      data.boss_notify_template ?? "[{server}]{player} 召唤了 {boss}",
     );
     groupWelcomeEnabledInput.value = data.group_welcome_enabled ? "true" : "false";
     groupWelcomeTemplateInput.value = String(
@@ -622,6 +639,9 @@
     chatSyncModeInput,
     chatSyncGroupIdInput,
     chatSyncTemplateInput,
+    bossNotifyModeInput,
+    bossNotifyGroupIdInput,
+    bossNotifyTemplateInput,
     groupWelcomeEnabledInput,
     groupWelcomeTemplateInput,
     groupFarewellEnabledInput,

@@ -191,6 +191,30 @@
       </div>
     </section>
 
+    <section class="form-section" aria-labelledby="section-boss-notify">
+      <h3 id="section-boss-notify" class="section-title">Boss 召唤通知</h3>
+      <div class="form-grid">
+        <label class="form-item">
+          <span class="form-label">通知范围</span>
+          <select id="field-boss-notify-mode" class="input select">
+            <option value="all">所有群</option>
+            <option value="single">指定群</option>
+          </select>
+          <span class="form-help">玩家召唤 Boss 的消息推送到 GROUP_ID 列表里全部群，或仅推送到下方指定的单个群。</span>
+        </label>
+        <label class="form-item">
+          <span class="form-label">指定群号</span>
+          <input id="field-boss-notify-group-id" class="input" type="text" placeholder="仅在通知范围为指定群时生效" />
+          <span class="form-help">选择指定群模式时填入目标 QQ 群号。</span>
+        </label>
+        <label class="form-item">
+          <span class="form-label">消息模板</span>
+          <input id="field-boss-notify-template" class="input" type="text" placeholder="[{server}]{player} 召唤了 {boss}" />
+          <span class="form-help">支持占位符：{player}（玩家名，注册用户自动追加 QQ）、{server}（服务器名）、{boss}（Boss 名称）。</span>
+        </label>
+      </div>
+    </section>
+
     <section class="form-section" aria-labelledby="section-group-welcome">
       <h3 id="section-group-welcome" class="section-title">入群 / 退群消息</h3>
       <div class="form-grid">
