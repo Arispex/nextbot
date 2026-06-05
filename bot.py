@@ -1,3 +1,5 @@
+import asyncio
+import contextlib
 import json
 import nonebot
 from nonebot.adapters.console import Adapter as ConsoleAdapter
@@ -48,6 +50,9 @@ DEFAULT_ENV_CONTENT = (
     "GROUP_FAREWELL_TEMPLATE={nickname}（{user_id}）离开了本群\n"
     "GROUP_AUTO_BAN_ON_LEAVE_ENABLED=false\n"
     "GROUP_AUTO_BAN_ON_LEAVE_NOTIFY=false\n"
+    "DB_BACKUP_ENABLED=true\n"
+    "DB_BACKUP_INTERVAL_HOURS=24\n"
+    "DB_BACKUP_RETENTION=30\n"
 )
 
 
@@ -211,6 +216,39 @@ async def _init_database() -> None:
     from nextbot.command_config import register_alias_matchers
     register_alias_matchers()
     start_web_server()
+
+
+# 数据库自动备份后台调度：on_startup 启动 asyncio loop，on_shutdown 优雅停止。
+# 用 dict holder 持句柄 + stop event（mutate dict 内容免 global 重绑定），
+# shutdown 时 set + cancel + 安抚等待。
+_db_backup_runtime: dict[str, object] = {"task": None, "stop_event": None}
+
+
+# 注册在 _init_database 之后 → DB 已就绪再启动备份调度
+# （NoneBot 按注册顺序执行 startup 钩子）。
+@driver.on_startup
+async def _start_db_backup_scheduler() -> None:
+    from nextbot.db_backup import backup_scheduler_loop
+
+    stop_event = asyncio.Event()
+    _db_backup_runtime["stop_event"] = stop_event
+    _db_backup_runtime["task"] = asyncio.create_task(backup_scheduler_loop(stop_event))
+    logger.info("数据库备份调度已启动")
+
+
+@driver.on_shutdown
+async def _stop_db_backup_scheduler() -> None:
+    stop_event = _db_backup_runtime.get("stop_event")
+    task = _db_backup_runtime.get("task")
+    if isinstance(stop_event, asyncio.Event):
+        stop_event.set()
+    if isinstance(task, asyncio.Task):
+        task.cancel()
+        # 停止阶段吞掉 cancel / loop 内残留异常，不阻断进程退出。
+        with contextlib.suppress(asyncio.CancelledError, Exception):
+            await task
+    _db_backup_runtime["task"] = None
+    _db_backup_runtime["stop_event"] = None
 
 
 # NoneBot Lifespan 以 LIFO 顺序执行 shutdown 钩子

@@ -75,6 +75,9 @@ _FIELD_SPECS: tuple[FieldSpec, ...] = (
     FieldSpec("group_farewell_template", "GROUP_FAREWELL_TEMPLATE"),
     FieldSpec("group_auto_ban_on_leave_enabled", "GROUP_AUTO_BAN_ON_LEAVE_ENABLED"),
     FieldSpec("group_auto_ban_on_leave_notify", "GROUP_AUTO_BAN_ON_LEAVE_NOTIFY"),
+    FieldSpec("db_backup_enabled", "DB_BACKUP_ENABLED"),
+    FieldSpec("db_backup_interval_hours", "DB_BACKUP_INTERVAL_HOURS"),
+    FieldSpec("db_backup_retention", "DB_BACKUP_RETENTION"),
 )
 
 _FIELD_BY_NAME: dict[str, FieldSpec] = {item.field: item for item in _FIELD_SPECS}
@@ -154,7 +157,7 @@ def _unescape_from_env(text: str) -> str:
 def _serialize_env_value(field: str, value: Any) -> str:
     if field in {"onebot_ws_urls", "owner_id", "group_id"}:
         return json.dumps(value, ensure_ascii=False)
-    if field == "web_server_port":
+    if field in {"web_server_port", "db_backup_interval_hours", "db_backup_retention"}:
         return str(value)
     if isinstance(value, bool):
         return "true" if value else "false"
@@ -291,6 +294,21 @@ def _coerce_port(value: Any, *, field: str) -> int:
     return parsed
 
 
+def _coerce_int_range(value: Any, *, field: str, minimum: int, maximum: int) -> int:
+    # 仿 _coerce_port，但范围可定制；bool 不当整数，避免 True→1 静默通过。
+    if isinstance(value, bool):
+        raise SettingsValidationError(f"{field} 必须是整数", field=field)
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError) as exc:
+        raise SettingsValidationError(f"{field} 必须是整数", field=field) from exc
+    if parsed < minimum or parsed > maximum:
+        raise SettingsValidationError(
+            f"{field} 范围必须在 {minimum}-{maximum}", field=field
+        )
+    return parsed
+
+
 def _normalize_field(field: str, value: Any) -> Any:
     if field == "onebot_ws_urls":
         return _coerce_ws_urls(value, field=field)
@@ -351,6 +369,12 @@ def _normalize_field(field: str, value: Any) -> Any:
         return _coerce_string(value, field=field, allow_empty=True)
     if field in {"group_auto_ban_on_leave_enabled", "group_auto_ban_on_leave_notify"}:
         return _coerce_bool(value, field=field)
+    if field == "db_backup_enabled":
+        return _coerce_bool(value, field=field)
+    if field == "db_backup_interval_hours":
+        return _coerce_int_range(value, field=field, minimum=1, maximum=8760)
+    if field == "db_backup_retention":
+        return _coerce_int_range(value, field=field, minimum=1, maximum=1000)
     raise SettingsValidationError("不支持的配置项", field=field)
 
 
@@ -382,7 +406,9 @@ def _load_value_from_env(field: str, raw_value: str) -> Any:
         return _normalize_field(field, values)
     if field == "web_server_port":
         return _coerce_port(raw_value, field=field)
-    if field == "login_notify_all_groups":
+    if field in {"db_backup_interval_hours", "db_backup_retention"}:
+        return _normalize_field(field, raw_value)
+    if field in {"login_notify_all_groups", "db_backup_enabled"}:
         return _coerce_bool(raw_value, field=field)
     if field in {"group_welcome_enabled", "group_farewell_enabled"}:
         return _coerce_bool(raw_value, field=field)
@@ -450,6 +476,12 @@ def _load_value_from_config(field: str, config: Any) -> Any:
             raw_value = _unescape_from_env(str(raw_value))
     if field in {"group_auto_ban_on_leave_enabled", "group_auto_ban_on_leave_notify"}:
         return _coerce_bool(raw_value if raw_value is not None else False, field=field)
+    if field == "db_backup_enabled":
+        return _coerce_bool(raw_value if raw_value is not None else True, field=field)
+    if field == "db_backup_interval_hours":
+        return _normalize_field(field, raw_value if raw_value is not None else 24)
+    if field == "db_backup_retention":
+        return _normalize_field(field, raw_value if raw_value is not None else 30)
     return _normalize_field(field, raw_value if raw_value is not None else "")
 
 

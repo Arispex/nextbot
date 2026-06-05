@@ -147,6 +147,7 @@ dmypy.json
 app.db
 app.db-shm
 app.db-wal
+backups/
 .webui_auth.json
 .vscode/
 .DS_Store

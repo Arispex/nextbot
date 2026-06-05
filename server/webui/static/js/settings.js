@@ -33,6 +33,9 @@
   const groupFarewellTemplateInput = document.getElementById("field-group-farewell-template");
   const groupAutoBanOnLeaveEnabledInput = document.getElementById("field-group-auto-ban-on-leave-enabled");
   const groupAutoBanOnLeaveNotifyInput = document.getElementById("field-group-auto-ban-on-leave-notify");
+  const dbBackupEnabledInput = document.getElementById("field-db-backup-enabled");
+  const dbBackupIntervalHoursInput = document.getElementById("field-db-backup-interval-hours");
+  const dbBackupRetentionInput = document.getElementById("field-db-backup-retention");
   const tokenToggleButton = document.getElementById("token-toggle-btn");
 
   const requiredNodesReady = Boolean(
@@ -69,6 +72,9 @@
     groupFarewellTemplateInput &&
     groupAutoBanOnLeaveEnabledInput &&
     groupAutoBanOnLeaveNotifyInput &&
+    dbBackupEnabledInput &&
+    dbBackupIntervalHoursInput &&
+    dbBackupRetentionInput &&
     tokenToggleButton
   );
   if (!requiredNodesReady) {
@@ -117,6 +123,9 @@
     group_farewell_template: "退群送别模板",
     group_auto_ban_on_leave_enabled: "退群自动封禁",
     group_auto_ban_on_leave_notify: "退群封禁通知",
+    db_backup_enabled: "数据库自动备份",
+    db_backup_interval_hours: "备份间隔",
+    db_backup_retention: "备份保留数量",
   };
   const MODE_LABELS = {
     reply: "回复提示",
@@ -347,6 +356,32 @@
       throw new Error(`${FIELD_LABELS.command_disabled_message}不能为空`);
     }
 
+    const dbBackupIntervalText = String(dbBackupIntervalHoursInput.value || "").trim();
+    if (!dbBackupIntervalText) {
+      throw new Error(`${FIELD_LABELS.db_backup_interval_hours}不能为空`);
+    }
+    const dbBackupIntervalHours = Number(dbBackupIntervalText);
+    if (
+      !Number.isInteger(dbBackupIntervalHours) ||
+      dbBackupIntervalHours < 1 ||
+      dbBackupIntervalHours > 8760
+    ) {
+      throw new Error(`${FIELD_LABELS.db_backup_interval_hours}范围必须在 1-8760`);
+    }
+
+    const dbBackupRetentionText = String(dbBackupRetentionInput.value || "").trim();
+    if (!dbBackupRetentionText) {
+      throw new Error(`${FIELD_LABELS.db_backup_retention}不能为空`);
+    }
+    const dbBackupRetention = Number(dbBackupRetentionText);
+    if (
+      !Number.isInteger(dbBackupRetention) ||
+      dbBackupRetention < 1 ||
+      dbBackupRetention > 1000
+    ) {
+      throw new Error(`${FIELD_LABELS.db_backup_retention}范围必须在 1-1000`);
+    }
+
     return {
       onebot_ws_urls: onebotWsUrls,
       onebot_access_token: onebotAccessToken,
@@ -374,6 +409,9 @@
       group_farewell_template: groupFarewellTemplateInput.value,
       group_auto_ban_on_leave_enabled: groupAutoBanOnLeaveEnabledInput.value === "true",
       group_auto_ban_on_leave_notify: groupAutoBanOnLeaveNotifyInput.value === "true",
+      db_backup_enabled: dbBackupEnabledInput.value === "true",
+      db_backup_interval_hours: dbBackupIntervalHours,
+      db_backup_retention: dbBackupRetention,
     };
   };
 
@@ -424,6 +462,10 @@
     );
     groupAutoBanOnLeaveEnabledInput.value = data.group_auto_ban_on_leave_enabled ? "true" : "false";
     groupAutoBanOnLeaveNotifyInput.value = data.group_auto_ban_on_leave_notify ? "true" : "false";
+    dbBackupEnabledInput.value =
+      data.db_backup_enabled === undefined || data.db_backup_enabled ? "true" : "false";
+    dbBackupIntervalHoursInput.value = String(data.db_backup_interval_hours ?? 24);
+    dbBackupRetentionInput.value = String(data.db_backup_retention ?? 30);
     updateArrayPreviews();
   };
 
@@ -648,6 +690,9 @@
     groupFarewellTemplateInput,
     groupAutoBanOnLeaveEnabledInput,
     groupAutoBanOnLeaveNotifyInput,
+    dbBackupEnabledInput,
+    dbBackupIntervalHoursInput,
+    dbBackupRetentionInput,
   ];
   const markDirty = () => {
     isDirty = true;

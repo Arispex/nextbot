@@ -268,5 +268,29 @@
         </label>
       </div>
     </section>
+
+    <section class="form-section" aria-labelledby="section-db-backup">
+      <h3 id="section-db-backup" class="section-title">数据库自动备份</h3>
+      <div class="form-grid">
+        <label class="form-item">
+          <span class="form-label">启用自动备份</span>
+          <select id="field-db-backup-enabled" class="input select">
+            <option value="false">关闭</option>
+            <option value="true">开启</option>
+          </select>
+          <span class="form-help">开启后后台定时把数据库备份到 backups/ 目录，启动时也会立即备份一份。改动开关 / 间隔无需重启即可生效。</span>
+        </label>
+        <label class="form-item">
+          <span class="form-label">备份间隔（小时）</span>
+          <input id="field-db-backup-interval-hours" class="input" type="number" min="1" max="8760" placeholder="24" />
+          <span class="form-help">每隔多少小时备份一份，范围 1-8760。</span>
+        </label>
+        <label class="form-item">
+          <span class="form-label">保留数量</span>
+          <input id="field-db-backup-retention" class="input" type="number" min="1" max="1000" placeholder="30" />
+          <span class="form-help">最多保留最新的多少份备份，超出时自动删除最旧的，范围 1-1000。</span>
+        </label>
+      </div>
+    </section>
   </div>
 </section>
