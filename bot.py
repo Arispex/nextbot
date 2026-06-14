@@ -11,6 +11,7 @@ from nonebot.message import event_preprocessor
 
 from nextbot.command_config import sync_registered_commands_to_db
 from nextbot.data_dir import DATA_DIR
+from nextbot.logging_setup import prune_old_logs, setup_file_logging
 from server.web_server import start_web_server
 from nextbot.access_control import get_group_ids, get_owner_ids
 from nextbot.db import (
@@ -95,6 +96,10 @@ def ensure_env_file() -> None:
 
 
 ensure_env_file()
+# 尽早接入文件日志 sink（在 nonebot.init 之前），以捕获 init 期日志；并在启动
+# 时清理一次旧日志（保留最新 LOG_RETENTION 份）。best-effort，失败不影响启动。
+setup_file_logging()
+prune_old_logs()
 # Explicitly point NoneBot at our resolved .env path. By default NoneBot
 # reads `.env` from the current working directory, which would miss
 # NEXTBOT_DATA_DIR-relocated state in containerised deployments.
