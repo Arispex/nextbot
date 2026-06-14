@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-5.md`
-- **Total Sessions**: 219
-- **Last Active**: 2026-06-06
+- **Total Sessions**: 220
+- **Last Active**: 2026-06-14
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-5.md` | ~205 | Active |
+| `journal-5.md` | ~238 | Active |
 | `journal-4.md` | ~1973 | Archived |
 | `journal-3.md` | ~1984 | Archived |
 | `journal-2.md` | ~1973 | Archived |
@@ -33,6 +33,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 220 | 2026-06-14 | 持久化日志到每次运行独立文件 | `f1dee57` | `main` |
 | 219 | 2026-06-06 | 自动备份数据库功能 | `ac6fafd` | `main` |
 | 218 | 2026-06-05 | 服务器配置 dialog 加 bossSummon 开关 | `7fb009d` | `main` |
 | 217 | 2026-06-05 | Boss 召唤通知功能 | `ec64a13` | `main` |
