@@ -1,0 +1,4 @@
+{"file": ".trellis/tasks/06-06-persistent-run-logs/prd.md", "reason": "核对验收：每运行独立文件、INFO+、格式(ms+时区)、保留 30、尽早接线不阻塞、best-effort、gitignore、测试"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "核对文件日志格式 [timestamp] [level] message、北京时间带毫秒时区、级别用 INFO/WARN/ERROR"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "核对 sink/目录/清理失败 best-effort 不崩"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "核对 ruff/pyright/测试全绿、stderr 行为不回归、测试不污染真实 logs/ 且清理 sink"}
