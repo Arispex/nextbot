@@ -42,9 +42,6 @@ _SORT_ORDER_MIN = -1_000_000
 _SORT_ORDER_MAX = 1_000_000
 # M-3：actual_value 与 price 的最大允许倍率，防 admin 误配后玩家通过仓库回收刷经济。
 _ACTUAL_VALUE_MAX_RATIO = 100
-# M-7：import 单次上界，防大 JSON 拖垮内存 / 长事务。
-_IMPORT_MAX_SHOPS = 200
-_IMPORT_MAX_ITEMS = 5000
 # M-10：备份过期阈值，超过则在导入响应里标记 warn_old_backup。
 _IMPORT_OLD_BACKUP_DAYS = 30
 # M-1：禁掉命令模板里所有控制字符（含换行 / 回车 / NUL），防止 admin 误导入多行注入。
@@ -514,7 +511,8 @@ async def export_shops(request: Request) -> JSONResponse:
 
 @router.post("/webui/api/shops/import")
 async def import_shops(request: Request) -> JSONResponse:
-    payload, error = await read_json_object(request)
+    # 导入的是 admin 导出的整份商店配置，可能远超默认 256 KiB，这里解除字节上限。
+    payload, error = await read_json_object(request, max_bytes=None)
     if error is not None:
         return error
     assert payload is not None
@@ -551,31 +549,8 @@ async def import_shops(request: Request) -> JSONResponse:
     if structural:
         return _validation_error_response(structural)
 
-    # ---- M-7: enforce import size caps to prevent OOM / long-running tx. ----
+    # 结构校验已保证 shops 是数组，这里只做类型收窄。
     assert isinstance(raw_shops, list)
-    if len(raw_shops) > _IMPORT_MAX_SHOPS:
-        return api_error(
-            status_code=413,
-            code="payload_too_large",
-            message=f"单次导入商店数过多（最多 {_IMPORT_MAX_SHOPS}）",
-            details=[{"field": "shops", "message": f"shops 数量超过 {_IMPORT_MAX_SHOPS}"}],
-        )
-    total_items_in_payload = 0
-    for raw_shop in raw_shops:
-        if isinstance(raw_shop, dict):
-            raw_items_for_count = raw_shop.get("items")
-            if isinstance(raw_items_for_count, list):
-                total_items_in_payload += len(raw_items_for_count)
-    if total_items_in_payload > _IMPORT_MAX_ITEMS:
-        return api_error(
-            status_code=413,
-            code="payload_too_large",
-            message=f"单次导入商品总数过多（最多 {_IMPORT_MAX_ITEMS}）",
-            details=[{
-                "field": "items",
-                "message": f"items 总数超过 {_IMPORT_MAX_ITEMS}",
-            }],
-        )
 
     # ---- M-10: detect stale backup (exported_at older than threshold). ----
     warn_old_backup = False

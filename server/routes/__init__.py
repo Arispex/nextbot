@@ -14,7 +14,8 @@ DEFAULT_PER_PAGE = 20
 MAX_PER_PAGE = 100
 # LOW-10：硬上限，caller 即使误传 max_per_page=10000 也会被钳到此值。
 HARD_MAX_PER_PAGE = 1000
-# HIGH-3 / LOW-21：JSON body 大小上限，webui 写入端足够；超出直接 413。
+# HIGH-3 / LOW-21：JSON body 默认大小上限，webui 写入端足够；超出直接 413。
+# 商店 / 抽奖导入端点通过 read_json_object(max_bytes=None) 单独豁免。
 MAX_JSON_BODY_BYTES = 256 * 1024  # 256 KiB
 # LOW-11：_parse_positive_int 拒绝过长输入文本，规避 Python <3.11 int() 超大字符串 CPU 攻击。
 _MAX_INT_TEXT_LENGTH = 32
@@ -84,10 +85,29 @@ def user_agent(request: "Request") -> str:
     return request.headers.get("user-agent", "")[:200]
 
 
-async def read_json_object(request: "Request") -> tuple[dict[str, Any] | None, JSONResponse | None]:
-    # HIGH-3：Content-Length 预检；超过 256 KiB 直接 413，避免 Starlette 缓存大 body 进内存。
+async def read_json_object(
+    request: "Request",
+    *,
+    max_bytes: int | None = MAX_JSON_BODY_BYTES,
+) -> tuple[dict[str, Any] | None, JSONResponse | None]:
+    """读取并校验 JSON 请求体，返回 ``(payload, error_response)``。
+
+    ``max_bytes`` 控制请求体字节上限，两道校验（Content-Length 预检 + 流式逐块累加）
+    都遵循它：
+
+    - 默认 ``MAX_JSON_BODY_BYTES``（256 KiB），超限返回 413 ``payload_too_large``。
+    - 传 ``None`` 表示**不限制**字节，仅供商店 / 抽奖「导入配置文件」端点使用——
+      导入的是 admin 自己导出的整份配置，天然可能超过 256 KiB。其余端点一律保持默认。
+
+    字节上限之外的校验（Content-Type 软校验、JSON 解析、dict 结构校验）不受该参数影响。
+    """
+    # HIGH-3：Content-Length 预检；超过上限直接 413，避免 Starlette 缓存大 body 进内存。
     content_length_raw = request.headers.get("content-length", "")
-    if content_length_raw.isdigit() and int(content_length_raw) > MAX_JSON_BODY_BYTES:
+    if (
+        max_bytes is not None
+        and content_length_raw.isdigit()
+        and int(content_length_raw) > max_bytes
+    ):
         return None, api_error(
             status_code=413,
             code="payload_too_large",
@@ -107,7 +127,7 @@ async def read_json_object(request: "Request") -> tuple[dict[str, Any] | None, J
     body = bytearray()
     async for chunk in request.stream():
         body.extend(chunk)
-        if len(body) > MAX_JSON_BODY_BYTES:
+        if max_bytes is not None and len(body) > max_bytes:
             return None, api_error(
                 status_code=413,
                 code="payload_too_large",

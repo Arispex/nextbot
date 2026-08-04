@@ -585,7 +585,8 @@ async def export_lottery(request: Request) -> JSONResponse:
 
 @router.post("/webui/api/lottery/import")
 async def import_lottery(request: Request) -> JSONResponse:
-    payload, error = await read_json_object(request)
+    # 导入的是 admin 导出的整份奖池配置，可能远超默认 256 KiB，这里解除字节上限。
+    payload, error = await read_json_object(request, max_bytes=None)
     if error is not None:
         return error
     assert payload is not None
