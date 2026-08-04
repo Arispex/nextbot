@@ -1,0 +1,4 @@
+{"file": ".trellis/tasks/08-04-remove-import-size-limits/prd.md", "reason": "需求 + 决策：read_json_object 加可选 max_bytes、仅两个导入端点传 None、删商店导入数量上限、其余 28 调用方不回归"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "413 payload_too_large 分支删除后错误语义保持；其它校验（Content-Type/JSON/结构）不变"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "ruff/pyright/测试全绿；其余端点大小防护不回归"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "read_json_object 为 30 个端点共享，改签名需确保仅目标两处行为变化"}
