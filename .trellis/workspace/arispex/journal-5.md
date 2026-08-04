@@ -236,3 +236,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 221: 解除商店抽奖导入的大小限制
+
+**Date**: 2026-08-04
+**Task**: 解除商店抽奖导入的大小限制
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d1e4b80` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
