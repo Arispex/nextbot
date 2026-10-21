@@ -62,6 +62,14 @@ def _safe_param_int(key: str, default: int, min_value: int = 0) -> int:
             "default": 0,
             "min": 0,
         },
+        "max_profit": {
+            "type": "int",
+            "label": "最大上限",
+            "description": "每局最多净赚的金币数，不含返还本金，0 表示不限制",
+            "required": False,
+            "default": 0,
+            "min": 0,
+        },
         "range_max": {
             "type": "int",
             "label": "数字范围上限",
@@ -239,6 +247,10 @@ async def handle_guess_number(bot: Bot, event: Event, arg: Message = CommandArg(
         else:
             result_type = "远离"
             payout = 0
+
+        max_profit = _safe_param_int("max_profit", 0, min_value=0)
+        if max_profit > 0:
+            payout = min(payout, cost + max_profit)
 
         # PC-8.1：payout 加币走 add_coins_with_cap，受 SF-X.1 全局账户上限保护，
         # 与 economy / red_packet / warehouse / lottery 等域对称。统计字段拆出独立 UPDATE。

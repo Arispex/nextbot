@@ -111,3 +111,48 @@ This project currently uses **bootstrap helpers + raw SQLite schema patching**, 
 - Be careful with comma-separated permission / inheritance fields; they are normalized in code and should not be treated like relational join tables.
 - Do not forget `rollback()` in write-path `except` blocks.
 - Do not leave sessions open; the existing pattern always closes them explicitly.
+
+## Scenario: Per-Round Game Profit Limits
+
+### 1. Scope / Trigger
+
+`economy.dice` and `economy.guess_number` expose independent WebUI-editable
+`max_profit` parameters. Keep this game rule separate from the global account cap.
+
+### 2. Signatures
+
+Existing command syntax is unchanged. Configuration is stored by the existing
+`CommandConfig.param_values_json` mechanism; no user or database columns are added.
+
+### 3. Contracts
+
+`max_profit` is a nonnegative integer with default `0` (unlimited), displayed as
+`最大上限`. For positive limits, calculate `payout = min(payout, cost + max_profit)`
+before calling `add_coins_with_cap(session, user_id, payout)`. Stake deduction,
+credit and statistics remain in the same transaction. Result payloads and income
+statistics must reflect the bounded payout and actual credit, respectively.
+
+### 4. Validation & Error Matrix
+
+- Missing or `0`: preserve existing settlement.
+- Positive: limit net profit independently for each round.
+- Negative WebUI API value: HTTP 422 with field `param_values.max_profit`.
+- Global account cap reached: existing partial credit takes precedence.
+
+### 5. Good / Base / Bad Cases
+
+- Good: stake 100, theoretical payout 1000, limit 500 → credit 600, net gain 500.
+- Base: the same round with limit 0 → credit 1000, net gain 900.
+- Bad: credit only 500 for limit 500; this incorrectly includes the stake.
+- Losses and break-even payouts must not be increased by the limit.
+
+### 6. Verification
+
+`tests/test_game_profit_limit.py` exercises real SQLite balances, profit/loss
+statistics, per-round reset, unlimited mode and global account cap precedence.
+Verify WebUI save and reload through the real parameter editor.
+
+### 7. Wrong vs Correct
+
+Wrong: `payout = min(payout, max_profit)` or using cumulative lifetime gains.
+Correct: apply `min(payout, cost + max_profit)` only when `max_profit > 0`.
