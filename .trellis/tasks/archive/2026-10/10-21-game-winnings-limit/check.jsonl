@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Verify gameplay and WebUI through runtime scenarios"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "Check persisted balance, net gain statistics and global account cap"}

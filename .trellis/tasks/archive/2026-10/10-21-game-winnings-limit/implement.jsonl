@@ -1,0 +1,3 @@
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Reuse command configuration and existing backend patterns"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "Keep payouts and statistics in the existing atomic transaction"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "Avoid needless shared abstraction for the small parallel payout limits"}
